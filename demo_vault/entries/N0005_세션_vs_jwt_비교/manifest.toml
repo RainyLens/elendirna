@@ -1,0 +1,12 @@
+schema_version = 1
+id = "N0005"
+title = "세션 vs JWT 비교"
+created = "2026-04-07T07:07:43.448290100Z"
+updated = "2026-04-07T07:09:08.908589200Z"
+tags = []
+links = [
+    "N0001",
+    "N0003",
+]
+sources = []
+status = "draft"

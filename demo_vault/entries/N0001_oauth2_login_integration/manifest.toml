@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0001"
+title = "OAuth2 Login Integration"
+created = "2026-04-07T07:02:26.026850600Z"
+updated = "2026-04-07T07:09:08.885591900Z"
+tags = []
+links = [
+    "N0002",
+    "N0004",
+    "N0005",
+]
+sources = []
+status = "draft"
