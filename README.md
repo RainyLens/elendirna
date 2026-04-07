@@ -369,9 +369,9 @@ path = "src/main.rs"
 
 ## 13. 라이선스 및 크레딧
 
-- 본 프로젝트는 ELF (Eli's Lab Framework, by Eli, projectschnee@gmail.com)의 프로토콜 아이디어에서 영감을 받음
+- 본 프로젝트는 **[ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF)** (by Eli, projectschnee@gmail.com)의 프로토콜 아이디어에서 영감을 받음
 - ELF의 프로토콜 부분은 CC BY 4.0이며, 본 프로젝트는 그 조건 하에 파생됨을 명시
-- Elendirna 자체의 라이선스는 추후 결정 (MIT 또는 MPL 2.0 검토)
+- Elendirna 자체의 라이선스는 MIT (LICENSE 파일 참조)
 
 ---
 
