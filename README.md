@@ -1,7 +1,9 @@
 # Elendirna
 
 > Agent-friendly knowledge base CLI. Inspired by [ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF).
+
 ![crates.io](https://img.shields.io/crates/v/elendirna.svg)
+
 개인 지식을 **Base-Delta** 구조로 보존합니다. AI 에이전트가 컨벤션을 기억하지 않아도 되도록, CLI가 규칙을 강제합니다.
 
 ## Install
