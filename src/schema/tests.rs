@@ -44,7 +44,8 @@ mod validate {
     use crate::schema::validate::{run_all, IssueKind};
     use tempfile::TempDir;
 
-    fn setup() -> TempDir {
+    fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
@@ -52,7 +53,7 @@ mod validate {
             name: Some("t".to_string()),
         })
         .unwrap();
-        dir
+        (dir, guard)
     }
 
     fn new_entry(dir: &TempDir, title: &str) {
@@ -69,7 +70,7 @@ mod validate {
 
     #[test]
     fn clean_vault_no_issues() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         new_entry(&dir, "Hello");
         let result = run_all(dir.path()).unwrap();
         assert_eq!(
@@ -82,7 +83,7 @@ mod validate {
 
     #[test]
     fn dangling_link_detected() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         new_entry(&dir, "Alpha");
         let entry_dir = dir.path().join("entries/N0001_alpha");
         let mut m = Manifest::read(&entry_dir).unwrap();
@@ -96,7 +97,7 @@ mod validate {
 
     #[test]
     fn cycle_detected() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         new_entry(&dir, "A");
         new_entry(&dir, "B");
 
@@ -116,7 +117,7 @@ mod validate {
 
     #[test]
     fn orphan_revision_detected() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         new_entry(&dir, "Orphan");
         std::fs::create_dir_all(dir.path().join("revisions/N0099")).unwrap();
 

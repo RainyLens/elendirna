@@ -17,14 +17,17 @@ use elendirna::vault::id::EntryId;
 use std::path::Path;
 use tempfile::TempDir;
 
-fn setup_vault() -> TempDir {
+static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+    let guard = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().unwrap();
     init_run(InitArgs {
         path: dir.path().to_path_buf(),
         dry_run: false,
         name: Some("test-vault".to_string()),
     }).unwrap();
-    dir
+    (dir, guard)
 }
 
 fn cd(dir: &TempDir) {
@@ -86,7 +89,7 @@ fn link(dir: &TempDir, from: &str, to: &str) {
 
 #[test]
 fn scenario_3day_workflow() {
-    let dir = setup_vault();
+    let (dir, _guard) = setup_vault();
 
     // Day 1: 첫 entry 생성
     let id1 = new_entry(&dir, "벡터 검색이 지식 검색의 답이다");
@@ -142,7 +145,7 @@ fn scenario_3day_workflow() {
 
 #[test]
 fn criterion_entry_show_json_parseable() {
-    let dir = setup_vault();
+    let (dir, _guard) = setup_vault();
     new_entry(&dir, "JSON Test Entry");
     cd(&dir);
 
@@ -156,7 +159,7 @@ fn criterion_entry_show_json_parseable() {
 
 #[test]
 fn criterion_validate_clean_vault() {
-    let dir = setup_vault();
+    let (dir, _guard) = setup_vault();
     new_entry(&dir, "A");
     new_entry(&dir, "B");
     link(&dir, "N0001", "N0002");
@@ -168,7 +171,7 @@ fn criterion_validate_clean_vault() {
 
 #[test]
 fn criterion_sync_jsonl_records_events() {
-    let dir = setup_vault();
+    let (dir, _guard) = setup_vault();
     new_entry(&dir, "Sync Test");
     add_revision(&dir, "N0001", "some delta");
 
@@ -191,7 +194,7 @@ fn criterion_sync_jsonl_records_events() {
 
 #[test]
 fn criterion_idempotent_entry_new() {
-    let dir = setup_vault();
+    let (dir, _guard) = setup_vault();
     new_entry(&dir, "Idempotent Test");
     // 동일 title 재호출 → AlreadyExists Err (exit code 3)
     cd(&dir);

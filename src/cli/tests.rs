@@ -91,7 +91,8 @@ mod entry {
     use crate::schema::manifest::Manifest;
     use tempfile::TempDir;
 
-    fn setup_vault() -> TempDir {
+    fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
@@ -99,7 +100,7 @@ mod entry {
             name: Some("test".to_string()),
         })
         .unwrap();
-        dir
+        (dir, guard)
     }
 
     fn run_new_in(dir: &TempDir, title: &str) -> Result<(), ElfError> {
@@ -115,7 +116,7 @@ mod entry {
 
     #[test]
     fn entry_new_creates_files() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         run_new_in(&dir, "Rust Ownership").unwrap();
 
         let entry_dir = dir.path().join("entries").join("N0001_rust_ownership");
@@ -130,7 +131,7 @@ mod entry {
 
     #[test]
     fn entry_new_with_baseline() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         run_new_in(&dir, "First").unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
         run_new(NewArgs {
@@ -149,7 +150,7 @@ mod entry {
 
     #[test]
     fn entry_new_nonexistent_baseline_fails() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         std::env::set_current_dir(dir.path()).unwrap();
         let err = run_new(NewArgs {
             title: "Second".to_string(),
@@ -165,7 +166,7 @@ mod entry {
 
     #[test]
     fn entry_show_json() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         run_new_in(&dir, "Test Entry").unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
         run_show(ShowArgs { id: "N0001".to_string(), json: true }).unwrap();
@@ -173,7 +174,7 @@ mod entry {
 
     #[test]
     fn entry_show_not_found() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         std::env::set_current_dir(dir.path()).unwrap();
         let err = run_show(ShowArgs { id: "N0099".to_string(), json: false }).unwrap_err();
         assert_eq!(err.exit_code(), 2);
@@ -181,7 +182,7 @@ mod entry {
 
     #[test]
     fn entry_new_dry_run() {
-        let dir = setup_vault();
+        let (dir, _guard) = setup_vault();
         std::env::set_current_dir(dir.path()).unwrap();
         run_new(NewArgs {
             title: "Dry Test".to_string(),
@@ -204,7 +205,8 @@ mod revision {
     use crate::cli::revision::{RevisionArgs, RevisionCommand, AddArgs, run as rev_run};
     use tempfile::TempDir;
 
-    fn setup() -> TempDir {
+    fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
@@ -221,7 +223,7 @@ mod revision {
             json: false,
         })
         .unwrap();
-        dir
+        (dir, guard)
     }
 
     fn add(dir: &TempDir, delta: &str) -> Result<(), ElfError> {
@@ -238,7 +240,7 @@ mod revision {
 
     #[test]
     fn first_revision_r0001_baseline_r0000() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         add(&dir, "첫 번째 생각 변화").unwrap();
 
         let rev_file = dir.path().join("revisions").join("N0001").join("r0001.md");
@@ -249,7 +251,7 @@ mod revision {
 
     #[test]
     fn second_revision_r0002_baseline_r0001() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         add(&dir, "첫 번째").unwrap();
         add(&dir, "두 번째").unwrap();
 
@@ -261,7 +263,7 @@ mod revision {
 
     #[test]
     fn empty_delta_returns_error() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         std::env::set_current_dir(dir.path()).unwrap();
         let err = rev_run(RevisionArgs {
             command: RevisionCommand::Add(AddArgs {
@@ -277,7 +279,7 @@ mod revision {
 
     #[test]
     fn nonexistent_entry_returns_not_found() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         std::env::set_current_dir(dir.path()).unwrap();
         let err = rev_run(RevisionArgs {
             command: RevisionCommand::Add(AddArgs {
@@ -293,7 +295,7 @@ mod revision {
 
     #[test]
     fn dry_run_no_file() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         std::env::set_current_dir(dir.path()).unwrap();
         rev_run(RevisionArgs {
             command: RevisionCommand::Add(AddArgs {
@@ -317,7 +319,8 @@ mod link {
     use crate::schema::manifest::Manifest;
     use tempfile::TempDir;
 
-    fn setup() -> TempDir {
+    fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
@@ -336,7 +339,7 @@ mod link {
             })
             .unwrap();
         }
-        dir
+        (dir, guard)
     }
 
     fn do_link(dir: &TempDir, from: &str, to: &str) -> Result<(), ElfError> {
@@ -351,7 +354,7 @@ mod link {
 
     #[test]
     fn link_creates_bidirectional() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         do_link(&dir, "N0001", "N0002").unwrap();
 
         let e1 = dir.path().join("entries/N0001_alpha");
@@ -365,7 +368,7 @@ mod link {
 
     #[test]
     fn duplicate_link_is_noop() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         do_link(&dir, "N0001", "N0002").unwrap();
         do_link(&dir, "N0001", "N0002").unwrap();
 
@@ -377,7 +380,7 @@ mod link {
 
     #[test]
     fn self_link_returns_error() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         std::env::set_current_dir(dir.path()).unwrap();
         let err = link_run(LinkArgs {
             from: "N0001".to_string(),
@@ -391,13 +394,14 @@ mod link {
 
     #[test]
     fn missing_entry_returns_not_found() {
-        let dir = setup();
+        let (dir, _guard) = setup();
         let err = do_link(&dir, "N0001", "N0099").unwrap_err();
         assert_eq!(err.exit_code(), 2);
     }
 
     #[test]
     fn links_sorted_ascending() {
+        let _guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
