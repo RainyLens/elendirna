@@ -23,10 +23,13 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
 
     let vault_root = match args.vault {
         Some(path) => path,
-        None => {
-            let cwd = std::env::current_dir()?;
-            vault::find_vault_root(&cwd)?
-        }
+        None => match std::env::var("ELF_VAULT") {
+            Ok(env_path) => std::path::PathBuf::from(env_path),
+            Err(_) => {
+                let cwd = std::env::current_dir()?;
+                vault::find_vault_root(&cwd)?
+            }
+        },
     };
 
     crate::mcp::run_stdio(vault_root)
