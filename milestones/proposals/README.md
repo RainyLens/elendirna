@@ -8,3 +8,4 @@
 | 번호 | 제목 | 상태 |
 |---|---|---|
 | [001](001-mcp-auto-init.md) | MCP 서버 구동 시 `--auto-init` 플래그 제공 | Proposed |
+| [002](002-mcp-server-config-auto-add.md) | Vault 자동 Init 이후 MCP 서버 설정 JSON 자동 제공 및 구성 | Proposed |
