@@ -33,6 +33,9 @@ rmcp        = { version = "1", features = ["server", "macros", "schemars", "tran
 tokio       = { version = "1", features = ["full"] }
 schemars    = "0.8"
 
+# v0.2: sqlite 인덱스
+rusqlite    = { version = "0.39", features = ["bundled"] }
+
 [dev-dependencies]
 insta       = { version = "1", features = ["toml"] }
 tempfile    = "3"

@@ -1,6 +1,7 @@
 pub mod config;
 pub mod entry;
 pub mod id;
+pub mod index;
 pub mod ops;
 pub mod revision;
 pub mod util;

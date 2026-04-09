@@ -37,6 +37,9 @@ enum Commands {
     /// entry + revision chain + linked entries export (AI 컨텍스트용)
     Bundle(cli::bundle::BundleArgs),
 
+    /// sqlite 인덱스 기반 entry 검색
+    Query(cli::query::QueryArgs),
+
     /// MCP 서버 구동 (v0.2)
     Serve(cli::serve::ServeArgs),
 }
@@ -50,6 +53,7 @@ fn main() {
         Commands::Link(args)     => cli::link::run(args),
         Commands::Validate(args) => cli::validate::run(args),
         Commands::Bundle(args)   => cli::bundle::run(args),
+        Commands::Query(args)    => cli::query::run(args),
         Commands::Serve(args)    => cli::serve::run(args),
     };
 
