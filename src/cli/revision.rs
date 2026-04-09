@@ -14,7 +14,11 @@ pub struct RevisionArgs {
 pub enum RevisionCommand {
     /// revision 추가
     Add(AddArgs),
+    /// revision 목록 조회
+    List(ListArgs),
 }
+
+// ─── revision add ─────────────────────────
 
 #[derive(Debug, Args)]
 pub struct AddArgs {
@@ -34,13 +38,15 @@ pub struct AddArgs {
     pub json: bool,
 }
 
+/// RevisionArgs dispatch (테스트 호환성 유지)
 pub fn run(args: RevisionArgs) -> Result<(), ElfError> {
     match args.command {
-        RevisionCommand::Add(a) => run_add(a),
+        RevisionCommand::Add(a)  => run_add(a),
+        RevisionCommand::List(a) => run_list(a),
     }
 }
 
-fn run_add(args: AddArgs) -> Result<(), ElfError> {
+pub fn run_add(args: AddArgs) -> Result<(), ElfError> {
     let cwd = std::env::current_dir()?;
     let vault_root = vault::find_vault_root(&cwd)?;
 
@@ -106,3 +112,47 @@ fn run_add(args: AddArgs) -> Result<(), ElfError> {
     Ok(())
 }
 
+// ─── revision list ────────────────────────
+
+#[derive(Debug, Args)]
+pub struct ListArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_list(args: ListArgs) -> Result<(), ElfError> {
+    let cwd = std::env::current_dir()?;
+    let vault_root = vault::find_vault_root(&cwd)?;
+
+    let revisions = crate::vault::ops::revision_list(&vault_root, &args.id)?;
+
+    if args.json {
+        let out: Vec<_> = revisions.iter().map(|r| serde_json::json!({
+            "entry_id": r.entry_id.to_string(),
+            "rev_id":   r.rev_id.to_string(),
+            "baseline": r.baseline.to_string(),
+            "created":  r.created.to_rfc3339(),
+            "delta":    r.delta,
+        })).collect();
+        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else {
+        if revisions.is_empty() {
+            println!("(revision 없음)");
+        } else {
+            for r in &revisions {
+                println!("{}  baseline: {}  {}",
+                    r.rev_id,
+                    r.baseline,
+                    r.created.format("%Y-%m-%d %H:%M"),
+                );
+                println!("  {}", r.delta.lines().next().unwrap_or("").chars().take(72).collect::<String>());
+            }
+        }
+    }
+
+    Ok(())
+}

@@ -70,27 +70,27 @@ tempfile = "3"      # 임시 vault 생성
 
 ---
 
-## v0.2 — 탐색 레이어
+## v0.2 — 탐색 레이어 + MCP 서버
 
-**전제 조건**: v0.1 성공 기준 달성
+> 상세 계획: [PLAN_v0.2.md](PLAN_v0.2.md)
+> **전제 조건**: v0.1 성공 기준 달성 (✅)
 
-| 커맨드 | 상세 문서 | 비고 |
+두 축으로 진행: **탐색 레이어**와 **MCP 서버 통합**. CLI와 MCP는 동일한 코어(`src/vault/`)를 공유.
+
+| 커맨드 / 기능 | 상세 문서 | 비고 |
 |--------|-----------|------|
-| `elf graph` | [cmd-graph.md](cmd-graph.md) | DOT / Mermaid / JSON |
-| `elf bundle <id>` | _(설계 예정)_ | raw delta chain 출력. readable 합성은 AI 에이전트 위임 (OQ-5 ✅) |
-| `elf query <expr>` | _(설계 예정)_ | sqlite 인덱스 도입 |
-| `elf sync log` / `elf sync record` | _(설계 예정)_ | AI handoff 로그 렌더러 |
-| `elf revision list <id>` | cmd-revision.md 확장 | delta 체인 시간순 출력 |
-| `elf link remove <from> <to>` | cmd-link.md 확장 | 링크 제거 |
+| `elf entry list` | PLAN_v0.2 Phase 1 | 초기 탐색 진입점 |
+| `elf revision list <id>` | PLAN_v0.2 Phase 1 | delta 체인 시간순 출력 |
+| `elf bundle <id>` | PLAN_v0.2 Phase 2 | raw delta chain 출력. AI 컨텍스트 복원의 핵심 |
+| sqlite 인덱스 도입 | PLAN_v0.2 Phase 3 | `index.sqlite` 파생 캐시. `elf validate`로 재생성 |
+| `elf query <expr>` | PLAN_v0.2 Phase 4 | sqlite 기반 검색 |
+| `elf graph` | [cmd-graph.md](cmd-graph.md) | DOT / Mermaid / JSON. Phase 3 이후 |
+| `elf serve --mcp` | PLAN_v0.2 Phase 6 | stdio transport. Claude Desktop 대상 |
+| `elf sync record` | PLAN_v0.2 Phase 7 | agent 필드 공식화. 세션 간 핸드오프 |
 
-**sqlite 도입 계획**: v0.2부터 `index.sqlite`를 파생 캐시로 사용. `elf doctor`가 manifest ↔ index 일관성 점검. 항상 `elf validate`로 재생성 가능.
+**memory 대체 시나리오**: MCP tool(`bundle`, `query`, `sync_record`)을 통해 AI가 vault를 능동적으로 탐색. 세션 시작 시 전체 주입 대신 필요한 것만 on-demand 조회.
 
-### v0.2 TODO (v0.1 fix 검토 중 도출)
-
-- [ ] **`elf entry list`** — 전체 entry 목록 조회 커맨드 추가. v0.1에서 `entry show <id>`는 ID를 이미 알아야 사용 가능하여 초기 탐색 수단 없음. `--tags`, `--status`, `--baseline` 필터 지원.
-- [ ] **`elf sync record` + `agent` 필드 공식화** — v0.1에서 `ELF_AGENT` 환경변수로 임시 처리한 agent 식별을 `sync record` 커맨드에서 정식 지원.
-- [ ] **CLAUDE.md 자동 업그레이드** — `elf migrate` 또는 `elf init --upgrade`가 v0.1 전용 CLAUDE.md를 v0.2 기준(elf help --json, elf sync record 포함)으로 재생성.
-- [ ] **`elf help --json`** — 전체 명령 표면 구조화 출력. v0.3 계획이지만 CLAUDE.md 업그레이드와 묶어서 검토.
+**sqlite 도입 원칙**: 항상 `elf validate`로 재생성 가능. sqlite 없이도 MCP 기본 기능(`entry_show`, `bundle`) 동작.
 
 ---
 

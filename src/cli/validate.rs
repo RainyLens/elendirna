@@ -32,6 +32,12 @@ pub fn run(args: ValidateArgs) -> Result<(), ElfError> {
         }
     }
 
+    // index.sqlite 재생성
+    let index_count = crate::vault::index::rebuild(&vault_root).unwrap_or(0);
+    if !args.json {
+        println!("  index.sqlite 재생성: {index_count}개 entry");
+    }
+
     let errors = result.error_count();
     let warnings = result.warning_count();
 

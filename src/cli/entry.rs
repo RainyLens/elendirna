@@ -19,6 +19,8 @@ pub enum EntryCommand {
     Show(ShowArgs),
     /// entry note.md 편집기로 열기
     Edit(EditArgs),
+    /// 전체 entry 목록 조회
+    List(ListArgs),
 }
 
 // ─── entry new ───────────────────────────
@@ -172,6 +174,80 @@ pub fn run_show(args: ShowArgs) -> Result<(), ElfError> {
         match entry.note_body() {
             Ok(body) => println!("{body}"),
             Err(_) => eprintln!("(note.md 읽기 실패)"),
+        }
+    }
+
+    Ok(())
+}
+
+// ─── entry list ──────────────────────────
+
+#[derive(Debug, Args)]
+pub struct ListArgs {
+    /// 태그 필터
+    #[arg(long = "tag", value_name = "TAG")]
+    pub tags: Vec<String>,
+
+    /// 상태 필터 (draft / stable / archived)
+    #[arg(long)]
+    pub status: Option<String>,
+
+    /// baseline 필터 (예: N0001)
+    #[arg(long)]
+    pub baseline: Option<String>,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_list(args: ListArgs) -> Result<(), ElfError> {
+    let cwd = std::env::current_dir()?;
+    let vault_root = crate::vault::find_vault_root(&cwd)?;
+
+    let mut entries = crate::vault::ops::entry_list(&vault_root);
+
+    // 필터 적용
+    if !args.tags.is_empty() {
+        entries.retain(|e| args.tags.iter().all(|t| e.manifest.tags.contains(t)));
+    }
+    if let Some(ref s) = args.status {
+        entries.retain(|e| e.manifest.status.to_string() == *s);
+    }
+    if let Some(ref b) = args.baseline {
+        entries.retain(|e| e.manifest.baseline.as_deref() == Some(b.as_str())
+            || e.manifest.baseline.as_deref().map(|bl| bl.starts_with(b.as_str())).unwrap_or(false));
+    }
+
+    if args.json {
+        let out: Vec<_> = entries.iter().map(|e| serde_json::json!({
+            "id":       e.manifest.id,
+            "title":    e.manifest.title,
+            "status":   e.manifest.status.to_string(),
+            "tags":     e.manifest.tags,
+            "baseline": e.manifest.baseline,
+            "created":  e.manifest.created,
+            "updated":  e.manifest.updated,
+        })).collect();
+        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else {
+        if entries.is_empty() {
+            println!("(entry 없음)");
+        } else {
+            for e in &entries {
+                let tags = if e.manifest.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("  [{}]", e.manifest.tags.join(", "))
+                };
+                println!("{:<8} {:<40} [{}]  {}{}",
+                    e.manifest.id,
+                    e.manifest.title,
+                    e.manifest.status,
+                    e.manifest.created.format("%Y-%m-%d"),
+                    tags,
+                );
+            }
         }
     }
 

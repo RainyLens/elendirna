@@ -42,7 +42,9 @@ vault/
 │   └── N0042/
 │       ├── r001.md          # delta-only
 │       └── r002.md
-├── CLAUDE.md                # agent manifest (elf init이 생성)
+├── CLAUDE.md                # Claude Code agent manifest
+├── GEMINI.md                # Gemini CLI agent manifest
+├── AGENTS.md                # Codex / OpenAI Agents manifest
 └── README.md
 ```
 
@@ -60,11 +62,15 @@ vault/
 | `elf link <from> <to>` | 양방향 cross-ref 추가 |
 | `elf bundle <id>` | baseline → revision 체인 export (AI 컨텍스트용) |
 | `elf validate` | 스키마, dangling link, cycle 검증 |
-| `elf graph [--format dot\|json]` | 의존 그래프 export |
+| `elf graph [--format dot\|mermaid\|json]` | 의존 그래프 export |
 | `elf query <expr>` | sqlite 인덱스 기반 검색 |
+| `elf sync record --summary <text>` | AI 세션 요약 기록 |
 | `elf sync log [--tail N]` | AI handoff 로그 조회 |
+| `elf serve --mcp` | MCP 서버 구동 (stdio, Claude Desktop 등) |
 
-전역 플래그: `--json`, `--dry-run`, `--vault <path>`
+전역 플래그: `--json`, `--dry-run`
+
+MCP 서버 vault 경로 우선순위: `--vault` 플래그 → `ELF_VAULT` 환경변수 → CWD walk-up
 
 ## License
 

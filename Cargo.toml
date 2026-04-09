@@ -1,6 +1,6 @@
 [package]
 name = "elendirna"
-version = "0.1.0"
+version = "0.2.3"
 edition = "2024"
 description = "Agent-friendly knowledge base CLI. Manages personal knowledge as Base-Delta entries with AI-enforced conventions."
 license = "MIT"
@@ -27,6 +27,14 @@ anyhow      = "1"
 chrono      = { version = "0.4", features = ["serde"] }
 walkdir     = "2"
 regex       = "1"
+
+# v0.2: MCP 서버
+rmcp        = { version = "1", features = ["server", "macros", "schemars", "transport-io"] }
+tokio       = { version = "1", features = ["full"] }
+schemars    = "1"
+
+# v0.2: sqlite 인덱스
+rusqlite    = { version = "0.39", features = ["bundled"] }
 
 [dev-dependencies]
 insta       = { version = "1", features = ["toml"] }
