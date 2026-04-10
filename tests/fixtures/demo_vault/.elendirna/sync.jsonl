@@ -13,20 +13,4 @@
 {"action":"link.N0004.N0001","agent":"human","ts":"2026-04-07T07:09:08.862344800+00:00"}
 {"action":"link.N0005.N0001","agent":"human","ts":"2026-04-07T07:09:08.886359400+00:00"}
 {"action":"link.N0005.N0003","agent":"human","ts":"2026-04-07T07:09:08.909863800+00:00"}
-<<<<<<< HEAD:demo_vault/.elendirna/sync.jsonl
-{"action":"revision.add","agent":"human","id":"N0003","ts":"2026-04-09T09:04:33.994450500+00:00"}
-{"action":"entry.new","agent":"human","id":"N0006","ts":"2026-04-09T09:58:41.070409100+00:00"}
-{"action":"revision.add","agent":"human","id":"N0006","ts":"2026-04-09T09:58:41.086142100+00:00"}
-{"action":"link.N0003.N0006","agent":"human","ts":"2026-04-09T09:58:41.100909600+00:00"}
-{"action":"revision.add","agent":"human","id":"N0003","ts":"2026-04-09T09:58:41.116085700+00:00"}
-{"agent":"gemini-2.0-flash-exp","entries":["N0006","N0003"],"event":"sync.record","session_id":null,"summary":"Added N0006 (RTR) and linked it from N0003 for advanced security.","ts":"2026-04-09T09:58:41.129200700+00:00"}
-{"agent":"gemini-2.0-flash-exp","entries":["N0006","N0003"],"event":"sync.record","session_id":null,"summary":"Fixed MCP tool routing in v0.2.1. Now tools are correctly exposed via #[rmcp::tool_handler].","ts":"2026-04-09T10:17:13.798850+00:00"}
-{"action":"entry.new","agent":"human","id":"N0007","ts":"2026-04-09T10:39:58.851539600+00:00"}
-{"action":"revision.add","agent":"human","id":"N0007","ts":"2026-04-09T10:40:10.697224500+00:00"}
-{"agent":"human","entries":["N0007"],"event":"sync.record","session_id":null,"summary":"Elendirna 프로젝트의 핵심 동기와 철학(Base-Delta 등)을 정리한 새 엔트리(N0007: Elendirna Project Overview) 생성 및 초기 내용 추가.","ts":"2026-04-09T10:40:19.632134400+00:00"}
-{"action":"entry.new","agent":"human","id":"N0008","ts":"2026-04-09T10:57:38.115149100+00:00"}
-{"action":"revision.add","agent":"human","id":"N0008","ts":"2026-04-09T10:57:51.690455900+00:00"}
-{"agent":"human","entries":["N0008"],"event":"sync.record","session_id":null,"summary":"[v0.2.3 출시 후속 작업] demo_vault Git 이력 청소 및 0.2.3 배포. MCP의 Vault 로케이터 아키텍처 확인. 차기 v0.3 마일스톤을 위한 --auto-init 제안서 문서화 및 milestones 저장소 정리. 관련 회고 로그 N0008 생성 완료.","ts":"2026-04-09T10:57:58.689032500+00:00"}
-=======
 {"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"Elendirna 프로젝트의 기본 구조와 002 제안 문서에 대한 요약 Artifact 생성","ts":"2026-04-09T15:20:06.267841100+00:00"}
->>>>>>> origin/main:tests/fixtures/demo_vault/.elendirna/sync.jsonl
