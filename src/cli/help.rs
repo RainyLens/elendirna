@@ -1,4 +1,4 @@
-/// `elf help --json` — AI-readable 커맨드 표면 출력
+/// `elf guide --json` — AI-readable 커맨드 표면 출력
 use clap::Args;
 use crate::error::ElfError;
 

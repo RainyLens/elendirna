@@ -63,6 +63,7 @@ enum Commands {
     Migrate(cli::migrate::MigrateArgs),
 
     /// 전체 커맨드 표면 출력 (AI-readable)
+    #[command(name = "guide")]
     Help(cli::help::HelpArgs),
 }
 

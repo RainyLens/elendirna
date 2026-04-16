@@ -116,3 +116,22 @@
 {"action":"link.N0036.N0030","agent":"human","ts":"2026-04-16T01:48:50.352728800+00:00"}
 {"action":"link.N0036.N0035","agent":"human","ts":"2026-04-16T01:48:50.381773800+00:00"}
 {"agent":"claude-sonnet-4-6","entries":["N0030","N0036"],"event":"sync.record","session_id":null,"summary":"v0.4 전체 구현 완료 및 crates.io v0.4.0 게시. Multi-Vault, entry status, bundle depth/since, MCP 자기서술, elf serve snippet, elf help --json. PR #3 머지.","ts":"2026-04-16T01:48:58.884736700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0037","ts":"2026-04-16T13:28:25.841592100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0037","ts":"2026-04-16T13:28:31.711554+09:00"}
+{"action":"entry.new","agent":"human","id":"N0038","ts":"2026-04-16T13:39:53.718465100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:40:01.822836+09:00"}
+{"agent":"human","entries":["N0037","N0038"],"event":"sync.record","session_id":null,"summary":"CLI 패닉 버그(N0037) 원인 분석 및 Vault 강제 격리 설계 정책(N0038) 정정 기록. Implicit Fallback 제거 및 유도형 UI로의 개선 방향 확립.","ts":"2026-04-16T13:40:08.768501400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:52:07.157114+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:56:24.043234700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T15:27:53.909838700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0037","ts":"2026-04-16T15:28:55.834769+09:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0037","N0038"],"event":"sync.record","session_id":null,"summary":"N0037 fix: elf help→guide rename으로 clap 충돌 해결. N0038 r0004: Desktop/local vault 전환 문제 근본 원인 기록, session_start에 vault_root/vault_kind/hint 추가(1단계 적용)","ts":"2026-04-16T15:29:01.532009600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T15:41:18.480858200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T16:25:11.876203800+09:00"}
+{"action":"entry.new","agent":"human","id":"N0039","ts":"2026-04-16T16:25:15.387182700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-16T16:25:28.069417200+09:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0037","N0038","N0039"],"event":"sync.record","session_id":null,"summary":"N0037 fix 완료(elf help→guide). N0038 설계 완결(r4~r6): Desktop/local vault 전환 문제 근본 원인+세부 동작 확정. N0039 생성: MCP multi-vault 구현 안건 저장","ts":"2026-04-16T16:25:33.808959900+09:00"}
+{"action":"entry.new","agent":"human","id":"N0040","ts":"2026-04-16T16:59:33.770770700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T16:59:49.028484500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:01:34.475116400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:03:00.370563300+09:00"}

@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0038"
+title = "Design: Vault 해결 및 격리 정책 (Implicit Fallback 제거)"
+created = "2026-04-16T13:39:53.716734200+09:00"
+updated = "2026-04-16T16:25:11.875232300+09:00"
+tags = [
+    "design-correction",
+    "isolation",
+    "vault-resolution",
+]
+links = []
+sources = []
+status = "draft"

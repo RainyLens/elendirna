@@ -54,6 +54,19 @@ impl ElfMcpServer {
             prompt_router: Self::prompt_router(),
         }
     }
+
+    fn vault_info(&self) -> (String, &'static str) {
+        let path = self.vault_root.display().to_string();
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map(std::path::PathBuf::from)
+            .ok();
+        let kind = match home {
+            Some(h) if h.join(".elendirna") == self.vault_root => "global",
+            _ => "local",
+        };
+        (path, kind)
+    }
 }
 
 // ─── 파라미터 타입 ────────────────────────
@@ -161,7 +174,8 @@ impl ElfMcpServer {
             "tags":    e.manifest.tags,
             "created": e.manifest.created,
         })).collect();
-        Ok(Json(Out(serde_json::json!({ "ok": true, "entries": out }))))
+        let (vault_path, vault_kind) = self.vault_info();
+        Ok(Json(Out(serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind, "entries": out }))))
     }
 
     #[tool(description = "entry manifest + note body 조회. \
@@ -174,8 +188,11 @@ impl ElfMcpServer {
     ) -> Result<Json<Out>, ErrorData> {
         let r = ops::entry_show(&self.vault_root, &p.id)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok": true,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "manifest": {
                 "id":       r.entry.manifest.id,
                 "title":    r.entry.manifest.title,
@@ -203,8 +220,11 @@ impl ElfMcpServer {
             p.baseline.as_deref(),
             p.tags.unwrap_or_default(),
         ).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok": true,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "id":    r.entry.manifest.id,
             "title": r.entry.manifest.title,
         }))))
@@ -247,8 +267,11 @@ impl ElfMcpServer {
         let event = format!("status.changed.{}.{}", id, entry.manifest.status);
         let _ = append_sync_event(&self.vault_root, &event, Some(&id.to_string()));
 
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok":   true,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "id":   id.to_string(),
             "from": old_status.to_string(),
             "to":   entry.manifest.status.to_string(),
@@ -265,8 +288,11 @@ impl ElfMcpServer {
     ) -> Result<Json<Out>, ErrorData> {
         let r = ops::revision_add(&self.vault_root, &p.id, &p.delta)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok":       true,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "entry_id": r.revision.entry_id.to_string(),
             "rev_id":   r.revision.rev_id.to_string(),
             "baseline": r.revision.baseline.to_string(),
@@ -319,8 +345,11 @@ impl ElfMcpServer {
                 })
             }
         }).collect();
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok": true,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "manifest": {
                 "id":       b.entry.manifest.id,
                 "title":    b.entry.manifest.title,
@@ -358,7 +387,8 @@ impl ElfMcpServer {
             "status":  r.status,
             "created": r.created,
         })).collect();
-        Ok(Json(Out(serde_json::json!({ "ok": true, "entries": out }))))
+        let (vault_path, vault_kind) = self.vault_info();
+        Ok(Json(Out(serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind, "entries": out }))))
     }
 
     #[tool(description = "세션 요약을 sync.jsonl에 기록. \
@@ -375,7 +405,8 @@ impl ElfMcpServer {
             p.entries.unwrap_or_default(),
             p.session_id,
         ).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Json(Out(serde_json::json!({ "ok": true }))))
+        let (vault_path, vault_kind) = self.vault_info();
+        Ok(Json(Out(serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind }))))
     }
 
     #[tool(description = "vault 무결성 검사 + index.sqlite 재생성. \
@@ -388,8 +419,11 @@ impl ElfMcpServer {
         let result = crate::schema::validate::run_all(&self.vault_root)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let _ = crate::vault::index::rebuild(&self.vault_root);
+        let (vault_path, vault_kind) = self.vault_info();
         Ok(Json(Out(serde_json::json!({
             "ok":       result.error_count() == 0,
+            "vault": vault_path,
+            "vault_kind": vault_kind,
             "errors":   result.error_count(),
             "warnings": result.warning_count(),
         }))))
@@ -409,9 +443,14 @@ impl ElfMcpServer {
         let recent_sessions = ops::sync_log(&self.vault_root, Some(3), None)
             .unwrap_or_default();
 
+        let (vault_path, vault_kind) = self.vault_info();
+        let is_global = vault_kind == "global";
+
         if entry_count == 0 {
             return Ok(Json(Out(serde_json::json!({
                 "ok": true,
+                "vault_root": vault_path,
+                "vault_kind": vault_kind,
                 "vault_status": "empty",
                 "entry_count": 0,
                 "ai_instructions": {
@@ -428,12 +467,25 @@ impl ElfMcpServer {
             }))));
         }
 
+        let hint = if is_global {
+            "현재 글로벌 vault가 활성화되어 있습니다. \
+            로컬 프로젝트 vault를 참조하려면 elf serve --mcp --vault <path> 로 서버를 재시작하거나, \
+            --vault 플래그로 로컬 경로를 지정하세요."
+        } else {
+            "현재 로컬 vault가 활성화되어 있습니다. \
+            글로벌 vault를 참조하려면 elf serve --mcp --global 로 서버를 재시작하거나, \
+            --global 플래그를 사용하세요."
+        };
+
         Ok(Json(Out(serde_json::json!({
             "ok": true,
+            "vault_root": vault_path,
+            "vault_kind": vault_kind,
             "vault_status": "active",
             "entry_count": entry_count,
             "recent_sessions": recent_sessions,
-            "next_action": "query 또는 entry_list로 작업 범위를 파악하고, bundle(id)로 핵심 entry를 로드하세요."
+            "next_action": "query 또는 entry_list로 작업 범위를 파악하고, bundle(id)로 핵심 entry를 로드하세요.",
+            "hint": hint,
         }))))
     }
 }
