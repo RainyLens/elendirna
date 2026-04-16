@@ -93,6 +93,7 @@ mod entry {
     use crate::cli::init::{InitArgs, run as init_run};
     use crate::cli::entry::{NewArgs, ShowArgs, run_new, run_show};
     use crate::schema::manifest::Manifest;
+    use crate::vault::VaultArgs;
     use tempfile::TempDir;
 
     fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -116,7 +117,7 @@ mod entry {
             tags: vec![],
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
     }
 
     #[test]
@@ -145,7 +146,7 @@ mod entry {
             tags: vec![],
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap();
 
         let entry_dir = dir.path().join(".elendirna/entries").join("N0002_second");
@@ -163,7 +164,7 @@ mod entry {
             tags: vec![],
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap_err();
         assert_eq!(err.exit_code(), 2);
         assert!(matches!(err, ElfError::NotFound { .. }));
@@ -174,14 +175,14 @@ mod entry {
         let (dir, _guard) = setup_vault();
         run_new_in(&dir, "Test Entry").unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
-        run_show(ShowArgs { id: "N0001".to_string(), json: true }).unwrap();
+        run_show(ShowArgs { id: "N0001".to_string(), json: true }, VaultArgs::default()).unwrap();
     }
 
     #[test]
     fn entry_show_not_found() {
         let (dir, _guard) = setup_vault();
         std::env::set_current_dir(dir.path()).unwrap();
-        let err = run_show(ShowArgs { id: "N0099".to_string(), json: false }).unwrap_err();
+        let err = run_show(ShowArgs { id: "N0099".to_string(), json: false }, VaultArgs::default()).unwrap_err();
         assert_eq!(err.exit_code(), 2);
     }
 
@@ -195,7 +196,7 @@ mod entry {
             tags: vec![],
             dry_run: true,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap();
         let entry_dir = dir.path().join(".elendirna/entries").join("N0001_dry_test");
         assert!(!entry_dir.exists());
@@ -208,6 +209,7 @@ mod revision {
     use crate::cli::init::{InitArgs, run as init_run};
     use crate::cli::entry::{NewArgs, run_new};
     use crate::cli::revision::{RevisionArgs, RevisionCommand, AddArgs, run as rev_run};
+    use crate::vault::VaultArgs;
     use tempfile::TempDir;
 
     fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -227,7 +229,7 @@ mod revision {
             tags: vec![],
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap();
         (dir, guard)
     }
@@ -323,6 +325,7 @@ mod link {
     use crate::cli::entry::{NewArgs, run_new};
     use crate::cli::link::{LinkArgs, run as link_run};
     use crate::schema::manifest::Manifest;
+    use crate::vault::VaultArgs;
     use tempfile::TempDir;
 
     fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -343,7 +346,7 @@ mod link {
                 tags: vec![],
                 dry_run: false,
                 json: false,
-            })
+            }, VaultArgs::default())
             .unwrap();
         }
         (dir, guard)
@@ -356,7 +359,7 @@ mod link {
             to: to.to_string(),
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
     }
 
     #[test]
@@ -394,7 +397,7 @@ mod link {
             to: "N0001".to_string(),
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap_err();
         assert_eq!(err.exit_code(), 1);
     }
@@ -425,7 +428,7 @@ mod link {
                 tags: vec![],
                 dry_run: false,
                 json: false,
-            })
+            }, VaultArgs::default())
             .unwrap();
         }
         do_link(&dir, "N0002", "N0003").unwrap();

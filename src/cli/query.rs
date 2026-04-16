@@ -1,6 +1,6 @@
 use clap::Args;
 use crate::error::ElfError;
-use crate::vault;
+use crate::vault::{self, VaultArgs};
 use crate::vault::index::{QueryFilter, query};
 
 #[derive(Debug, Args)]
@@ -26,9 +26,8 @@ pub struct QueryArgs {
     pub json: bool,
 }
 
-pub fn run(args: QueryArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run(args: QueryArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let filter = QueryFilter {
         tag:            args.tag,

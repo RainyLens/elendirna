@@ -1,23 +1,37 @@
 use clap::Args;
 use crate::error::ElfError;
-use crate::vault;
-use crate::vault::ops::bundle;
+use crate::vault::{self, VaultArgs};
+use crate::vault::ops::{bundle_with_opts, BundleOptions, BundleSince};
 
 #[derive(Debug, Args)]
 pub struct BundleArgs {
     /// entry ID (예: N0001)
     pub id: String,
 
+    /// linked entry 탐색 깊이 (0=자신+revisions만, 1=직접 linked 전문(기본), 2+=2홉 이상 manifest만)
+    #[arg(long, default_value = "1")]
+    pub depth: u32,
+
+    /// revision 필터: N####@r#### 또는 RFC 3339 timestamp 이후만 포함
+    #[arg(long, value_name = "SPEC")]
+    pub since: Option<String>,
+
     /// JSON 출력
     #[arg(long)]
     pub json: bool,
 }
 
-pub fn run(args: BundleArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
-    let b = bundle(&vault_root, &args.id)?;
+    let since = args.since.as_deref()
+        .map(|s| BundleSince::parse(s).ok_or_else(|| ElfError::InvalidInput {
+            message: format!("--since 형식 오류: '{s}' (N####@r#### 또는 RFC 3339 timestamp)"),
+        }))
+        .transpose()?;
+
+    let opts = BundleOptions { depth: args.depth, since };
+    let b = bundle_with_opts(&vault_root, &args.id, opts)?;
 
     if args.json {
         let revs: Vec<_> = b.revisions.iter().map(|r| serde_json::json!({
@@ -27,11 +41,22 @@ pub fn run(args: BundleArgs) -> Result<(), ElfError> {
             "delta":    r.delta,
         })).collect();
 
-        let linked: Vec<_> = b.linked.iter().map(|le| serde_json::json!({
-            "id":    le.entry.manifest.id,
-            "title": le.entry.manifest.title,
-            "note":  le.note_body,
-        })).collect();
+        let linked: Vec<_> = b.linked.iter().map(|le| {
+            if le.shallow {
+                serde_json::json!({
+                    "id":      le.entry.manifest.id,
+                    "title":   le.entry.manifest.title,
+                    "status":  le.entry.manifest.status.to_string(),
+                    "shallow": true,
+                })
+            } else {
+                serde_json::json!({
+                    "id":    le.entry.manifest.id,
+                    "title": le.entry.manifest.title,
+                    "note":  le.note_body,
+                })
+            }
+        }).collect();
 
         let out = serde_json::json!({
             "command": "bundle",
@@ -90,17 +115,22 @@ pub fn run(args: BundleArgs) -> Result<(), ElfError> {
             println!("\n--- linked entries ---");
             for le in &b.linked {
                 let lm = &le.entry.manifest;
-                println!("\n[{}] {}", lm.id, lm.title);
-                println!("status: {}  created: {}", lm.status, lm.created.format("%Y-%m-%d"));
-                // note 첫 단락만 (최대 3줄)
-                let preview: String = le.note_body.trim()
-                    .lines()
-                    .filter(|l| !l.starts_with('#'))
-                    .take(3)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !preview.is_empty() {
-                    println!("{preview}");
+                if le.shallow {
+                    println!("\n[{}] {} (shallow)", lm.id, lm.title);
+                    println!("status: {}  created: {}", lm.status, lm.created.format("%Y-%m-%d"));
+                } else {
+                    println!("\n[{}] {}", lm.id, lm.title);
+                    println!("status: {}  created: {}", lm.status, lm.created.format("%Y-%m-%d"));
+                    // note 첫 단락만 (최대 3줄)
+                    let preview: String = le.note_body.trim()
+                        .lines()
+                        .filter(|l| !l.starts_with('#'))
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !preview.is_empty() {
+                        println!("{preview}");
+                    }
                 }
             }
         }

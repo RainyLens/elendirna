@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use crate::error::ElfError;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 2;
@@ -12,6 +13,9 @@ pub struct VaultConfig {
     pub created: DateTime<Utc>,
     /// 편집기 명령. 기본값 "$EDITOR" (환경 변수 참조)
     pub editor: String,
+    /// 등록된 vault alias → 절대경로 맵 (글로벌 config의 [vaults] 섹션, backward-compatible)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub vaults: HashMap<String, String>,
 }
 
 impl VaultConfig {
@@ -21,6 +25,7 @@ impl VaultConfig {
             vault_name: vault_name.into(),
             created: Utc::now(),
             editor: "$EDITOR".to_string(),
+            vaults: HashMap::new(),
         }
     }
 
@@ -50,5 +55,49 @@ impl VaultConfig {
         } else {
             Some(self.editor.clone())
         }
+    }
+
+    // ─── 글로벌 config 헬퍼 ───────────────────
+
+    /// 글로벌 config 경로: ~/.elendirna/config.toml
+    pub fn global_config_path() -> Option<PathBuf> {
+        std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .ok()
+            .map(|h| PathBuf::from(h).join(".elendirna").join("config.toml"))
+    }
+
+    /// 글로벌 config 읽기. 없으면 기본값(빈 vaults 맵).
+    pub fn read_global() -> VaultConfig {
+        let Some(path) = Self::global_config_path() else { return Self::new("global") };
+        if !path.exists() { return Self::new("global") }
+        let Ok(raw) = std::fs::read_to_string(&path) else { return Self::new("global") };
+        toml::from_str(&raw).unwrap_or_else(|_| Self::new("global"))
+    }
+
+    /// vault alias를 글로벌 config [vaults]에 등록. 이미 있으면 no-op.
+    /// `global` / `local` 은 예약어 — 등록 거부.
+    pub fn register_vault_alias(vault_root: &Path, alias: &str) -> Result<(), ElfError> {
+        if alias == "global" || alias == "local" {
+            return Ok(()); // 예약어 — 무시
+        }
+        let Some(cfg_path) = Self::global_config_path() else { return Ok(()) };
+        let home_dir = cfg_path.parent().and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default();
+
+        let mut global = Self::read_global();
+        let abs_path = vault_root.to_string_lossy().to_string();
+        if global.vaults.get(alias).map(|s| s.as_str()) == Some(&abs_path) {
+            return Ok(()); // no-op
+        }
+        global.vaults.insert(alias.to_string(), abs_path);
+        global.write(&home_dir)
+    }
+
+    /// alias → vault 절대경로 조회 (글로벌 config 기준)
+    pub fn resolve_alias(alias: &str) -> Option<PathBuf> {
+        let global = Self::read_global();
+        global.vaults.get(alias).map(PathBuf::from)
     }
 }

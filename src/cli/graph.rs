@@ -1,6 +1,6 @@
 use clap::Args;
 use crate::error::ElfError;
-use crate::vault;
+use crate::vault::{self, VaultArgs};
 use crate::vault::ops::{graph_data, EdgeKind, NodeKind};
 
 #[derive(Debug, Args)]
@@ -18,9 +18,8 @@ pub struct GraphArgs {
     pub output: Option<std::path::PathBuf>,
 }
 
-pub fn run(args: GraphArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run(args: GraphArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let data = graph_data(&vault_root, args.entry.as_deref())?;
 

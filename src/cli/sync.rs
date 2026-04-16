@@ -1,7 +1,7 @@
 /// `elf sync record` / `elf sync log` — AI 세션 핸드오프 로그 관리 (Phase 7)
 use clap::{Args, Subcommand};
 use crate::error::ElfError;
-use crate::vault;
+use crate::vault::{self, VaultArgs};
 use crate::vault::ops;
 
 #[derive(Debug, Args)]
@@ -54,16 +54,15 @@ pub struct LogArgs {
     pub json: bool,
 }
 
-pub fn run(args: SyncArgs) -> Result<(), ElfError> {
+pub fn run(args: SyncArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
-        SyncCommand::Record(a) => run_record(a),
-        SyncCommand::Log(a)    => run_log(a),
+        SyncCommand::Record(a) => run_record(a, vault_args),
+        SyncCommand::Log(a)    => run_log(a, vault_args),
     }
 }
 
-pub fn run_record(args: RecordArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_record(args: RecordArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
     ops::sync_record(
         &vault_root,
         &args.summary,
@@ -79,9 +78,8 @@ pub fn run_record(args: RecordArgs) -> Result<(), ElfError> {
     Ok(())
 }
 
-pub fn run_log(args: LogArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_log(args: LogArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
     let events = ops::sync_log(&vault_root, Some(args.tail), args.agent.as_deref())?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&events).unwrap_or_default());

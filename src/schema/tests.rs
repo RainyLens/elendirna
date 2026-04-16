@@ -42,6 +42,7 @@ mod validate {
     use crate::cli::entry::{NewArgs, run_new};
     use crate::schema::manifest::Manifest;
     use crate::schema::validate::{run_all, IssueKind};
+    use crate::vault::VaultArgs;
     use tempfile::TempDir;
 
     fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -65,7 +66,7 @@ mod validate {
             tags: vec![],
             dry_run: false,
             json: false,
-        })
+        }, VaultArgs::default())
         .unwrap();
     }
 

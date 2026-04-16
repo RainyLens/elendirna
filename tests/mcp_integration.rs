@@ -8,6 +8,7 @@ use elendirna::cli::entry::{NewArgs, run_new};
 use elendirna::cli::init::{InitArgs, run as init_run};
 use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
 use elendirna::vault::ops;
+use elendirna::vault::VaultArgs;
 
 use tempfile::TempDir;
 
@@ -37,7 +38,7 @@ fn new_entry_direct(dir: &TempDir, title: &str) -> String {
         tags: vec![],
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
     let entries = elendirna::vault::entry::Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
@@ -105,7 +106,7 @@ fn mcp_bundle_includes_revisions_and_linked() {
         to: "N0002".into(),
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
 
     rev_run(RevisionArgs {
         command: RevisionCommand::Add(AddArgs {

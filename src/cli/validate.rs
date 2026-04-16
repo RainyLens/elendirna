@@ -1,7 +1,7 @@
 use clap::Args;
 use crate::error::ElfError;
 use crate::schema::validate::{self, IssueKind, Severity};
-use crate::vault;
+use crate::vault::{self, VaultArgs};
 
 #[derive(Debug, Args)]
 pub struct ValidateArgs {
@@ -14,9 +14,8 @@ pub struct ValidateArgs {
     pub json: bool,
 }
 
-pub fn run(args: ValidateArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let mut result = validate::run_all(&vault_root)?;
 

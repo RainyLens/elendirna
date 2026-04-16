@@ -8,6 +8,7 @@ use elendirna::cli::init::{InitArgs, run as init_run};
 use elendirna::cli::link::{LinkArgs, run as link_run};
 use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
 use elendirna::vault::index::{self, QueryFilter};
+use elendirna::vault::VaultArgs;
 
 use tempfile::TempDir;
 
@@ -37,7 +38,7 @@ fn new_entry(dir: &TempDir, title: &str, tags: Vec<String>) -> String {
         tags,
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
     let entries = elendirna::vault::entry::Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
@@ -142,7 +143,7 @@ fn query_links_present_in_index_after_rebuild() {
         to: "N0002".into(),
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
 
     index::rebuild(dir.path()).unwrap();
 

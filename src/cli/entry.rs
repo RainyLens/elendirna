@@ -1,9 +1,9 @@
 use clap::{Args, Subcommand};
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId};
+use crate::vault::{self, id::EntryId, VaultArgs};
 use crate::vault::entry::Entry;
 use crate::vault::util::append_sync_event;
-use crate::schema::manifest::NoteFrontmatter;
+use crate::schema::manifest::{EntryStatus, NoteFrontmatter};
 
 #[derive(Debug, Args)]
 pub struct EntryArgs {
@@ -21,6 +21,8 @@ pub enum EntryCommand {
     Edit(EditArgs),
     /// 전체 entry 목록 조회
     List(ListArgs),
+    /// entry status 변경 (draft / stable / archived)
+    Status(StatusArgs),
 }
 
 // ─── entry new ───────────────────────────
@@ -47,9 +49,8 @@ pub struct NewArgs {
     pub json: bool,
 }
 
-pub fn run_new(args: NewArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     // baseline 존재 확인
     if let Some(ref b) = args.baseline {
@@ -122,9 +123,8 @@ pub struct ShowArgs {
     pub json: bool,
 }
 
-pub fn run_show(args: ShowArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_show(args: ShowArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
         message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
@@ -200,9 +200,8 @@ pub struct ListArgs {
     pub json: bool,
 }
 
-pub fn run_list(args: ListArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = crate::vault::find_vault_root(&cwd)?;
+pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let mut entries = crate::vault::ops::entry_list(&vault_root);
 
@@ -261,9 +260,8 @@ pub struct EditArgs {
     pub id: String,
 }
 
-pub fn run_edit(args: EditArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
         message: format!("'{}' 는 유효한 entry ID가 아닙니다", args.id),
@@ -330,6 +328,64 @@ pub fn run_edit(args: EditArgs) -> Result<(), ElfError> {
 
     append_sync_event(&vault_root, "entry.edit", Some(&id.to_string()))?;
     println!("✓ entry 편집 완료: {}", id);
+
+    Ok(())
+}
+
+// ─── entry status ─────────────────────────
+
+#[derive(Debug, Args)]
+pub struct StatusArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// 새 status (draft / stable / archived)
+    pub status: String,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_status(args: StatusArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+
+    let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
+        message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
+    })?;
+
+    let new_status: EntryStatus = match args.status.as_str() {
+        "draft"    => EntryStatus::Draft,
+        "stable"   => EntryStatus::Stable,
+        "archived" => EntryStatus::Archived,
+        other => return Err(ElfError::InvalidInput {
+            message: format!("알 수 없는 status: '{other}' (draft / stable / archived)"),
+        }),
+    };
+
+    let mut entry = Entry::find_by_id(&vault_root, &id)
+        .ok_or_else(|| ElfError::NotFound { id: args.id.clone() })?;
+
+    let old_status = entry.manifest.status.clone();
+    entry.manifest.status = new_status;
+    entry.manifest.touch_and_write(&entry.dir)?;
+
+    let event = format!("status.changed.{}.{}", id, entry.manifest.status);
+    append_sync_event(&vault_root, &event, Some(&id.to_string()))?;
+
+    if args.json {
+        println!("{}", serde_json::json!({
+            "command": "entry.status",
+            "ok": true,
+            "data": {
+                "id":     id.to_string(),
+                "from":   old_status.to_string(),
+                "to":     entry.manifest.status.to_string(),
+            }
+        }));
+    } else {
+        println!("✓ {} status: {} → {}", id, old_status, entry.manifest.status);
+    }
 
     Ok(())
 }

@@ -9,6 +9,7 @@ pub mod query;
 pub mod serve;
 pub mod sync;
 pub mod migrate;
+pub mod help;
 
 #[cfg(test)]
 mod tests;

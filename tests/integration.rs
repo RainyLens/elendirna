@@ -11,6 +11,7 @@ use elendirna::schema::manifest::Manifest;
 use elendirna::schema::validate::run_all;
 use elendirna::vault::entry::Entry;
 use elendirna::vault::id::EntryId;
+use elendirna::vault::VaultArgs;
 
 use tempfile::TempDir;
 
@@ -40,7 +41,7 @@ fn new_entry(dir: &TempDir, title: &str) -> String {
         tags: vec![],
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
     // 방금 생성된 entry ID 반환
     let entries = Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
@@ -54,7 +55,7 @@ fn new_entry_with_baseline(dir: &TempDir, title: &str, baseline: &str) -> String
         tags: vec![],
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
     let entries = Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
@@ -78,7 +79,7 @@ fn link(dir: &TempDir, from: &str, to: &str) {
         to: to.to_string(),
         dry_run: false,
         json: false,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
 }
 
 // ─────────────────────────────────────────
@@ -152,7 +153,7 @@ fn criterion_entry_show_json_parseable() {
     run_show(ShowArgs {
         id: "N0001".to_string(),
         json: true,
-    }).unwrap();
+    }, VaultArgs::default()).unwrap();
 }
 
 #[test]
@@ -202,7 +203,7 @@ fn criterion_idempotent_entry_new() {
         tags: vec![],
         dry_run: false,
         json: false,
-    });
+    }, VaultArgs::default());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.exit_code(), 3);

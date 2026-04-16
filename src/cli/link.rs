@@ -1,6 +1,6 @@
 use clap::Args;
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId};
+use crate::vault::{self, id::EntryId, VaultArgs};
 use crate::vault::entry::Entry;
 
 #[derive(Debug, Args)]
@@ -20,9 +20,8 @@ pub struct LinkArgs {
     pub json: bool,
 }
 
-pub fn run(args: LinkArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     // 자기 자신 링크 거부
     if args.from == args.to {

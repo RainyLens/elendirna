@@ -1,9 +1,10 @@
 /// MCP 서버와 CLI가 공유하는 고수준 vault 조작 함수.
 /// 출력 로직 없음 — 호출자(CLI 핸들러 또는 MCP tool)가 결과를 직렬화한다.
 use std::path::Path;
+use chrono::{DateTime, Utc};
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
-use crate::vault::id::EntryId;
+use crate::vault::id::{EntryId, EntryRevRef};
 use crate::vault::revision::Revision;
 use crate::vault::util::append_sync_event;
 
@@ -115,18 +116,60 @@ pub fn revision_list(vault_root: &Path, entry_id_str: &str) -> Result<Vec<Revisi
 pub struct LinkedEntry {
     pub entry: Entry,
     pub note_body: String,
+    /// depth > 1 홉일 경우 true — note_body는 빈 문자열, manifest 메타데이터만 포함
+    pub shallow: bool,
 }
 
 pub struct BundleOutput {
     pub entry: Entry,
     pub note_body: String,
     pub revisions: Vec<Revision>,
-    pub linked: Vec<LinkedEntry>, // depth=1 linked entries
+    pub linked: Vec<LinkedEntry>,
 }
 
-/// entry + revision chain + linked entries(depth=1) 수집.
+/// `--since` spec: revision ID 기준 또는 RFC 3339 timestamp
+pub enum BundleSince {
+    /// N####@r#### 이후 (exclusive)
+    RevRef(EntryRevRef),
+    /// 해당 시각 이후 (exclusive)
+    Timestamp(DateTime<Utc>),
+}
+
+impl BundleSince {
+    /// "N0030@r0005" 또는 "2026-01-01T00:00:00Z" 파싱
+    pub fn parse(s: &str) -> Option<Self> {
+        if let Some(r) = EntryRevRef::parse(s) {
+            return Some(Self::RevRef(r));
+        }
+        if let Ok(ts) = s.parse::<DateTime<Utc>>() {
+            return Some(Self::Timestamp(ts));
+        }
+        None
+    }
+}
+
+/// bundle 옵션.
+/// depth: 0=자신+revisions만, 1=직접 linked 전문(기본), 2+=2홉 이상 manifest만
+/// since: 지정 시 revision 필터링 (entry body는 항상 포함)
+pub struct BundleOptions {
+    pub depth: u32,
+    pub since: Option<BundleSince>,
+}
+
+impl Default for BundleOptions {
+    fn default() -> Self {
+        Self { depth: 1, since: None }
+    }
+}
+
+/// entry + revision chain + linked entries 수집.
 /// readable 합성은 호출자(CLI 출력 or MCP tool)가 담당.
 pub fn bundle(vault_root: &Path, id_str: &str) -> Result<BundleOutput, ElfError> {
+    bundle_with_opts(vault_root, id_str, BundleOptions::default())
+}
+
+/// bundle + 옵션 (depth / since)
+pub fn bundle_with_opts(vault_root: &Path, id_str: &str, opts: BundleOptions) -> Result<BundleOutput, ElfError> {
     let id = EntryId::from_str(id_str).ok_or_else(|| ElfError::InvalidInput {
         message: format!("'{id_str}' 는 유효한 entry ID가 아닙니다"),
     })?;
@@ -134,19 +177,61 @@ pub fn bundle(vault_root: &Path, id_str: &str) -> Result<BundleOutput, ElfError>
         .ok_or_else(|| ElfError::NotFound { id: id_str.to_string() })?;
 
     let note_body = entry.note_body().unwrap_or_default();
-    let revisions = Revision::list(vault_root, &id);
 
-    let mut linked = vec![];
-    for link_id_str in &entry.manifest.links {
-        if let Some(lid) = EntryId::from_str(link_id_str) {
-            if let Some(le) = Entry::find_by_id(vault_root, &lid) {
-                let lb = le.note_body().unwrap_or_default();
-                linked.push(LinkedEntry { entry: le, note_body: lb });
+    // revision 필터링 (--since)
+    let all_revisions = Revision::list(vault_root, &id);
+    let revisions = match &opts.since {
+        None => all_revisions,
+        Some(BundleSince::RevRef(ref_rev)) => {
+            // ref_rev.entry가 이 entry와 같아야 의미 있음
+            if ref_rev.entry == id {
+                let cutoff = ref_rev.rev.as_ref().map(|r| r.value()).unwrap_or(0);
+                all_revisions.into_iter().filter(|r| r.rev_id.value() > cutoff).collect()
+            } else {
+                all_revisions
             }
         }
-    }
+        Some(BundleSince::Timestamp(ts)) => {
+            all_revisions.into_iter().filter(|r| r.created > *ts).collect()
+        }
+    };
+
+    // linked entry 수집 (depth 제어)
+    let linked = if opts.depth == 0 {
+        vec![]
+    } else {
+        collect_linked(vault_root, &entry.manifest.links, opts.depth, 1)
+    };
 
     Ok(BundleOutput { entry, note_body, revisions, linked })
+}
+
+/// 재귀적으로 linked entry 수집.
+/// current_depth ≤ max_depth: 전문 포함
+/// current_depth > max_depth: 수집 중단
+fn collect_linked(vault_root: &Path, link_ids: &[String], max_depth: u32, current_depth: u32) -> Vec<LinkedEntry> {
+    let mut result = vec![];
+    for link_id_str in link_ids {
+        let Some(lid) = EntryId::from_str(link_id_str) else { continue };
+        let Some(le) = Entry::find_by_id(vault_root, &lid) else { continue };
+
+        if current_depth == 1 {
+            // depth=1: 직접 linked entry 전문 포함
+            let lb = le.note_body().unwrap_or_default();
+            // depth=1이 max_depth이면 2홉부터는 없음
+            let sub_linked = if max_depth >= 2 {
+                collect_linked(vault_root, &le.manifest.links.clone(), max_depth, current_depth + 1)
+            } else {
+                vec![]
+            };
+            result.push(LinkedEntry { entry: le, note_body: lb, shallow: false });
+            result.extend(sub_linked);
+        } else {
+            // depth > 1: manifest 메타데이터만 (shallow=true, note_body 빈 문자열)
+            result.push(LinkedEntry { entry: le, note_body: String::new(), shallow: true });
+        }
+    }
+    result
 }
 
 // ─── graph ───────────────────────────────

@@ -16,9 +16,9 @@ pub struct ServeArgs {
 
 pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     if !args.mcp {
-        return Err(ElfError::InvalidInput {
-            message: "현재는 --mcp 플래그만 지원합니다".to_string(),
-        });
+        // --mcp 없이 호출 시: MCP config snippet 출력
+        print_mcp_snippet(args.vault.as_deref());
+        return Ok(());
     }
 
     let vault_root = match args.vault {
@@ -57,4 +57,32 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
 
     crate::mcp::run_stdio(vault_root)
         .map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+}
+
+/// `elf serve` (--mcp 없이) 호출 시 MCP config snippet을 stdout에 출력.
+fn print_mcp_snippet(vault_path: Option<&std::path::Path>) {
+    // `elf` 바이너리 경로
+    let elf_bin = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "elf".to_string());
+
+    // vault 경로 결정
+    let vault_str = vault_path
+        .map(|p| p.display().to_string())
+        .or_else(|| {
+            let cwd = std::env::current_dir().ok()?;
+            vault::find_vault_root(&cwd).ok().map(|p| p.display().to_string())
+        })
+        .unwrap_or_else(|| "/path/to/your/vault".to_string());
+
+    println!("# Elendirna MCP 서버 설정 snippet");
+    println!("# Claude Desktop / claude_desktop_config.json 또는 .claude/mcp.json 에 추가하세요:\n");
+    println!("{{");
+    println!("  \"mcpServers\": {{");
+    println!("    \"elendirna\": {{");
+    println!("      \"command\": \"{elf_bin}\",");
+    println!("      \"args\": [\"serve\", \"--mcp\", \"--vault\", \"{vault_str}\"]");
+    println!("    }}");
+    println!("  }}");
+    println!("}}");
 }

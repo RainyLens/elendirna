@@ -1,6 +1,8 @@
 use elendirna::cli;
 use elendirna::error::ElfError;
+use elendirna::vault::VaultArgs;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -13,6 +15,14 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// vault 경로 직접 지정 (우선순위: --vault > --global > ELF_VAULT > cwd 탐색 > global 폴백)
+    #[arg(long, global = true, value_name = "PATH")]
+    vault: Option<PathBuf>,
+
+    /// 글로벌 vault (~/.elendirna/) 강제 사용
+    #[arg(long, global = true)]
+    global: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -22,7 +32,7 @@ enum Commands {
     /// vault 초기화
     Init(cli::init::InitArgs),
 
-    /// entry 관리 (new / show / edit / list)
+    /// entry 관리 (new / show / edit / list / status)
     Entry(cli::entry::EntryArgs),
 
     /// revision 관리 (add / list)
@@ -51,22 +61,27 @@ enum Commands {
 
     /// v1 vault를 v2 compact layout으로 이관 (v0.3)
     Migrate(cli::migrate::MigrateArgs),
+
+    /// 전체 커맨드 표면 출력 (AI-readable)
+    Help(cli::help::HelpArgs),
 }
 
 fn main() {
     let cli = Cli::parse();
+    let vault_args = VaultArgs { vault: cli.vault, global: cli.global };
     let result = match cli.command {
         Commands::Init(args)     => cli::init::run(args),
-        Commands::Entry(args)    => run_entry(args),
-        Commands::Revision(args) => run_revision(args),
-        Commands::Link(args)     => cli::link::run(args),
-        Commands::Validate(args) => cli::validate::run(args),
-        Commands::Bundle(args)   => cli::bundle::run(args),
-        Commands::Query(args)    => cli::query::run(args),
-        Commands::Graph(args)    => cli::graph::run(args),
+        Commands::Entry(args)    => run_entry(args, vault_args),
+        Commands::Revision(args) => run_revision(args, vault_args),
+        Commands::Link(args)     => cli::link::run(args, vault_args),
+        Commands::Validate(args) => cli::validate::run(args, vault_args),
+        Commands::Bundle(args)   => cli::bundle::run(args, vault_args),
+        Commands::Query(args)    => cli::query::run(args, vault_args),
+        Commands::Graph(args)    => cli::graph::run(args, vault_args),
         Commands::Serve(args)    => cli::serve::run(args),
-        Commands::Sync(args)     => cli::sync::run(args),
+        Commands::Sync(args)     => cli::sync::run(args, vault_args),
         Commands::Migrate(args)  => cli::migrate::run(args),
+        Commands::Help(args)     => cli::help::run(args),
     };
 
     if let Err(e) = result {
@@ -76,18 +91,19 @@ fn main() {
     }
 }
 
-fn run_entry(args: cli::entry::EntryArgs) -> Result<(), ElfError> {
+fn run_entry(args: cli::entry::EntryArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
-        cli::entry::EntryCommand::New(a)  => cli::entry::run_new(a),
-        cli::entry::EntryCommand::Show(a) => cli::entry::run_show(a),
-        cli::entry::EntryCommand::Edit(a) => cli::entry::run_edit(a),
-        cli::entry::EntryCommand::List(a) => cli::entry::run_list(a),
+        cli::entry::EntryCommand::New(a)    => cli::entry::run_new(a, vault_args),
+        cli::entry::EntryCommand::Show(a)   => cli::entry::run_show(a, vault_args),
+        cli::entry::EntryCommand::Edit(a)   => cli::entry::run_edit(a, vault_args),
+        cli::entry::EntryCommand::List(a)   => cli::entry::run_list(a, vault_args),
+        cli::entry::EntryCommand::Status(a) => cli::entry::run_status(a, vault_args),
     }
 }
 
-fn run_revision(args: cli::revision::RevisionArgs) -> Result<(), ElfError> {
+fn run_revision(args: cli::revision::RevisionArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
-        cli::revision::RevisionCommand::Add(a)  => cli::revision::run_add(a),
-        cli::revision::RevisionCommand::List(a) => cli::revision::run_list(a),
+        cli::revision::RevisionCommand::Add(a)  => cli::revision::run_add(a, vault_args),
+        cli::revision::RevisionCommand::List(a) => cli::revision::run_list(a, vault_args),
     }
 }

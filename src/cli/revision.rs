@@ -1,6 +1,6 @@
 use clap::Args;
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId};
+use crate::vault::{self, id::EntryId, VaultArgs};
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
 
@@ -38,17 +38,16 @@ pub struct AddArgs {
     pub json: bool,
 }
 
-/// RevisionArgs dispatch (테스트 호환성 유지)
+/// 테스트 호환용 compat dispatch (VaultArgs::default = cwd 탐색)
 pub fn run(args: RevisionArgs) -> Result<(), ElfError> {
     match args.command {
-        RevisionCommand::Add(a)  => run_add(a),
-        RevisionCommand::List(a) => run_list(a),
+        RevisionCommand::Add(a)  => run_add(a, VaultArgs::default()),
+        RevisionCommand::List(a) => run_list(a, VaultArgs::default()),
     }
 }
 
-pub fn run_add(args: AddArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_add(args: AddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     // entry 존재 확인
     let entry_id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
@@ -124,9 +123,8 @@ pub struct ListArgs {
     pub json: bool,
 }
 
-pub fn run_list(args: ListArgs) -> Result<(), ElfError> {
-    let cwd = std::env::current_dir()?;
-    let vault_root = vault::find_vault_root(&cwd)?;
+pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let revisions = crate::vault::ops::revision_list(&vault_root, &args.id)?;
 
