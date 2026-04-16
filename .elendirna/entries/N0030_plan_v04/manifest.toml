@@ -2,11 +2,11 @@ schema_version = 1
 id = "N0030"
 title = "PLAN v0.4"
 created = "2026-04-14T06:48:06.162156900Z"
-updated = "2026-04-14T06:50:06.669439800Z"
+updated = "2026-04-16T01:48:50.352026200Z"
 tags = [
     "plan",
     "v0.4",
 ]
-links = []
+links = ["N0036"]
 sources = []
 status = "draft"

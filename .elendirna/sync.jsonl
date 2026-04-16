@@ -107,3 +107,11 @@
 {"action":"entry.new","agent":"human","id":"N0030","ts":"2026-04-14T06:48:06.163908800+00:00"}
 {"action":"revision.add","agent":"human","id":"N0030","ts":"2026-04-14T06:50:06.670244200+00:00"}
 {"agent":"human","entries":["N0030"],"event":"sync.record","session_id":null,"summary":"v0.4 구현 계획 확정. 7개 항목 (Multi-Vault + auto-alias, entry status, MCP description 강화, serve snippet, bundle --since/--depth, help --json). vault_name을 implicit alias로 활용하는 방안 설계. PLAN v0.4 entry 신설 (N0030).","ts":"2026-04-14T06:50:14.320157100+00:00"}
+{"action":"entry.new","agent":"human","id":"N0036","ts":"2026-04-16T01:48:03.648084600+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:18.070008+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:29.384322400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:41.992089500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0030","ts":"2026-04-16T01:48:47.417847800+00:00"}
+{"action":"link.N0036.N0030","agent":"human","ts":"2026-04-16T01:48:50.352728800+00:00"}
+{"action":"link.N0036.N0035","agent":"human","ts":"2026-04-16T01:48:50.381773800+00:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0030","N0036"],"event":"sync.record","session_id":null,"summary":"v0.4 전체 구현 완료 및 crates.io v0.4.0 게시. Multi-Vault, entry status, bundle depth/since, MCP 자기서술, elf serve snippet, elf help --json. PR #3 머지.","ts":"2026-04-16T01:48:58.884736700+00:00"}
