@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Local};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use crate::error::ElfError;
@@ -35,8 +35,8 @@ pub struct Manifest {
     pub schema_version: u32,
     pub id: String,
     pub title: String,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
+    pub created: DateTime<FixedOffset>,
+    pub updated: DateTime<FixedOffset>,
     pub tags: Vec<String>,
     pub baseline: Option<String>,
     pub links: Vec<String>,
@@ -46,7 +46,7 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
-        let now = Utc::now();
+        let now = Local::now().fixed_offset();
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
             id: id.into(),
@@ -79,7 +79,7 @@ impl Manifest {
 
     /// manifest `updated` 갱신 후 저장
     pub fn touch_and_write(&mut self, entry_dir: &Path) -> Result<(), ElfError> {
-        self.updated = Utc::now();
+        self.updated = Local::now().fixed_offset();
         self.write(entry_dir)
     }
 }

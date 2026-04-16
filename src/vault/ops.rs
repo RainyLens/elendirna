@@ -1,7 +1,7 @@
 /// MCP 서버와 CLI가 공유하는 고수준 vault 조작 함수.
 /// 출력 로직 없음 — 호출자(CLI 핸들러 또는 MCP tool)가 결과를 직렬화한다.
 use std::path::Path;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset};
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
 use crate::vault::id::{EntryId, EntryRevRef};
@@ -132,7 +132,7 @@ pub enum BundleSince {
     /// N####@r#### 이후 (exclusive)
     RevRef(EntryRevRef),
     /// 해당 시각 이후 (exclusive)
-    Timestamp(DateTime<Utc>),
+    Timestamp(DateTime<FixedOffset>),
 }
 
 impl BundleSince {
@@ -141,7 +141,7 @@ impl BundleSince {
         if let Some(r) = EntryRevRef::parse(s) {
             return Some(Self::RevRef(r));
         }
-        if let Ok(ts) = s.parse::<DateTime<Utc>>() {
+        if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(s) {
             return Some(Self::Timestamp(ts));
         }
         None
@@ -371,7 +371,7 @@ pub fn sync_record(
         .map(|s| s.to_string())
         .or_else(|| std::env::var("ELF_AGENT").ok())
         .unwrap_or_else(|| "human".to_string());
-    let ts = chrono::Utc::now().to_rfc3339();
+    let ts = chrono::Local::now().to_rfc3339();
     let event = serde_json::json!({
         "ts":         ts,
         "event":      "sync.record",

@@ -23,7 +23,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ElfError> {
 /// agent 필드: ELF_AGENT 환경 변수 → "human"
 pub fn append_sync_event(vault_root: &Path, action: &str, id: Option<&str>) -> Result<(), ElfError> {
     let agent = std::env::var("ELF_AGENT").unwrap_or_else(|_| "human".to_string());
-    let ts = chrono::Utc::now().to_rfc3339();
+    let ts = chrono::Local::now().to_rfc3339();
     let event = match id {
         Some(i) => serde_json::json!({"ts": ts, "agent": agent, "action": action, "id": i}),
         None    => serde_json::json!({"ts": ts, "agent": agent, "action": action}),

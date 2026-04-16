@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Local};
 use std::path::{Path, PathBuf};
 use crate::error::ElfError;
 use crate::vault::id::{EntryId, EntryRevRef, RevisionId};
@@ -7,7 +7,7 @@ pub struct Revision {
     pub entry_id: EntryId,
     pub rev_id: RevisionId,
     pub baseline: EntryRevRef,
-    pub created: DateTime<Utc>,
+    pub created: DateTime<FixedOffset>,
     pub delta: String,
 }
 
@@ -73,7 +73,7 @@ impl Revision {
             None       => EntryRevRef::new(entry_id.clone(), None), // @r0000
         };
 
-        let created = Utc::now();
+        let created = Local::now().fixed_offset();
         let content = format_revision_file(&baseline, created, &delta);
         let file_path = rev_dir.join(format!("{rev_id}.md"));
         crate::vault::util::atomic_write(&file_path, content.as_bytes())?;
@@ -93,7 +93,7 @@ impl Revision {
 // ─────────────────────────────────────────
 
 /// revision 파일 직렬화
-fn format_revision_file(baseline: &EntryRevRef, created: DateTime<Utc>, delta: &str) -> String {
+fn format_revision_file(baseline: &EntryRevRef, created: DateTime<FixedOffset>, delta: &str) -> String {
     format!(
         "---\nbaseline: {baseline}\ncreated: {}\n---\n\n## Delta\n\n{delta}",
         created.to_rfc3339()
@@ -121,7 +121,7 @@ fn parse_revision_file(entry_id: EntryId, rev_id: RevisionId, content: &str) -> 
     }
 
     let baseline = EntryRevRef::parse(&baseline_str)?;
-    let created = created_str.parse::<DateTime<Utc>>().ok()?;
+    let created = chrono::DateTime::parse_from_rfc3339(&created_str).ok()?;
 
     // "## Delta\n\n" 이후 본문
     let delta = rest

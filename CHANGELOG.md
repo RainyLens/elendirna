@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2] — 2026-04-16
+
+### 패치
+
+#### 타임스탬프 로컬 offset 보존
+- revision, manifest, sync 이벤트 모든 timestamp를 `Utc::now()` → `Local::now()`로 변경
+- 파일에 `+09:00` 등 로컬 offset이 그대로 기록됨 (예: `2026-04-16T15:30:00+09:00`)
+- 내부 타입 `DateTime<Utc>` → `DateTime<FixedOffset>` — offset 정보가 파싱 후에도 보존
+- 기존 `+00:00` 데이터는 `parse_from_rfc3339`로 역호환 파싱
+
+---
+
 ## [0.4.1] — 2026-04-16
 
 ### 패치
