@@ -135,3 +135,7 @@
 {"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T16:59:49.028484500+09:00"}
 {"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:01:34.475116400+09:00"}
 {"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:03:00.370563300+09:00"}
+{"agent":"claude","entries":["N0024","N0040"],"event":"sync.record","session_id":null,"summary":"UX 인사이트 수집(N0024) 및 MCP vault 출처 누락 보안 버그 발견·수정(N0040). v0.4.3→v0.4.4 릴리즈. vault_kind 판별 버그도 함께 수정.","ts":"2026-04-16T18:22:34.506072600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0041","ts":"2026-04-16T20:30:14.611135400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-16T20:30:22.988797+09:00"}
+{"agent":"claude","entries":["N0040","N0041"],"event":"sync.record","session_id":null,"summary":"sync_record MCP entries 역직렬화 버그 기록(N0041). global vault 단일 사용 결정. N0039 우선순위 하향.","ts":"2026-04-16T20:30:27.189841400+09:00"}
