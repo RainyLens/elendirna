@@ -2,11 +2,20 @@
 /// CLI와 동일한 vault::ops 코어를 공유한다.
 use std::path::PathBuf;
 use rmcp::{
+    RoleServer,
     ServerHandler,
     handler::server::wrapper::{Json, Parameters},
-    model::{ServerInfo, ServerCapabilities, Implementation},
+    model::{
+        ServerInfo, ServerCapabilities, Implementation,
+        PromptMessage, PromptMessageRole,
+        GetPromptRequestParams, GetPromptResult,
+        PaginatedRequestParams, ListPromptsResult,
+    },
+    service::RequestContext,
     tool,
     tool_router,
+    prompt,
+    prompt_router,
     ErrorData,
     ServiceExt,
 };
@@ -33,6 +42,8 @@ pub struct ElfMcpServer {
     vault_root: PathBuf,
     #[allow(dead_code)]
     tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
+    #[allow(dead_code)]
+    prompt_router: rmcp::handler::server::router::prompt::PromptRouter<Self>,
 }
 
 impl ElfMcpServer {
@@ -40,6 +51,7 @@ impl ElfMcpServer {
         Self {
             vault_root,
             tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
         }
     }
 }
@@ -120,6 +132,9 @@ struct SyncRecordParams {
 
 #[derive(Deserialize, JsonSchema)]
 struct ValidateParams {}
+
+#[derive(Deserialize, JsonSchema)]
+struct SessionStartParams {}
 
 // ─── tool 구현 ────────────────────────────
 
@@ -379,12 +394,89 @@ impl ElfMcpServer {
             "warnings": result.warning_count(),
         }))))
     }
+
+    #[tool(description = "AI용 세션 랜딩 가이드. 새 세션 시작, 모델 교체, 컨텍스트 초기화 후 \
+        첫 번째로 호출하여 vault 상태와 다음 행동 방향을 파악하세요. \
+        vault가 비어 있으면 사용자 시딩을 유도하기 위한 AI 행동 지침을 반환합니다. \
+        사용자용 대화형 온보딩이 필요하면 'seed' 프롬프트를 사용하세요.")]
+    fn session_start(
+        &self,
+        Parameters(_p): Parameters<SessionStartParams>,
+    ) -> Result<Json<Out>, ErrorData> {
+        let entries = ops::entry_list(&self.vault_root);
+        let entry_count = entries.len();
+
+        let recent_sessions = ops::sync_log(&self.vault_root, Some(3), None)
+            .unwrap_or_default();
+
+        if entry_count == 0 {
+            return Ok(Json(Out(serde_json::json!({
+                "ok": true,
+                "vault_status": "empty",
+                "entry_count": 0,
+                "ai_instructions": {
+                    "situation": "vault가 비어 있습니다. 사용자가 아직 아이디어를 입력하지 않은 상태입니다.",
+                    "next_action": "사용자에게 어떤 주제든 자유롭게 말해달라고 유도하세요. \
+                        발화를 들은 즉시 entry_new로 기록하고, 대화를 이어가며 revision_add로 보완하세요.",
+                    "tools": {
+                        "capture":  "entry_new(title, tags?) — 주제 하나당 entry 하나",
+                        "evolve":   "revision_add(id, delta) — 생각이 구체화될 때마다",
+                        "close":    "sync_record(summary, entries) — 세션 종료 시 반드시"
+                    },
+                    "tip": "사용자용 대화형 온보딩이 필요하면 'seed' MCP 프롬프트를 주입하세요."
+                }
+            }))));
+        }
+
+        Ok(Json(Out(serde_json::json!({
+            "ok": true,
+            "vault_status": "active",
+            "entry_count": entry_count,
+            "recent_sessions": recent_sessions,
+            "next_action": "query 또는 entry_list로 작업 범위를 파악하고, bundle(id)로 핵심 entry를 로드하세요."
+        }))))
+    }
+}
+
+// ─── prompt 구현 ─────────────────────────
+
+#[prompt_router]
+impl ElfMcpServer {
+    #[prompt(
+        name = "seed",
+        description = "최초 사용자를 위한 vault 시딩 가이드. vault가 비어 있거나 사용자가 어디서 시작해야 할지 모를 때 이 프롬프트를 주입하세요."
+    )]
+    fn seed_prompt(&self) -> Vec<PromptMessage> {
+        vec![
+            PromptMessage::new_text(
+                PromptMessageRole::User,
+                "Elendirna vault를 처음 사용합니다. \
+                저는 아이디어와 생각을 정리하고 싶은데 어디서 시작해야 할지 모르겠어요. \
+                어떤 주제든 자유롭게 이야기하면 AI가 entry로 기록해 준다고 하던데, \
+                지금 머릿속에 있는 것들을 정리해 주세요.",
+            ),
+            PromptMessage::new_text(
+                PromptMessageRole::Assistant,
+                "물론입니다. 지금 머릿속에 맴도는 아이디어, 고민, 관심 주제를 편하게 말씀해 주세요. \
+                구조나 형식은 신경 쓰지 않아도 됩니다. \
+                대화하면서 제가 entry_new 툴로 vault에 기록하겠습니다. \
+                예를 들어 '요즘 분산 시스템에서 일관성 문제가 궁금해'처럼 한 줄이어도 충분합니다. \
+                무엇이 떠오르시나요?",
+            ),
+        ]
+    }
 }
 
 #[rmcp::tool_handler]
+#[rmcp::prompt_handler]
 impl ServerHandler for ElfMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
             .with_server_info(Implementation::new("elendirna", env!("CARGO_PKG_VERSION")))
             .with_instructions(
                 "Elendirna vault MCP server — agent-friendly knowledge base.\n\
