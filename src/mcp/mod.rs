@@ -62,7 +62,7 @@ impl ElfMcpServer {
             .map(std::path::PathBuf::from)
             .ok();
         let kind = match home {
-            Some(h) if h.join(".elendirna") == self.vault_root => "global",
+            Some(h) if h == self.vault_root => "global",
             _ => "local",
         };
         (path, kind)
