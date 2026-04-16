@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.4.0] — 2026-04-16
+
+### 주요 기능
+
+#### Multi-Vault 지원
+- `--vault <PATH>` / `--global` 전역 플래그 추가 — 모든 서브커맨드에서 vault를 명시 지정할 수 있음
+- vault 결정 로직을 `resolve_vault_root()` 단일 진입점으로 통일
+  - 우선순위: `--vault` → `--global` → `ELF_VAULT` → cwd 상위 탐색 → global 폴백
+- `--vault` 첫 사용 시 해당 vault의 `vault_name`을 `~/.elendirna/config.toml [vaults]`에 자동 alias 등록 — 이후 `@vault:<alias>:N####` 형태로 cross-vault 링크 참조 가능
+- `global` / `local` 은 예약 alias (등록 불가)
+
+#### `elf entry status`
+- `elf entry status <id> <status>` 서브커맨드 추가
+- 허용 값: `draft` → `stable` → `archived`
+- manifest `status` + `updated` 갱신, `sync.jsonl`에 `status.changed` 이벤트 기록
+- 에이전트가 `query --status stable`로 확정된 지식만 빠르게 필터링할 수 있는 기반 마련
+
+#### `bundle` 고도화 — 컨텍스트 예산 제어
+- `--depth N` 옵션: linked entry 탐색 깊이를 에이전트가 직접 제어
+  - `0`: 자신 + revision chain만 (linked entry 수집 없음)
+  - `1`: 직접 linked entry의 note body 전문 포함 (기본값, 기존 동작)
+  - `2+`: 2홉 이상은 note body 없이 manifest 메타데이터만 수집 (`shallow: true` 표시)
+- `--since <spec>` 옵션: 지정 시점 이후 revision만 포함 (entry body는 항상 포함)
+  - `N####@r####` 형식: 해당 revision 이후
+  - RFC 3339 timestamp 형식: 해당 시각 이후
+
+#### MCP 자기서술 강화
+- 모든 MCP tool `description`에 트리거 조건("언제 이 tool을 써야 하는가") + 직접 파일 접근 금지 안내 삽입
+- `server.instructions`에 세션 시작/종료 프로토콜 + 컨텍스트 예산 패턴 내장 — CLAUDE.md 없이도 에이전트가 워크플로를 자동 이해
+- `entry_status` MCP tool 신규 추가
+- `bundle` MCP tool에 `depth` / `since` 파라미터 추가
+
+#### `elf serve` — MCP config snippet 출력
+- `elf serve` (`--mcp` 없이) 호출 시 에러 대신 MCP config snippet을 stdout에 출력
+- 현재 `elf` 바이너리 경로 + vault 경로를 자동 삽입하므로 복사해서 바로 사용 가능
+
+#### `elf help [--json]`
+- `elf help` — 커맨드 표면 요약 출력 (사람 읽기용)
+- `elf help --json` — 커맨드 목록, 파라미터, 트리거 조건, 워크플로 가이드를 JSON으로 출력 (AI-readable)
+
+### 내부 변경
+- `VaultConfig`에 `vaults: HashMap<String, String>` 필드 추가 (backward-compatible, 기존 config.toml 파싱 영향 없음)
+- `VaultArgs` 구조체 + `resolve_vault_root()` / `parse_vault_alias()` / `resolve_vault_alias()` 신규
+- `BundleOptions` / `BundleSince` 타입 + `bundle_with_opts()` 함수 신규
+- `cli/help.rs` 신규 파일
+- 전체 테스트 41개 통과 (단위 + 통합 + MCP + SQLite)
+
+---
+
 ## [0.3.2] — 2026-04-13
 
 ### 기능

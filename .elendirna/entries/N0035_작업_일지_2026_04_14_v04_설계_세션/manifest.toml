@@ -2,13 +2,13 @@ schema_version = 1
 id = "N0035"
 title = "작업 일지: 2026-04-14 v0.4 설계 세션"
 created = "2026-04-14T06:14:57.405560300Z"
-updated = "2026-04-14T06:15:43.282181600Z"
+updated = "2026-04-16T01:48:50.381047500Z"
 tags = [
     "work-log",
     "v0.4",
     "design",
     "session",
 ]
-links = []
+links = ["N0036"]
 sources = []
 status = "draft"
