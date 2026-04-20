@@ -1,0 +1,14 @@
+schema_version = 1
+id = "N0044"
+title = "UX 인사이트: 도구 테스트 피드백 관찰"
+created = "2026-04-20T18:39:24.126747300+09:00"
+updated = "2026-04-20T18:39:35.985562+09:00"
+tags = [
+    "ux",
+    "onboarding",
+    "dogfood",
+    "gamification",
+]
+links = []
+sources = []
+status = "draft"
