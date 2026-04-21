@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0026"
 title = "사고의 외화와 시간차 페어 프로그래밍 패턴 분석"
 created = "2026-04-13T06:47:41.249776600Z"
-updated = "2026-04-13T06:49:16.945281500Z"
+updated = "2026-04-21T20:52:45.683271600+09:00"
 tags = [
     "philosophy",
     "workflow",

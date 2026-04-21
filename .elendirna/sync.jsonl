@@ -139,3 +139,7 @@
 {"action":"entry.new","agent":"human","id":"N0041","ts":"2026-04-16T20:30:14.611135400+09:00"}
 {"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-16T20:30:22.988797+09:00"}
 {"agent":"claude","entries":["N0040","N0041"],"event":"sync.record","session_id":null,"summary":"sync_record MCP entries 역직렬화 버그 기록(N0041). global vault 단일 사용 결정. N0039 우선순위 하향.","ts":"2026-04-16T20:30:27.189841400+09:00"}
+{"agent":"human","entries":["N0044"],"event":"sync.record","session_id":null,"summary":"전역 vault 오염 정밀 정리 (N0043 삭제, N0044 정규화 및 local 편입, 외부 덤프 파일 제거)","ts":"2026-04-20T18:54:30.178420300+09:00"}
+{"agent":"human","entries":["N0025","N0006"],"event":"sync.record","session_id":null,"summary":"인터랙티브 시각화 실험: D3.js 기반 실시간 그래프 서버(elf_ui.py) 프로토타입 제작 및 리비전 사이드바 전략 검증.","ts":"2026-04-21T19:24:46.751299300+09:00"}
+{"agent":"human","entries":["N0025","N0026","N0044"],"event":"sync.record","session_id":null,"summary":"세션 종료: 시각화 전략 프로토타입 검증 및 Vault 타임스탬프를 통한 AI의 시간적 맥락 유지(Temporal Grounding) 효과 확인.","ts":"2026-04-21T20:52:05.122018400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0026","ts":"2026-04-21T20:52:45.684042200+09:00"}
