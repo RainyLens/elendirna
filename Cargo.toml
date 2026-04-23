@@ -1,6 +1,6 @@
 [package]
 name = "elendirna"
-version = "0.4.4"
+version = "0.4.5"
 edition = "2024"
 description = "Agent-friendly knowledge base CLI. Manages personal knowledge as Base-Delta entries with AI-enforced conventions."
 license = "MIT"

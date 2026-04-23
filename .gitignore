@@ -1,3 +1,6 @@
 /target
 /.claude
 /.idea
+elf_graph.html
+elf_ui.py
+graph_data.json

@@ -143,3 +143,25 @@
 {"agent":"human","entries":["N0025","N0006"],"event":"sync.record","session_id":null,"summary":"인터랙티브 시각화 실험: D3.js 기반 실시간 그래프 서버(elf_ui.py) 프로토타입 제작 및 리비전 사이드바 전략 검증.","ts":"2026-04-21T19:24:46.751299300+09:00"}
 {"agent":"human","entries":["N0025","N0026","N0044"],"event":"sync.record","session_id":null,"summary":"세션 종료: 시각화 전략 프로토타입 검증 및 Vault 타임스탬프를 통한 AI의 시간적 맥락 유지(Temporal Grounding) 효과 확인.","ts":"2026-04-21T20:52:05.122018400+09:00"}
 {"action":"revision.add","agent":"human","id":"N0026","ts":"2026-04-21T20:52:45.684042200+09:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"Vault 로컬 경로 참조 확인 및 MCP/CLI 건전성 체크 완료 (정상)","ts":"2026-04-22T12:29:36.357077300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0045","ts":"2026-04-22T12:30:04.556427500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0045","ts":"2026-04-22T12:30:06.121275+09:00"}
+{"action":"status.changed.N0045.stable","agent":"human","id":"N0045","ts":"2026-04-22T12:30:11.218970200+09:00"}
+{"action":"status.changed.N0045.archived","agent":"human","id":"N0045","ts":"2026-04-22T12:30:14.418478+09:00"}
+{"agent":"human","entries":["N0045"],"event":"sync.record","session_id":null,"summary":"Vault 로컬 경로 읽기/쓰기(MCP/CLI) 정상 동작 확인 완료 및 테스트 엔트리(N0045) 아카이브 정리","ts":"2026-04-22T12:30:18.432233100+09:00"}
+{"agent":"human","entries":["N0029"],"event":"sync.record","session_id":null,"summary":"제안된 아이디어들의 프로젝트 핵심 철학(N0029) 및 헌법 합치성 검토 완료 (모두 적합)","ts":"2026-04-22T12:36:22.567846300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0046","ts":"2026-04-22T15:17:02.010001600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-22T15:17:06.831025400+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"단일 단계 Undo 매커니즘(1-step Undo) 제안 및 N0046 엔트리 등록 완료","ts":"2026-04-22T15:17:10.107334200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-22T15:18:32.064797400+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"Undo 대상 정의에 대한 모델 분석 및 N0046 업데이트 (전역 시간축 vs 엔트리별 모델)","ts":"2026-04-22T15:18:35.309217200+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"로컬 vault 경로가 D:\\code_etc\\elendirna로 정상 활성화되어 있음을 확인하고, 최근 맥락이 N0046 단일 단계 Undo 제안에 집중되어 있음을 정리함. validate 결과 errors=0, warnings=1.","ts":"2026-04-23T09:35:19.187439800+09:00"}
+{"action":"entry.new","agent":"human","id":"N0047","ts":"2026-04-23T09:36:51.320602400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:37:54.531194800+09:00"}
+{"agent":"human","entries":["N0047","N0028","N0034","N0008"],"event":"sync.record","session_id":null,"summary":"Codex 관점의 elf MCP 사용 감상을 검토해 N0047 approval 엔트리로 추출함. current summary, link 정합성, sync_record 자동화를 승인된 개선 포인트로 정리.","ts":"2026-04-23T09:37:58.354436+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:45:21.379765900+09:00"}
+{"agent":"human","entries":["N0047","N0034"],"event":"sync.record","session_id":null,"summary":"N0047에 bundle --since가 revision chain 비대화의 1차 완충 장치이며, 현 문제는 기능 부재보다 사용 안내 부족이라는 보완 판단을 추가함.","ts":"2026-04-23T09:45:23.839843700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:48:19.287220800+09:00"}
+{"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"N0047에 bundle depth를 시간축이 아닌 관계 확산 제어 장치로 정리하고, depth=0/1/2+의 사용 시나리오와 피로감 기준을 추가함.","ts":"2026-04-23T09:48:22.115410100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T10:02:03.889569800+09:00"}
+{"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"session_start active 응답에 context_hints.bundle_policy를 추가해 depth/since 선택 규칙을 주입함. cargo test 전체 통과.","ts":"2026-04-23T10:02:06.100600600+09:00"}

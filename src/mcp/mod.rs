@@ -484,7 +484,15 @@ impl ElfMcpServer {
             "vault_status": "active",
             "entry_count": entry_count,
             "recent_sessions": recent_sessions,
-            "next_action": "query 또는 entry_list로 작업 범위를 파악하고, bundle(id)로 핵심 entry를 로드하세요.",
+            "next_action": "query 또는 entry_list로 작업 범위를 파악한 뒤, 상황에 맞게 bundle(id, depth/since)를 선택하세요.",
+            "context_hints": {
+                "bundle_policy": [
+                    "처음 보거나 확실하지 않은 핵심 entry는 bundle(id, depth=1)",
+                    "마지막 확인 revision을 알 때만 bundle(id, depth=0, since='N####@r####')",
+                    "관련 후보 탐색은 bundle(id, depth=2) 후 필요한 entry만 다시 로드",
+                    "긴 revision chain에서는 full bundle 전에 since 기준이 있는지 확인"
+                ]
+            },
             "hint": hint,
         }))))
     }
