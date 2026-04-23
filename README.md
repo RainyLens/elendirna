@@ -6,6 +6,8 @@
 
 Elendirna는 작업 맥락을 **Base-Delta** 구조로 기록해, 세션이 끊기거나 AI 모델이 바뀌어도 "왜 여기까지 왔는지"를 다시 복원할 수 있게 합니다. CLI는 vault 규칙을 강제하고, MCP 서버는 AI 에이전트가 필요한 entry, revision chain, linked context를 선택적으로 읽도록 돕습니다.
 
+Elendirna는 ELF(Eli's Lab Framework)에서 영감을 받은 독립 프로젝트이며, ELF의 공식 구현체나 후속 프로젝트가 아닙니다.
+
 ## Install
 
 ```bash
