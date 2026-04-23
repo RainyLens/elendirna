@@ -165,3 +165,6 @@
 {"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"N0047에 bundle depth를 시간축이 아닌 관계 확산 제어 장치로 정리하고, depth=0/1/2+의 사용 시나리오와 피로감 기준을 추가함.","ts":"2026-04-23T09:48:22.115410100+09:00"}
 {"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T10:02:03.889569800+09:00"}
 {"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"session_start active 응답에 context_hints.bundle_policy를 추가해 depth/since 선택 규칙을 주입함. cargo test 전체 통과.","ts":"2026-04-23T10:02:06.100600600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0048","ts":"2026-04-23T13:17:26.566734800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0048","ts":"2026-04-23T13:17:40.232873+09:00"}
+{"agent":"human","entries":["N0048"],"event":"sync.record","session_id":null,"summary":"N0048에 public upstream/private workbench remote 운영 지침을 기록함. upstream은 명시적 public 반영에만 사용하고 기본 push는 private origin으로 유지.","ts":"2026-04-23T13:17:46.587863700+09:00"}
