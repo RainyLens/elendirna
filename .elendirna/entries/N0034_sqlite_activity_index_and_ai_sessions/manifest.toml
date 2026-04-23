@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0034"
 title = "SQLite Activity Index & AI Sessions"
 created = "2026-04-14T00:00:00Z"
-updated = "2026-04-14T00:00:00Z"
+updated = "2026-04-23T14:02:34.552673800+09:00"
 tags = [
     "design",
     "sqlite",

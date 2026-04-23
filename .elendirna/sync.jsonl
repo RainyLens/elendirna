@@ -172,3 +172,5 @@
 {"action":"revision.add","agent":"human","id":"N0049","ts":"2026-04-23T13:45:12.057521300+09:00"}
 {"action":"revision.add","agent":"human","id":"N0033","ts":"2026-04-23T13:47:03.982206300+09:00"}
 {"agent":"human","entries":["N0033","N0048","N0046"],"event":"sync.record","session_id":null,"summary":"N0033에 홈랩 기반 Web MCP/API key 호스팅 검토 사항을 낮은 우선순위 제안으로 추가함. vault 경계, key scope, write safety, audit를 핵심 검토 항목으로 정리.","ts":"2026-04-23T13:47:12.189168200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-23T14:02:34.553312100+09:00"}
+{"agent":"human","entries":["N0034"],"event":"sync.record","session_id":null,"summary":"N0034에 entry revision과 sync_record의 역할 분리 정책을 추가함. 세션 맥락은 sync 계층으로 유도하고, entry revision은 의사결정/설계 변경/지식 delta 중심으로 유지하는 방향으로 정리.","ts":"2026-04-23T14:02:37.325224300+09:00"}
