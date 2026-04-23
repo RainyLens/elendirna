@@ -168,3 +168,5 @@
 {"action":"entry.new","agent":"human","id":"N0048","ts":"2026-04-23T13:17:26.566734800+09:00"}
 {"action":"revision.add","agent":"human","id":"N0048","ts":"2026-04-23T13:17:40.232873+09:00"}
 {"agent":"human","entries":["N0048"],"event":"sync.record","session_id":null,"summary":"N0048에 public upstream/private workbench remote 운영 지침을 기록함. upstream은 명시적 public 반영에만 사용하고 기본 push는 private origin으로 유지.","ts":"2026-04-23T13:17:46.587863700+09:00"}
+{"action":"entry.new","agent":"human","id":"N0049","ts":"2026-04-23T13:44:56.246644500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0049","ts":"2026-04-23T13:45:12.057521300+09:00"}
