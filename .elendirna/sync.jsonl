@@ -170,3 +170,5 @@
 {"agent":"human","entries":["N0048"],"event":"sync.record","session_id":null,"summary":"N0048에 public upstream/private workbench remote 운영 지침을 기록함. upstream은 명시적 public 반영에만 사용하고 기본 push는 private origin으로 유지.","ts":"2026-04-23T13:17:46.587863700+09:00"}
 {"action":"entry.new","agent":"human","id":"N0049","ts":"2026-04-23T13:44:56.246644500+09:00"}
 {"action":"revision.add","agent":"human","id":"N0049","ts":"2026-04-23T13:45:12.057521300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0033","ts":"2026-04-23T13:47:03.982206300+09:00"}
+{"agent":"human","entries":["N0033","N0048","N0046"],"event":"sync.record","session_id":null,"summary":"N0033에 홈랩 기반 Web MCP/API key 호스팅 검토 사항을 낮은 우선순위 제안으로 추가함. vault 경계, key scope, write safety, audit를 핵심 검토 항목으로 정리.","ts":"2026-04-23T13:47:12.189168200+09:00"}
