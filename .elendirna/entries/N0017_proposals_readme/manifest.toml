@@ -1,0 +1,12 @@
+schema_version = 1
+id = "N0017"
+title = "Proposals README"
+created = "2026-04-09T15:46:22.423350200Z"
+updated = "2026-04-13T04:44:47.549444Z"
+tags = []
+links = [
+    "N0020",
+    "N0021",
+]
+sources = []
+status = "draft"

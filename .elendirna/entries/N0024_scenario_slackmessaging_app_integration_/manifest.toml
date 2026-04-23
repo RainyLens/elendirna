@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0024"
+title = "Scenario: Slack/Messaging App Integration (Channel as Vault)"
+created = "2026-04-13T05:26:24.972098Z"
+updated = "2026-04-13T05:26:33.561027100Z"
+tags = [
+    "scenario",
+    "slack",
+    "messaging",
+]
+links = []
+sources = []
+status = "draft"

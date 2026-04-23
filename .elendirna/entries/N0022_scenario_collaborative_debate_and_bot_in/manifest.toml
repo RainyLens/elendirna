@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0022"
+title = "Scenario: Collaborative Debate and Bot Interaction"
+created = "2026-04-13T05:18:11.404336700Z"
+updated = "2026-04-13T05:18:21.023100Z"
+tags = [
+    "scenario",
+    "collaboration",
+    "bot",
+]
+links = []
+sources = []
+status = "draft"

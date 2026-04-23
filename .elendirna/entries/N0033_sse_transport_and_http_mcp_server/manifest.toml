@@ -1,0 +1,15 @@
+schema_version = 1
+id = "N0033"
+title = "SSE Transport & HTTP MCP Server 설계 논의"
+created = "2026-04-14T00:00:00Z"
+updated = "2026-04-14T00:00:00Z"
+tags = [
+    "design",
+    "mcp",
+    "transport",
+    "multi-vault",
+    "auth",
+]
+links = []
+sources = []
+status = "draft"

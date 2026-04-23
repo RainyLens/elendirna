@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0036"
+title = "작업 일지: 2026-04-16 v0.4 구현 세션"
+created = "2026-04-16T01:48:03.646879600Z"
+updated = "2026-04-16T01:48:50.380359600Z"
+tags = [
+    "work-log",
+    "v0.4",
+    "session",
+]
+links = [
+    "N0030",
+    "N0035",
+]
+sources = []
+status = "draft"

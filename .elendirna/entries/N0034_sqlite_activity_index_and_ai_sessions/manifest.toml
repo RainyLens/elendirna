@@ -1,0 +1,15 @@
+schema_version = 1
+id = "N0034"
+title = "SQLite Activity Index & AI Sessions"
+created = "2026-04-14T00:00:00Z"
+updated = "2026-04-14T00:00:00Z"
+tags = [
+    "design",
+    "sqlite",
+    "sessions",
+    "ai-behavior",
+    "cold-start",
+]
+links = []
+sources = []
+status = "draft"

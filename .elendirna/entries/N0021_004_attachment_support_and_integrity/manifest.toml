@@ -1,0 +1,9 @@
+schema_version = 1
+id = "N0021"
+title = "004-attachment-support-and-integrity"
+created = "2026-04-13T04:44:29.640601400Z"
+updated = "2026-04-13T04:49:42.829306600Z"
+tags = []
+links = ["N0017"]
+sources = []
+status = "draft"
