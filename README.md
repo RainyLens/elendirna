@@ -74,15 +74,15 @@ MCP 서버 vault 경로 우선순위: `--vault` 플래그 → `ELF_VAULT` 환경
 
 ## Context Policy
 
-Elendirna is dogfooded with a private vault, but raw vault state is not part of the public repository.
+Elendirna는 private vault로 dogfooding하지만, raw vault 상태는 공개 저장소에 포함하지 않습니다.
 
-The intended workflow is:
+의도한 작업 흐름은 다음과 같습니다.
 
-- private vault: raw working memory, revisions, sync logs, and exploratory notes
-- public repo: curated code, documentation, fixtures, and release artifacts
-- promotion path: private vault insight → reviewed design note / issue / patch → public repository
+- private vault: 날것의 작업 기억, revision, sync log, 탐색적 메모
+- public repo: 검토된 코드, 문서, fixture, 릴리스 산출물
+- promotion path: private vault의 통찰 → 검토된 설계 노트 / issue / patch → public repository
 
-This keeps AI-assisted thinking useful across sessions and models without publishing unreviewed working memory by default.
+이 정책은 AI와 함께 만든 사고 과정을 세션과 모델을 넘어 이어가되, 검토되지 않은 작업 기억을 기본적으로 공개하지 않기 위한 경계입니다.
 
 ## Try it with AI
 
