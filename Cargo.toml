@@ -8,6 +8,12 @@ repository = "https://github.com/RainyLens/elendirna"
 readme = "README.md"
 keywords = ["knowledge-base", "cli", "ai", "notes", "markdown"]
 categories = ["command-line-utilities"]
+exclude = [
+    ".elendirna/**",
+    "elf_graph.html",
+    "elf_ui.py",
+    "graph_data.json",
+]
 
 [lib]
 name = "elendirna"

@@ -1,6 +1,7 @@
 /target
 /.claude
 /.idea
+/.elendirna
 elf_graph.html
 elf_ui.py
 graph_data.json
