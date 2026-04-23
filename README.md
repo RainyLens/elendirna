@@ -1,10 +1,10 @@
 # Elendirna
 
-> Agent-friendly knowledge base CLI. Inspired by [ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF).
+> Model-independent context restoration for AI-assisted work. Inspired by [ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF).
 
 ![crates.io](https://img.shields.io/crates/v/elendirna.svg) [![Rust](https://github.com/RainyLens/elendirna/actions/workflows/rust.yml/badge.svg)](https://github.com/RainyLens/elendirna/actions/workflows/rust.yml)
 
-개인 지식을 **Base-Delta** 구조로 보존합니다. AI 에이전트가 컨벤션을 기억하지 않아도 되도록, CLI가 규칙을 강제합니다.
+Elendirna는 작업 맥락을 **Base-Delta** 구조로 기록해, 세션이 끊기거나 AI 모델이 바뀌어도 "왜 여기까지 왔는지"를 다시 복원할 수 있게 합니다. CLI는 vault 규칙을 강제하고, MCP 서버는 AI 에이전트가 필요한 entry, revision chain, linked context를 선택적으로 읽도록 돕습니다.
 
 ## Install
 
@@ -72,11 +72,17 @@ vault/
 
 MCP 서버 vault 경로 우선순위: `--vault` 플래그 → `ELF_VAULT` 환경변수 → CWD walk-up
 
-## Dogfooding
+## Context Policy
 
-Elendirna는 **자기 자신을 Elendirna로 관리**합니다.
+Elendirna is dogfooded with a private vault, but raw vault state is not part of the public repository.
 
-이 프로젝트의 설계 결정, 제안(Proposal), 시나리오, 철학적 논의는 모두 `.elendirna/` vault에 Base-Delta 구조로 기록되어 있습니다. `elf bundle`로 꺼내보면 "왜 이 기능이 이렇게 만들어졌는지"의 계보를 따라갈 수 있습니다.
+The intended workflow is:
+
+- private vault: raw working memory, revisions, sync logs, and exploratory notes
+- public repo: curated code, documentation, fixtures, and release artifacts
+- promotion path: private vault insight → reviewed design note / issue / patch → public repository
+
+This keeps AI-assisted thinking useful across sessions and models without publishing unreviewed working memory by default.
 
 ## Try it with AI
 
@@ -89,7 +95,7 @@ MCP 서버를 세팅한 뒤, AI에게 이렇게 말해보세요:
 elf serve --mcp --vault /path/to/elendirna
 ```
 
-AI는 `sync_record` 로그와 revision chain을 통해 프로젝트가 어떤 결정을 거쳐 지금 모습이 됐는지 컨텍스트를 복원합니다.
+AI는 `sync_record` 로그와 revision chain을 통해 vault가 어떤 결정을 거쳐 지금 모습이 됐는지 컨텍스트를 복원합니다. 공개 저장소에는 raw project vault가 포함되지 않으므로, 실제 프로젝트 유지보수 vault를 연결하려면 별도의 private vault 경로를 사용하세요.
 
 ## License
 
