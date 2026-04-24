@@ -15,7 +15,10 @@ mod id {
 
     #[test]
     fn entry_id_from_dir_name() {
-        assert_eq!(EntryId::from_dir_name("N0042_rust_ownership"), Some(EntryId::new(42)));
+        assert_eq!(
+            EntryId::from_dir_name("N0042_rust_ownership"),
+            Some(EntryId::new(42))
+        );
         assert_eq!(EntryId::from_dir_name("N0001_hello"), Some(EntryId::new(1)));
         assert_eq!(EntryId::from_dir_name("invalid"), None);
     }
@@ -29,9 +32,18 @@ mod id {
 
     #[test]
     fn revision_id_from_file_name() {
-        assert_eq!(RevisionId::from_file_name("r0001.md"), Some(RevisionId::new(1)));
-        assert_eq!(RevisionId::from_file_name("r0042.md"), Some(RevisionId::new(42)));
-        assert_eq!(RevisionId::from_file_name("r0001"), Some(RevisionId::new(1)));
+        assert_eq!(
+            RevisionId::from_file_name("r0001.md"),
+            Some(RevisionId::new(1))
+        );
+        assert_eq!(
+            RevisionId::from_file_name("r0042.md"),
+            Some(RevisionId::new(42))
+        );
+        assert_eq!(
+            RevisionId::from_file_name("r0001"),
+            Some(RevisionId::new(1))
+        );
     }
 
     #[test]

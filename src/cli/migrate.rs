@@ -1,8 +1,8 @@
+use crate::error::ElfError;
+use crate::vault::config::VaultConfig;
 /// `elf migrate` — v1 vault를 v2 compact layout으로 이관
 use clap::Args;
 use std::path::PathBuf;
-use crate::error::ElfError;
-use crate::vault::config::VaultConfig;
 
 #[derive(Debug, Args)]
 pub struct MigrateArgs {
@@ -25,17 +25,35 @@ pub fn run(args: MigrateArgs) -> Result<(), ElfError> {
         if config.schema_version < crate::vault::config::CURRENT_SCHEMA_VERSION {
             config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
             config.write(&vault_root)?;
-            println!("schema_version → {} 업데이트 완료", crate::vault::config::CURRENT_SCHEMA_VERSION);
+            println!(
+                "schema_version → {} 업데이트 완료",
+                crate::vault::config::CURRENT_SCHEMA_VERSION
+            );
         } else {
-            println!("이미 최신 상태입니다 (schema_version={})", config.schema_version);
+            println!(
+                "이미 최신 상태입니다 (schema_version={})",
+                config.schema_version
+            );
         }
         return Ok(());
     }
 
     let moves: Vec<(&str, PathBuf, PathBuf)> = vec![
-        ("entries",   vault_root.join("entries"),   vault_root.join(".elendirna").join("entries")),
-        ("revisions", vault_root.join("revisions"), vault_root.join(".elendirna").join("revisions")),
-        ("assets",    vault_root.join("assets"),    vault_root.join(".elendirna").join("assets")),
+        (
+            "entries",
+            vault_root.join("entries"),
+            vault_root.join(".elendirna").join("entries"),
+        ),
+        (
+            "revisions",
+            vault_root.join("revisions"),
+            vault_root.join(".elendirna").join("revisions"),
+        ),
+        (
+            "assets",
+            vault_root.join("assets"),
+            vault_root.join(".elendirna").join("assets"),
+        ),
     ];
 
     if args.dry_run {
@@ -65,7 +83,10 @@ pub fn run(args: MigrateArgs) -> Result<(), ElfError> {
     config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
     config.write(&vault_root)?;
 
-    println!("✓ migrate 완료 (v2 compact layout, schema_version={})", crate::vault::config::CURRENT_SCHEMA_VERSION);
+    println!(
+        "✓ migrate 완료 (v2 compact layout, schema_version={})",
+        crate::vault::config::CURRENT_SCHEMA_VERSION
+    );
     Ok(())
 }
 
@@ -79,7 +100,10 @@ pub fn auto_migrate_silent(vault_root: &std::path::Path) {
             if config.schema_version < crate::vault::config::CURRENT_SCHEMA_VERSION {
                 config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
                 let _ = config.write(vault_root);
-                eprintln!("[elf] schema_version → {} 업데이트", crate::vault::config::CURRENT_SCHEMA_VERSION);
+                eprintln!(
+                    "[elf] schema_version → {} 업데이트",
+                    crate::vault::config::CURRENT_SCHEMA_VERSION
+                );
             }
         }
         return;
@@ -105,7 +129,10 @@ pub fn auto_migrate_silent(vault_root: &std::path::Path) {
         config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
         let _ = config.write(vault_root);
     }
-    eprintln!("[elf] 자동 이관 완료 (schema_version={})", crate::vault::config::CURRENT_SCHEMA_VERSION);
+    eprintln!(
+        "[elf] 자동 이관 완료 (schema_version={})",
+        crate::vault::config::CURRENT_SCHEMA_VERSION
+    );
 }
 
 /// vault root 탐색 (find_vault_root와 동일하지만 global fallback 없음)

@@ -1,7 +1,7 @@
-use clap::Args;
 use crate::error::ElfError;
-use crate::vault::{self, VaultArgs};
 use crate::vault::index::{QueryFilter, query};
+use crate::vault::{self, VaultArgs};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct QueryArgs {
@@ -30,30 +30,38 @@ pub fn run(args: QueryArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
 
     let filter = QueryFilter {
-        tag:            args.tag,
-        status:         args.status,
-        baseline:       args.baseline,
+        tag: args.tag,
+        status: args.status,
+        baseline: args.baseline,
         title_contains: args.title_contains,
     };
 
     let rows = query(&vault_root, &filter)?;
 
     if args.json {
-        let out: Vec<_> = rows.iter().map(|r| serde_json::json!({
-            "id":       r.id,
-            "title":    r.title,
-            "status":   r.status,
-            "created":  r.created,
-            "baseline": r.baseline,
-        })).collect();
+        let out: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id":       r.id,
+                    "title":    r.title,
+                    "status":   r.status,
+                    "created":  r.created,
+                    "baseline": r.baseline,
+                })
+            })
+            .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
         if rows.is_empty() {
             println!("(결과 없음)");
         } else {
             for r in &rows {
-                println!("{:<8} {:<40} [{}]  {}",
-                    r.id, r.title, r.status,
+                println!(
+                    "{:<8} {:<40} [{}]  {}",
+                    r.id,
+                    r.title,
+                    r.status,
                     &r.created[..10],
                 );
             }

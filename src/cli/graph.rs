@@ -1,7 +1,7 @@
-use clap::Args;
 use crate::error::ElfError;
+use crate::vault::ops::{EdgeKind, NodeKind, graph_data};
 use crate::vault::{self, VaultArgs};
-use crate::vault::ops::{graph_data, EdgeKind, NodeKind};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct GraphArgs {
@@ -24,12 +24,14 @@ pub fn run(args: GraphArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let data = graph_data(&vault_root, args.entry.as_deref())?;
 
     let rendered = match args.format.as_str() {
-        "dot"     => render_dot(&data),
+        "dot" => render_dot(&data),
         "mermaid" => render_mermaid(&data),
-        "json"    => render_json(&data),
-        other => return Err(ElfError::InvalidInput {
-            message: format!("unknown format \"{other}\" (supported: dot, mermaid, json)"),
-        }),
+        "json" => render_json(&data),
+        other => {
+            return Err(ElfError::InvalidInput {
+                message: format!("unknown format \"{other}\" (supported: dot, mermaid, json)"),
+            });
+        }
     };
 
     match args.output {
@@ -43,14 +45,16 @@ pub fn run(args: GraphArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
 // ─── DOT ─────────────────────────────────
 
 fn render_dot(data: &crate::vault::ops::GraphData) -> String {
-    let mut out = String::from("digraph elendirna {\n  rankdir=LR;\n  node [shape=box, style=filled, fontname=\"sans-serif\"];\n\n");
+    let mut out = String::from(
+        "digraph elendirna {\n  rankdir=LR;\n  node [shape=box, style=filled, fontname=\"sans-serif\"];\n\n",
+    );
 
     for node in &data.nodes {
         let (color, shape) = match &node.kind {
             NodeKind::Entry(s) => match s.as_str() {
-                "stable"   => ("#A9DFBF", "box"),
+                "stable" => ("#A9DFBF", "box"),
                 "archived" => ("#D5D8DC", "box"),
-                _          => ("#AED6F1", "box"), // draft
+                _ => ("#AED6F1", "box"), // draft
             },
             NodeKind::Revision => ("#FAD7A0", "ellipse"),
         };
@@ -65,7 +69,7 @@ fn render_dot(data: &crate::vault::ops::GraphData) -> String {
     for edge in &data.edges {
         let (style, label) = match edge.kind {
             EdgeKind::Baseline => ("penwidth=2", "파생"),
-            EdgeKind::Link     => ("dir=both",   "연결"),
+            EdgeKind::Link => ("dir=both", "연결"),
             EdgeKind::Revision => ("style=dashed", "delta"),
         };
         out.push_str(&format!(
@@ -91,9 +95,9 @@ fn render_mermaid(data: &crate::vault::ops::GraphData) -> String {
         let label = node.label.replace('\n', ": ");
         let (open, close, cls) = match &node.kind {
             NodeKind::Entry(s) => match s.as_str() {
-                "stable"   => ("[\"", "\"]", "stable"),
+                "stable" => ("[\"", "\"]", "stable"),
                 "archived" => ("[\"", "\"]", "archived"),
-                _          => ("[\"", "\"]", "draft"),
+                _ => ("[\"", "\"]", "draft"),
             },
             NodeKind::Revision => ("([\"", "\"])", "revision"),
         };
@@ -105,7 +109,7 @@ fn render_mermaid(data: &crate::vault::ops::GraphData) -> String {
         let (from, to) = (mermaid_id(&edge.from), mermaid_id(&edge.to));
         let arrow = match edge.kind {
             EdgeKind::Baseline => format!("{from} -->|파생| {to}"),
-            EdgeKind::Link     => format!("{from} <-->|연결| {to}"),
+            EdgeKind::Link => format!("{from} <-->|연결| {to}"),
             EdgeKind::Revision => format!("{from} -.->|delta| {to}"),
         };
         out.push_str(&format!("  {arrow}\n"));
@@ -121,30 +125,39 @@ fn render_mermaid(data: &crate::vault::ops::GraphData) -> String {
 // ─── JSON ─────────────────────────────────
 
 fn render_json(data: &crate::vault::ops::GraphData) -> String {
-    let nodes: Vec<_> = data.nodes.iter().map(|n| {
-        let (kind, status) = match &n.kind {
-            NodeKind::Entry(s) => ("entry", s.as_str()),
-            NodeKind::Revision => ("revision", ""),
-        };
-        serde_json::json!({
-            "id":     n.id,
-            "label":  n.label,
-            "kind":   kind,
-            "status": status,
+    let nodes: Vec<_> = data
+        .nodes
+        .iter()
+        .map(|n| {
+            let (kind, status) = match &n.kind {
+                NodeKind::Entry(s) => ("entry", s.as_str()),
+                NodeKind::Revision => ("revision", ""),
+            };
+            serde_json::json!({
+                "id":     n.id,
+                "label":  n.label,
+                "kind":   kind,
+                "status": status,
+            })
         })
-    }).collect();
+        .collect();
 
-    let edges: Vec<_> = data.edges.iter().map(|e| {
-        let kind = match e.kind {
-            EdgeKind::Baseline => "baseline",
-            EdgeKind::Link     => "link",
-            EdgeKind::Revision => "revision",
-        };
-        serde_json::json!({ "from": e.from, "to": e.to, "kind": kind })
-    }).collect();
+    let edges: Vec<_> = data
+        .edges
+        .iter()
+        .map(|e| {
+            let kind = match e.kind {
+                EdgeKind::Baseline => "baseline",
+                EdgeKind::Link => "link",
+                EdgeKind::Revision => "revision",
+            };
+            serde_json::json!({ "from": e.from, "to": e.to, "kind": kind })
+        })
+        .collect();
 
     serde_json::to_string_pretty(&serde_json::json!({
         "nodes": nodes,
         "edges": edges,
-    })).unwrap()
+    }))
+    .unwrap()
 }

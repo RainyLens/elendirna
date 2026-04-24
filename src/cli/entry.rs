@@ -1,9 +1,9 @@
-use clap::{Args, Subcommand};
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId, VaultArgs};
+use crate::schema::manifest::{EntryStatus, NoteFrontmatter};
 use crate::vault::entry::Entry;
 use crate::vault::util::append_sync_event;
-use crate::schema::manifest::{EntryStatus, NoteFrontmatter};
+use crate::vault::{self, VaultArgs, id::EntryId};
+use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
 pub struct EntryArgs {
@@ -23,6 +23,12 @@ pub enum EntryCommand {
     List(ListArgs),
     /// entry status 변경 (draft / stable / archived)
     Status(StatusArgs),
+    /// 파일을 entry에 첨부
+    Attach(AttachArgs),
+    /// entry에서 첨부 파일 해제
+    Detach(DetachArgs),
+    /// entry에 등록된 첨부 파일 목록 조회
+    Assets(AssetsArgs),
 }
 
 // ─── entry new ───────────────────────────
@@ -60,14 +66,18 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             message: format!("baseline '{b}'의 entry ID 형식이 잘못됐습니다"),
         })?;
         if Entry::find_by_id(&vault_root, &bid).is_none() {
-            return Err(ElfError::NotFound { id: bid.to_string() });
+            return Err(ElfError::NotFound {
+                id: bid.to_string(),
+            });
         }
     }
 
     // 멱등성: slug 충돌 검사 (fix-006)
     // process::exit 대신 Err 반환 — 테스트 가능성 유지, main에서 exit code 처리
     if let Some(existing) = Entry::find_by_slug(&vault_root, &args.title) {
-        return Err(ElfError::AlreadyExists { id: existing.manifest.id });
+        return Err(ElfError::AlreadyExists {
+            id: existing.manifest.id,
+        });
     }
 
     // dry-run
@@ -104,7 +114,10 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         });
         println!("{out}");
     } else {
-        println!("✓ entry 생성: {} \"{}\"", entry.manifest.id, entry.manifest.title);
+        println!(
+            "✓ entry 생성: {} \"{}\"",
+            entry.manifest.id, entry.manifest.title
+        );
         println!("  경로: {}", entry.dir.display());
     }
 
@@ -130,8 +143,9 @@ pub fn run_show(args: ShowArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
     })?;
 
-    let entry = Entry::find_by_id(&vault_root, &id)
-        .ok_or_else(|| ElfError::NotFound { id: args.id.clone() })?;
+    let entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: args.id.clone(),
+    })?;
 
     if args.json {
         let body = entry.note_body()?; // fix-014: 본문만
@@ -159,7 +173,11 @@ pub fn run_show(args: ShowArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         let m = &entry.manifest;
         println!("╔══════════════════════════════════════");
         println!("  {} — {}", m.id, m.title);
-        println!("  status: {}  |  created: {}", m.status, m.created.format("%Y-%m-%d"));
+        println!(
+            "  status: {}  |  created: {}",
+            m.status,
+            m.created.format("%Y-%m-%d")
+        );
         if let Some(ref b) = m.baseline {
             println!("  baseline: {b}");
         }
@@ -213,20 +231,31 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         entries.retain(|e| e.manifest.status.to_string() == *s);
     }
     if let Some(ref b) = args.baseline {
-        entries.retain(|e| e.manifest.baseline.as_deref() == Some(b.as_str())
-            || e.manifest.baseline.as_deref().map(|bl| bl.starts_with(b.as_str())).unwrap_or(false));
+        entries.retain(|e| {
+            e.manifest.baseline.as_deref() == Some(b.as_str())
+                || e.manifest
+                    .baseline
+                    .as_deref()
+                    .map(|bl| bl.starts_with(b.as_str()))
+                    .unwrap_or(false)
+        });
     }
 
     if args.json {
-        let out: Vec<_> = entries.iter().map(|e| serde_json::json!({
-            "id":       e.manifest.id,
-            "title":    e.manifest.title,
-            "status":   e.manifest.status.to_string(),
-            "tags":     e.manifest.tags,
-            "baseline": e.manifest.baseline,
-            "created":  e.manifest.created,
-            "updated":  e.manifest.updated,
-        })).collect();
+        let out: Vec<_> = entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id":       e.manifest.id,
+                    "title":    e.manifest.title,
+                    "status":   e.manifest.status.to_string(),
+                    "tags":     e.manifest.tags,
+                    "baseline": e.manifest.baseline,
+                    "created":  e.manifest.created,
+                    "updated":  e.manifest.updated,
+                })
+            })
+            .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
         if entries.is_empty() {
@@ -238,7 +267,8 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 } else {
                     format!("  [{}]", e.manifest.tags.join(", "))
                 };
-                println!("{:<8} {:<40} [{}]  {}{}",
+                println!(
+                    "{:<8} {:<40} [{}]  {}{}",
                     e.manifest.id,
                     e.manifest.title,
                     e.manifest.status,
@@ -267,8 +297,9 @@ pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         message: format!("'{}' 는 유효한 entry ID가 아닙니다", args.id),
     })?;
 
-    let mut entry = Entry::find_by_id(&vault_root, &id)
-        .ok_or_else(|| ElfError::NotFound { id: args.id.clone() })?;
+    let mut entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: args.id.clone(),
+    })?;
 
     // 편집기 결정
     let config = crate::vault::config::VaultConfig::read(&vault_root)?;
@@ -295,7 +326,10 @@ pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
 
         // id는 SSoT 불변 — 변경 시 WARN
         if fm.id != m.id {
-            eprintln!("WARN: frontmatter의 id({}) 변경은 무시됩니다. manifest id({})가 유지됩니다.", fm.id, m.id);
+            eprintln!(
+                "WARN: frontmatter의 id({}) 변경은 무시됩니다. manifest id({})가 유지됩니다.",
+                fm.id, m.id
+            );
         }
 
         // title, baseline, tags는 frontmatter → manifest 역반영
@@ -355,16 +389,19 @@ pub fn run_status(args: StatusArgs, vault_args: VaultArgs) -> Result<(), ElfErro
     })?;
 
     let new_status: EntryStatus = match args.status.as_str() {
-        "draft"    => EntryStatus::Draft,
-        "stable"   => EntryStatus::Stable,
+        "draft" => EntryStatus::Draft,
+        "stable" => EntryStatus::Stable,
         "archived" => EntryStatus::Archived,
-        other => return Err(ElfError::InvalidInput {
-            message: format!("알 수 없는 status: '{other}' (draft / stable / archived)"),
-        }),
+        other => {
+            return Err(ElfError::InvalidInput {
+                message: format!("알 수 없는 status: '{other}' (draft / stable / archived)"),
+            });
+        }
     };
 
-    let mut entry = Entry::find_by_id(&vault_root, &id)
-        .ok_or_else(|| ElfError::NotFound { id: args.id.clone() })?;
+    let mut entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: args.id.clone(),
+    })?;
 
     let old_status = entry.manifest.status.clone();
     entry.manifest.status = new_status;
@@ -374,19 +411,166 @@ pub fn run_status(args: StatusArgs, vault_args: VaultArgs) -> Result<(), ElfErro
     append_sync_event(&vault_root, &event, Some(&id.to_string()))?;
 
     if args.json {
-        println!("{}", serde_json::json!({
-            "command": "entry.status",
-            "ok": true,
-            "data": {
-                "id":     id.to_string(),
-                "from":   old_status.to_string(),
-                "to":     entry.manifest.status.to_string(),
-            }
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.status",
+                "ok": true,
+                "data": {
+                    "id":     id.to_string(),
+                    "from":   old_status.to_string(),
+                    "to":     entry.manifest.status.to_string(),
+                }
+            })
+        );
     } else {
-        println!("✓ {} status: {} → {}", id, old_status, entry.manifest.status);
+        println!(
+            "✓ {} status: {} → {}",
+            id, old_status, entry.manifest.status
+        );
     }
 
     Ok(())
 }
 
+// ─── entry attach ─────────────────────────
+
+#[derive(Debug, Args)]
+pub struct AttachArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// 첨부할 파일 경로
+    pub file: std::path::PathBuf,
+
+    /// 저장 시 사용할 파일명 (기본: 원본 파일명)
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_attach(args: AttachArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+    let r = crate::vault::ops::entry_attach(
+        &vault_root,
+        &args.id,
+        &args.file,
+        args.name.as_deref(),
+    )?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.attach",
+                "ok": true,
+                "data": {
+                    "asset_key":   r.asset_key,
+                    "source_path": r.source_path,
+                    "size":        r.size,
+                    "collision":   r.collision,
+                    "warning":     r.warning,
+                }
+            })
+        );
+    } else {
+        println!("✓ 첨부 완료: {}", r.asset_key);
+        if let Some(w) = r.warning {
+            eprintln!("WARN: {w}");
+        }
+    }
+
+    Ok(())
+}
+
+// ─── entry detach ─────────────────────────
+
+#[derive(Debug, Args)]
+pub struct DetachArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// 해제할 asset key
+    pub key: String,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_detach(args: DetachArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+    let removed = crate::vault::ops::entry_detach(&vault_root, &args.id, &args.key)?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.detach",
+                "ok": true,
+                "data": { "removed": removed, "key": args.key }
+            })
+        );
+    } else if removed {
+        println!("✓ 첨부 해제: {}", args.key);
+    } else {
+        println!("(해당 key가 없습니다: {})", args.key);
+    }
+
+    Ok(())
+}
+
+// ─── entry assets ─────────────────────────
+
+#[derive(Debug, Args)]
+pub struct AssetsArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_assets(args: AssetsArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+    let assets = crate::vault::ops::entry_assets(&vault_root, &args.id)?;
+
+    if args.json {
+        let out: Vec<_> = assets
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "key":    a.key,
+                    "path":   a.path.display().to_string(),
+                    "exists": a.exists,
+                    "size":   a.size,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.assets",
+                "ok": true,
+                "data": out
+            })
+        );
+    } else if assets.is_empty() {
+        println!("(첨부 파일 없음)");
+    } else {
+        for a in &assets {
+            let status = if a.exists {
+                format!("{} bytes", a.size)
+            } else {
+                "missing".to_string()
+            };
+            println!("  {} [{}]", a.key, status);
+        }
+    }
+
+    Ok(())
+}

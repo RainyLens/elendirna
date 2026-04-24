@@ -177,3 +177,85 @@
 {"action":"entry.new","agent":"human","id":"N0050","ts":"2026-04-23T14:04:06.500928100+09:00"}
 {"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:04:17.659523600+09:00"}
 {"agent":"human","entries":["N0050","N0034"],"event":"sync.record","session_id":null,"summary":"N0050을 생성해 Elendirna의 AI 유도 디자인 원칙을 기록함. 행동은 최대한 자연스럽게 유도하되, 컨텍스트 오염으로 강박적 규칙이나 과잉 행동이 남지 않게 하는 soft steering 기준을 정리.","ts":"2026-04-23T14:04:21.103713600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"사용자가 제안한 sync_record/revision_add 유도 전략을 N0050의 non-compulsive AI guidance 원칙 관점에서 검토함. 구조화 입력과 diff-first 설명은 유효하되, 보상/자동 초안은 과잉 유도나 도구 복잡도 증가를 조심해야 한다는 판단을 남김.","ts":"2026-04-23T14:12:43.957984500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:16:37.541467700+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"src/mcp/mod.rs의 MCP tool descriptions에 diff-first revision_add, handover-oriented sync_record, session_start handover_status를 반영함. cargo test 전체 통과했고, N0050에 이 soft steering 적용 내용을 r0002로 기록함.","ts":"2026-04-23T14:16:42.485295+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:20:24.960100600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"Codex가 맥락 손실을 불안해하지 않도록 src/mcp/mod.rs에 context reassurance를 추가함. revision_add/bundle/session_start/server instructions가 짧은 delta도 bundle과 recent_sessions로 복원됨을 설명하며, cargo test 전체 통과.","ts":"2026-04-23T14:20:29.778047800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:04:36.155436600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050에 하네스/유저 가이드/도구 UX 역할 분리 결론을 r0004로 기록함. 핵심은 데이터 품질은 하네스에, 모델별 활용법은 가이드에, sync/bundle/revision 역할 설명은 도구 UX에 둔다는 기준.","ts":"2026-04-23T15:04:42.176552800+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"[Handover] N0050 '하네스/유저가이드/도구UX' 원칙 확립. MCP 설명에 '복원 힌트'와 '증분(diff)' 개념을 주입하여 모델의 과잉 기록을 제어하고 지능을 압축에 집중시킴.","ts":"2026-04-23T15:05:17.235137700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:07:29.849961700+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050 r0005에 Claude의 기록 제안 UX 관찰을 기록함. 기록 품질은 tool description뿐 아니라 모델이 결론 타이밍을 감지해 제안하고 사용자가 범위를 좁혀주는 상호작용에 좌우된다는 내용.","ts":"2026-04-23T15:07:33.515509100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:13:27.962225800+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050 r0006에 Claude 관찰의 confounder를 기록함. 지인 사용 사례에서도 Claude 성향 가능성은 보이나, 세션 초반 elf start-session 유도 멘트가 start-session 실행을 거의 확정시키는 사용자 발화 효과를 분리해야 함.","ts":"2026-04-23T15:13:32.047480400+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"MCP 토큰 소모량에 대한 코드/기록 검토: query/entry_list는 얇지만 bundle 기본 depth=1과 full revision chain, 긴 sync_record가 주요 낭비 지점이라는 의견을 정리함.","ts":"2026-04-23T15:44:23.241292500+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"bundle context_stats 구현: core BundleOutput.stats()에 estimated_bytes/entry_count/revision_count를 추가하고 CLI/MCP bundle 응답에 노출, 통합 테스트로 카운트 검증. cargo test 전체 통과.","ts":"2026-04-23T16:01:18.081437300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0028","ts":"2026-04-23T16:06:41.905479+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"N0028 r0002에 bundle context_stats 변경점과 의견을 기록함. stats는 토큰 절약을 강제하지 않지만 에이전트가 bundle 비용을 인지하고 depth/since 선택을 조정하게 하는 휴리스틱이라는 결론.","ts":"2026-04-23T16:06:46.101830500+09:00"}
+{"action":"entry.new","agent":"human","id":"N0051","ts":"2026-04-23T16:12:53.718149800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-23T16:13:31.484586400+09:00"}
+{"agent":"human","entries":["N0051","N0020","N0039","N0040"],"event":"sync.record","session_id":null,"summary":"N0051에 로컬 repo 코드 작업 중 비즈니스 로직 판단을 위해 global vault를 명시 조회하는 시나리오를 기록함. local-first write boundary, global read provenance, 사용자 승인 기반 global 갱신 원칙을 정리.","ts":"2026-04-23T16:14:08.113202800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-23T16:21:06.186085100+09:00"}
+{"agent":"human","entries":["N0051","N0038","N0039","N0040"],"event":"sync.record","session_id":null,"summary":"N0051 시나리오의 구현 상태를 코드 기준으로 점검하고 r0002에 기록함. 현재는 CLI 전역 플래그와 MCP 응답 vault 출처 표시는 구현되어 있으나, MCP tool 호출 단위 vault override와 session local 등록은 미구현이라는 결론.","ts":"2026-04-23T16:21:45.794758200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T16:35:41.875434900+09:00"}
+{"agent":"human","entries":["N0047","N0051"],"event":"sync.record","session_id":null,"summary":"사용자의 관찰을 N0047 r0005에 기록함. Codex의 장황한 기록 방식이 원류 ELF의 'AI에게 연구 지시를 내리고 결과를 연구 노트로 축적하던 패턴'과 재접속한다는 해석을 정리.","ts":"2026-04-23T16:35:49.973457300+09:00"}
+{"agent":"Codex","entries":["N0038","N0039","N0040","N0051"],"event":"sync.record","session_id":null,"summary":"Codex Desktop 환경에서 현재 MCP가 참조하는 vault 경로와 경로 결정 기전을 점검함. 현재 활성 vault는 D:\\code_etc\\elendirna(local)이며, MCP tool 호출 단위 vault override/session local 등록은 아직 구현되지 않은 상태로 확인.","ts":"2026-04-24T09:41:26.770719400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-24T09:42:07.016112300+09:00"}
+{"agent":"Codex","entries":["N0051"],"event":"sync.record","session_id":null,"summary":"현재 MCP 구조가 단일 vault_root 고정 방식이므로 같은 세션 내 local/global 자료 혼합 또는 유출 위험은 낮고, 주요 리스크는 잘못된 primary vault로 시작되는 경우라는 평가를 N0051 r0003에 기록함.","ts":"2026-04-24T09:42:14.682689800+09:00"}
+{"agent":"Codex","entries":["N0018","N0019","N0030","N0035","N0038","N0051"],"event":"sync.record","session_id":null,"summary":"사용자가 제시한 v1→v2 compact layout→global vault→MCP vault 혼선→단일 primary 고정 구조의 연대기를 N0018/N0019/N0030/N0035/N0038/N0051 기준으로 대조함. 큰 흐름은 맞고, 마지막 단계는 '자료 혼합 방지용 고정'이라기보다 아직 tool 호출 단위 override/session local 등록이 미구현이라 서버 시작 시 primary vault 하나에 고정되는 상태로 정리.","ts":"2026-04-24T10:06:36.363508500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:09:18.401997+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"Claude Desktop MCP는 앱/서비스형 고정 실행 컨텍스트라 global 기준으로 뜨기 쉽고, 설정/옵션도 LOCALAPPDATA 하위 관리 폴더로 복사되는 것으로 관찰됨. Codex Desktop은 repo/폴더 기준 세션이라 같은 현상이 관찰되지 않았다는 host-specific 차이를 N0038 r0007에 기록함.","ts":"2026-04-24T10:09:23.486800600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:10:06.113152700+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"현재 조치의 성격을 host-specific CWD/설정 복사 문제를 없애는 근본 해결이 아니라, '그럼에도 불구하고' 출처 표시와 단일 primary 고정으로 혼합·오염 가능성을 줄이는 완화 계층으로 N0038 r0008에 정리함.","ts":"2026-04-24T10:10:10.567609200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:15:55.207301900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-24T10:16:08.027529100+09:00"}
+{"agent":"Codex","entries":["N0038","N0039"],"event":"sync.record","session_id":null,"summary":"multi-vault 호출 정책을 정리함. vault 생략 시 local-first 및 기존 primary/fallback 룰을 따르되 모든 응답에 resolved vault 출처를 포함하고, vault 명시 시 global/local/alias/절대경로로 강제 접근하며 resolve 실패 시 자동 fallback하지 않는 원칙을 N0038 r0009와 N0039 r0002에 기록함.","ts":"2026-04-24T10:16:12.635520300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:16:41.440291+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"multi-vault 호출 정책에 대한 리스크 분석을 N0038 r0010에 기록함. 핵심 리스크는 조용한 global fallback, local 의미 불안정, stale alias, 명시 write 오염, 에이전트의 출처 무시이며, 보완책으로 fallback warning, session local 등록, write confirm, vault_resolution 메타데이터를 제안함.","ts":"2026-04-24T10:16:49.780825400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:22:07.331534600+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"multi-vault 보완 제안에 대한 세부 의견을 N0038 r0011에 기록함. fallback은 warning과 fallback:true를 함께 반환하고, local/global만 hard-reserved alias로 적용하며, vault_resolution으로 선택 이유를 드러내고, global/external write는 confirm을 요구하며, sync_record에는 alias 수준 vault_refs만 남기는 방향을 권고함.","ts":"2026-04-24T10:22:10.815575100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:24:32.866584600+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"reserved alias 후보 중 default와 parent를 별도 검토함. default는 생략과 동일한 명시 표현으로 매력 있으나 모호성이 있고, parent는 nested repo에는 유용하지만 host/CWD 의존과 경계 확장 리스크가 커서 둘 다 우선 future-reserved candidate로 두는 방향을 N0038 r0012에 기록함.","ts":"2026-04-24T10:24:36.659029100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T10:44:01.279343900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T10:56:11.913611700+09:00"}
+{"agent":"human","entries":["N0021"],"event":"sync.record","session_id":null,"summary":"N0021 r0004에 CLI 우선 첨부파일 구현 계획을 기록함. entry attach/detach/assets 명령, 저장 규칙, 테스트/DoD, Phase2(sha256/full validate) 경계를 명시.","ts":"2026-04-24T10:56:19.000871+09:00"}
+{"agent":"Codex","entries":["N0021","N0038","N0039","N0041","N0046","N0047","N0049","N0051","N0023","N0044"],"event":"sync.record","session_id":null,"summary":"여러 구현 계획과 proposal을 검토해 다음 버전 후보를 선별함. 우선순위는 MCP multi-vault 호출 단위 제어/안전장치, CLI 첨부파일 MVP, sync_record 버그, undo 순으로 판단.","ts":"2026-04-24T11:00:01.781991600+09:00"}
+{"agent":"Codex","entries":["N0021","N0039","N0051"],"event":"sync.record","session_id":null,"summary":"MCP stdio 조건에서 파일 전송 가능성을 검토함. 표준 파일 업로드 primitive보다는 local path 기반 attach가 우선이고, binary 직접 전달은 base64 JSON payload로 가능하지만 비효율적이므로 후속 HTTP/chunk 계층 후보로 판단.","ts":"2026-04-24T11:01:40.163273500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-24T11:06:02.509851400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:06:02.544975+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:06:02.608216900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-24T11:06:02.642869600+09:00"}
+{"agent":"Codex","entries":["N0039","N0021","N0041","N0046"],"event":"sync.record","session_id":null,"summary":"다음 버전 우선순위를 기록함: multi-vault와 첨부파일 CLI/MCP는 구현 후보로 확정, sync_record 역직렬화는 버그픽스 후보 유지, undo는 추가 논의 보류.","ts":"2026-04-24T11:06:05.560125400+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"N0041 sync_record 역직렬화 이슈를 사용자에게 짧은 보고서 형태로 리마인드함. 영향은 MCP 세션 종료 기록 실패와 장기 기억 handoff 신뢰도 저하로 정리.","ts":"2026-04-24T11:07:23.286079600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:10:10.409978100+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"sync_record 이슈의 영향 해석을 정정함. sync_record는 헌법상 의무가 아니라 선택적 handoff 장치이며, 문제는 MCP entries 배열 입력이 실패하는 API 품질 버그로 좁혀 기록.","ts":"2026-04-24T11:10:13.705816500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:11:03.541317600+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"sync_record의 제품적 역할을 정리함. source of truth가 아니라 AI가 맥락을 유연하게 복원하도록 돕는 힌트/윤활제이며, 핵심 의도는 entry-revision 구조만으로도 성립한다고 기록.","ts":"2026-04-24T11:11:08.174679100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0028","ts":"2026-04-24T11:11:54.615155600+09:00"}
+{"agent":"Codex","entries":["N0028","N0034","N0050","N0041"],"event":"sync.record","session_id":null,"summary":"sync_record의 초기 선언 여부를 확인함. N0028 Thin Link와 N0050 Non-Compulsive Guidance에 이미 존재하며, N0034의 source of truth 표현이 활동 로그 재생성 관점임을 N0028에 보충 기록.","ts":"2026-04-24T11:11:58.437567400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-24T11:13:43.044157900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-24T11:13:43.081088400+09:00"}
+{"agent":"Codex","entries":["N0050","N0047","N0028"],"event":"sync.record","session_id":null,"summary":"Codex 초기 세션의 과한 맥락 기록을 재평가함. 장황한 기록은 단점도 있지만 연구형 기록 양식으로 가치가 있으므로 강제 억제보다 상황별 밀도 조절이 적절하다고 기록.","ts":"2026-04-24T11:13:46.166313200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-24T11:15:34.498660200+09:00"}
+{"agent":"Codex","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"AI guidance의 강제성이 강할수록 강박성, 토큰 비효율, 응답 풍부함 손실을 낳을 수 있다는 제품 원칙을 N0050에 기록.","ts":"2026-04-24T11:15:37.230501400+09:00"}
+{"action":"entry.new","agent":"human","id":"N0052","ts":"2026-04-24T11:16:23.158251+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:16:52.894051100+09:00"}
+{"agent":"Codex","entries":["N0052","N0039","N0021","N0041","N0046"],"event":"sync.record","session_id":null,"summary":"PLAN v0.5를 새 entry N0052로 생성하고 구현 계획을 정리함. 확정 스코프는 MCP multi-vault 완성, 첨부파일 CLI/MCP MVP, sync_record entries 역직렬화 수정이며 undo는 논의 보류로 둠.","ts":"2026-04-24T11:16:56.507144400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:19:39.732413300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:19:39.789879600+09:00"}
+{"agent":"Codex","entries":["N0041","N0052"],"event":"sync.record","session_id":null,"summary":"sync_record.entries의 세부 정책을 확정함. 공식 입력은 JSON array지만, sync_record가 보조 힌트 계층이므로 string, comma-separated, stringified JSON array를 느슨하게 수용하는 fail-soft 정책으로 기록.","ts":"2026-04-24T11:19:43.483682500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-24T11:20:09.278154800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:20:09.382535500+09:00"}
+{"agent":"Codex","entries":["N0034","N0052"],"event":"sync.record","session_id":null,"summary":"sqlite와 sync.jsonl은 파생/보조 계층이며, 둘 다 없어도 entry/revision/manifest 기반 핵심 기능은 정상 작동해야 한다는 아키텍처 원칙을 기록.","ts":"2026-04-24T11:20:12.694263800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-24T11:21:13.017595+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:21:13.052099800+09:00"}
+{"agent":"Codex","entries":["N0034","N0052"],"event":"sync.record","session_id":null,"summary":"중복 기록 탐지는 유용하지만 의미 중복 판정은 MCP 내 저부하 LLM/embedding 없이는 어렵다고 기록. deterministic 후보 제시 + AI/human 판단 조합을 후속 후보로 둠.","ts":"2026-04-24T11:21:16.394634800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:22:37.040241300+09:00"}
+{"agent":"Codex","entries":["N0052"],"event":"sync.record","session_id":null,"summary":"v0.5 결정 상태를 정리함. 큰 스코프 미결은 undo 하나만 남았고, 나머지는 구현 세부 정책 또는 후속 후보로 분리된다고 기록.","ts":"2026-04-24T11:22:41.959671100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:26:43.110132300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:26:43.204659100+09:00"}
+{"agent":"Codex","entries":["N0052","N0021"],"event":"sync.record","session_id":null,"summary":"v0.5 세부 정책을 기록함: attach/detach sync event 실패는 warning, external/global write confirm은 강제보다 AI/클라이언트 선택, asset key 충돌은 affix 숫자로 해결하고 최종 asset_key/stored_filename을 API result에 반환.","ts":"2026-04-24T11:26:47.631434+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:29:59.080506300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:29:59.162208700+09:00"}
+{"agent":"Codex","entries":["N0021","N0052"],"event":"sync.record","session_id":null,"summary":"첨부파일 asset key 충돌 정책을 확정함. 충돌은 실패가 아니라 affix로 자동 해결하며, API result에 collision=true와 warnings[]를 함께 반환하도록 기록.","ts":"2026-04-24T11:30:03.549160500+09:00"}

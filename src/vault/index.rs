@@ -1,10 +1,10 @@
-/// `.elendirna/index.sqlite` — 파생 캐시.
-/// 항상 `elf validate`로 재생성 가능. vault 없이는 의미 없음.
-use std::path::Path;
-use rusqlite::{Connection, params};
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
+use rusqlite::{Connection, params};
+/// `.elendirna/index.sqlite` — 파생 캐시.
+/// 항상 `elf validate`로 재생성 가능. vault 없이는 의미 없음.
+use std::path::Path;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS entries (
@@ -46,21 +46,33 @@ fn index_path(vault_root: &Path) -> std::path::PathBuf {
 
 fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     let path = index_path(vault_root);
-    let conn = Connection::open(&path).map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))?;
+    let conn = Connection::open(&path).map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
 
     // v0.3.1: 동시성 강화 — WAL 모드 및 busy_timeout(5초) 설정
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 5000;
-    ").map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))?;
+    ",
+    )
+    .map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
 
-    conn.execute_batch(SCHEMA).map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))?;
+    conn.execute_batch(SCHEMA).map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
     Ok(conn)
 }
 
@@ -68,14 +80,20 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
 pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     let conn = open(vault_root)?;
 
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         DELETE FROM revisions;
         DELETE FROM links;
         DELETE FROM tags;
         DELETE FROM entries;
-    ").map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))?;
+    ",
+    )
+    .map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
 
     let entries = Entry::find_all(vault_root);
     let count = entries.len();
@@ -95,13 +113,25 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 m.updated.to_rfc3339(),
                 m.baseline,
             ],
-        ).map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        )
+        .map_err(|e| {
+            ElfError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
+        })?;
 
         for tag in &m.tags {
             conn.execute(
                 "INSERT OR IGNORE INTO tags (entry_id, tag) VALUES (?1, ?2)",
                 params![m.id, tag],
-            ).map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            )
+            .map_err(|e| {
+                ElfError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?;
         }
 
         if let Some(entry_id) = crate::vault::id::EntryId::from_str(&m.id) {
@@ -115,7 +145,13 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                         rev.baseline.to_string(),
                         rev.created.to_rfc3339(),
                     ],
-                ).map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+                )
+                .map_err(|e| {
+                    ElfError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ))
+                })?;
             }
         }
     }
@@ -127,7 +163,13 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
             conn.execute(
                 "INSERT OR IGNORE INTO links (from_id, to_id) VALUES (?1, ?2)",
                 params![m.id, link],
-            ).map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            )
+            .map_err(|e| {
+                ElfError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?;
         }
     }
 
@@ -158,7 +200,7 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
 
     let mut sql = String::from(
         "SELECT DISTINCT e.id, e.title, e.status, e.created, e.updated, e.baseline
-         FROM entries e"
+         FROM entries e",
     );
 
     if filter.tag.is_some() {
@@ -185,22 +227,35 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
     }
     sql.push_str(" ORDER BY e.id");
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
 
-    let rows = stmt.query_map([], |row| {
-        Ok(QueryRow {
-            id:       row.get(0)?,
-            title:    row.get(1)?,
-            status:   row.get(2)?,
-            created:  row.get(3)?,
-            updated:  row.get(4)?,
-            baseline: row.get(5)?,
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(QueryRow {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                status: row.get(2)?,
+                created: row.get(3)?,
+                updated: row.get(4)?,
+                baseline: row.get(5)?,
+            })
         })
-    }).map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        .map_err(|e| {
+            ElfError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
+        })?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| ElfError::Io(
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    ))
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })
 }

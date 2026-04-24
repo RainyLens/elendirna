@@ -18,46 +18,46 @@ pub enum ElfErrorCode {
 impl ElfErrorCode {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::IoError               => "E4000",
-            Self::NotAVault             => "E2001",
-            Self::NotFound              => "E2002",
-            Self::AlreadyExists         => "E3001",
-            Self::AlreadyInitialized    => "E3002",
-            Self::EditorNotSet          => "E4002",
-            Self::ParseError            => "E4003",
+            Self::IoError => "E4000",
+            Self::NotAVault => "E2001",
+            Self::NotFound => "E2002",
+            Self::AlreadyExists => "E3001",
+            Self::AlreadyInitialized => "E3002",
+            Self::EditorNotSet => "E4002",
+            Self::ParseError => "E4003",
             Self::SchemaVersionMismatch => "E5001",
-            Self::InvalidInput          => "E1001",
-            Self::Cycle                 => "E3003",
+            Self::InvalidInput => "E1001",
+            Self::Cycle => "E3003",
         }
     }
 
     pub fn slug(&self) -> &'static str {
         match self {
-            Self::IoError               => "io_error",
-            Self::NotAVault             => "not_a_vault",
-            Self::NotFound              => "not_found",
-            Self::AlreadyExists         => "already_exists",
-            Self::AlreadyInitialized    => "already_initialized",
-            Self::EditorNotSet          => "editor_not_set",
-            Self::ParseError            => "parse_error",
+            Self::IoError => "io_error",
+            Self::NotAVault => "not_a_vault",
+            Self::NotFound => "not_found",
+            Self::AlreadyExists => "already_exists",
+            Self::AlreadyInitialized => "already_initialized",
+            Self::EditorNotSet => "editor_not_set",
+            Self::ParseError => "parse_error",
             Self::SchemaVersionMismatch => "schema_version_mismatch",
-            Self::InvalidInput          => "invalid_input",
-            Self::Cycle                 => "cycle",
+            Self::InvalidInput => "invalid_input",
+            Self::Cycle => "cycle",
         }
     }
 
     /// exit code 매핑
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::InvalidInput          => 1,
-            Self::NotAVault             => 2,
-            Self::NotFound              => 2,
-            Self::AlreadyExists         => 3,
-            Self::AlreadyInitialized    => 3,
-            Self::Cycle                 => 3,
-            Self::IoError               => 4,
-            Self::EditorNotSet          => 4,
-            Self::ParseError            => 4,
+            Self::InvalidInput => 1,
+            Self::NotAVault => 2,
+            Self::NotFound => 2,
+            Self::AlreadyExists => 3,
+            Self::AlreadyInitialized => 3,
+            Self::Cycle => 3,
+            Self::IoError => 4,
+            Self::EditorNotSet => 4,
+            Self::ParseError => 4,
             Self::SchemaVersionMismatch => 5,
         }
     }
@@ -99,16 +99,16 @@ pub enum ElfError {
 impl ElfError {
     pub fn code(&self) -> ElfErrorCode {
         match self {
-            Self::NotAVault             => ElfErrorCode::NotAVault,
+            Self::NotAVault => ElfErrorCode::NotAVault,
             Self::AlreadyInitialized { .. } => ElfErrorCode::AlreadyInitialized,
-            Self::NotFound { .. }       => ElfErrorCode::NotFound,
+            Self::NotFound { .. } => ElfErrorCode::NotFound,
             Self::AlreadyExists { .. } => ElfErrorCode::AlreadyExists,
-            Self::EditorNotSet          => ElfErrorCode::EditorNotSet,
-            Self::ParseError { .. }    => ElfErrorCode::ParseError,
+            Self::EditorNotSet => ElfErrorCode::EditorNotSet,
+            Self::ParseError { .. } => ElfErrorCode::ParseError,
             Self::SchemaVersionMismatch { .. } => ElfErrorCode::SchemaVersionMismatch,
-            Self::InvalidInput { .. }  => ElfErrorCode::InvalidInput,
-            Self::Cycle { .. }         => ElfErrorCode::Cycle,
-            Self::Io(_)                => ElfErrorCode::IoError,
+            Self::InvalidInput { .. } => ElfErrorCode::InvalidInput,
+            Self::Cycle { .. } => ElfErrorCode::Cycle,
+            Self::Io(_) => ElfErrorCode::IoError,
         }
     }
 
@@ -120,7 +120,9 @@ impl ElfError {
         match self {
             Self::NotAVault => Some("`elf init`으로 vault를 초기화하세요"),
             Self::NotFound { .. } => Some("`elf entry new`로 entry를 생성하세요"),
-            Self::EditorNotSet => Some("환경 변수 $EDITOR를 설정하거나 config.toml의 editor 필드를 지정하세요"),
+            Self::EditorNotSet => {
+                Some("환경 변수 $EDITOR를 설정하거나 config.toml의 editor 필드를 지정하세요")
+            }
             _ => None,
         }
     }

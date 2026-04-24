@@ -1,7 +1,7 @@
-use chrono::{DateTime, FixedOffset, Local};
-use std::path::{Path, PathBuf};
 use crate::error::ElfError;
 use crate::vault::id::{EntryId, EntryRevRef, RevisionId};
+use chrono::{DateTime, FixedOffset, Local};
+use std::path::{Path, PathBuf};
 
 pub struct Revision {
     pub entry_id: EntryId,
@@ -13,14 +13,18 @@ pub struct Revision {
 
 impl Revision {
     pub fn rev_dir(vault_root: &Path, entry_id: &EntryId) -> PathBuf {
-        crate::vault::data_root(vault_root).join("revisions").join(entry_id.to_string())
+        crate::vault::data_root(vault_root)
+            .join("revisions")
+            .join(entry_id.to_string())
     }
 
     /// revisions/<entry_id>/ 하위 모든 revision 로드 (번호 오름차순)
     pub fn list(vault_root: &Path, entry_id: &EntryId) -> Vec<Revision> {
         let dir = Self::rev_dir(vault_root, entry_id);
         let mut result = vec![];
-        let Ok(rd) = std::fs::read_dir(&dir) else { return result };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return result;
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             if let Some(rev_id) = RevisionId::from_file_name(&name) {
@@ -38,9 +42,13 @@ impl Revision {
     /// 가장 최근 revision ID 반환
     pub fn latest_id(vault_root: &Path, entry_id: &EntryId) -> Option<RevisionId> {
         let dir = Self::rev_dir(vault_root, entry_id);
-        if !dir.exists() { return None; }
+        if !dir.exists() {
+            return None;
+        }
         let mut max: Option<RevisionId> = None;
-        let Ok(rd) = std::fs::read_dir(&dir) else { return None };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return None;
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             if let Some(id) = RevisionId::from_file_name(&name) {
@@ -70,7 +78,7 @@ impl Revision {
         // baseline: 직전 revision이 있으면 N####@r{prev}, 없으면 N####@r0000 (Q1)
         let baseline = match Self::latest_id(vault_root, entry_id) {
             Some(prev) => EntryRevRef::new(entry_id.clone(), Some(prev)),
-            None       => EntryRevRef::new(entry_id.clone(), None), // @r0000
+            None => EntryRevRef::new(entry_id.clone(), None), // @r0000
         };
 
         let created = Local::now().fixed_offset();
@@ -93,7 +101,11 @@ impl Revision {
 // ─────────────────────────────────────────
 
 /// revision 파일 직렬화
-fn format_revision_file(baseline: &EntryRevRef, created: DateTime<FixedOffset>, delta: &str) -> String {
+fn format_revision_file(
+    baseline: &EntryRevRef,
+    created: DateTime<FixedOffset>,
+    delta: &str,
+) -> String {
     format!(
         "---\nbaseline: {baseline}\ncreated: {}\n---\n\n## Delta\n\n{delta}",
         created.to_rfc3339()
@@ -103,11 +115,15 @@ fn format_revision_file(baseline: &EntryRevRef, created: DateTime<FixedOffset>, 
 /// revision 파일 파싱
 fn parse_revision_file(entry_id: EntryId, rev_id: RevisionId, content: &str) -> Option<Revision> {
     // frontmatter 추출
-    let content = content.strip_prefix("---\r\n").or_else(|| content.strip_prefix("---\n"))?;
+    let content = content
+        .strip_prefix("---\r\n")
+        .or_else(|| content.strip_prefix("---\n"))?;
     let marker_idx = content.find("\n---")?;
     let fm_raw = &content[..marker_idx];
     let after_marker = &content[marker_idx + 4..];
-    let rest = after_marker.strip_prefix("\r\n").or_else(|| after_marker.strip_prefix("\n"))?;
+    let rest = after_marker
+        .strip_prefix("\r\n")
+        .or_else(|| after_marker.strip_prefix("\n"))?;
 
     let mut baseline_str = String::new();
     let mut created_str = String::new();
@@ -131,6 +147,11 @@ fn parse_revision_file(entry_id: EntryId, rev_id: RevisionId, content: &str) -> 
         .trim_start()
         .to_string();
 
-    Some(Revision { entry_id, rev_id, baseline, created, delta })
+    Some(Revision {
+        entry_id,
+        rev_id,
+        baseline,
+        created,
+        delta,
+    })
 }
-

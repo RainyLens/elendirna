@@ -1,6 +1,6 @@
+use crate::error::ElfError;
 use std::fmt;
 use std::path::Path;
-use crate::error::ElfError;
 
 // ─────────────────────────────────────────
 // EntryId — N0042 형식
@@ -196,4 +196,3 @@ pub fn title_to_slug(title: &str) -> String {
     // 최대 40자
     result.chars().take(40).collect()
 }
-

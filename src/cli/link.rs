@@ -1,7 +1,7 @@
-use clap::Args;
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId, VaultArgs};
 use crate::vault::entry::Entry;
+use crate::vault::{self, VaultArgs, id::EntryId};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct LinkArgs {
@@ -39,10 +39,14 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     })?;
 
     // 두 entry 존재 확인
-    let mut from_entry = Entry::find_by_id(&vault_root, &from_id)
-        .ok_or_else(|| ElfError::NotFound { id: args.from.clone() })?;
-    let mut to_entry = Entry::find_by_id(&vault_root, &to_id)
-        .ok_or_else(|| ElfError::NotFound { id: args.to.clone() })?;
+    let mut from_entry =
+        Entry::find_by_id(&vault_root, &from_id).ok_or_else(|| ElfError::NotFound {
+            id: args.from.clone(),
+        })?;
+    let mut to_entry =
+        Entry::find_by_id(&vault_root, &to_id).ok_or_else(|| ElfError::NotFound {
+            id: args.to.clone(),
+        })?;
 
     let from_str = from_id.to_string();
     let to_str = to_id.to_string();
@@ -50,11 +54,14 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     // 이미 존재하는 링크 → no-op
     if from_entry.manifest.links.contains(&to_str) {
         if args.json {
-            println!("{}", serde_json::json!({
-                "command": "link",
-                "ok": true,
-                "data": { "noop": true, "from": from_str, "to": to_str }
-            }));
+            println!(
+                "{}",
+                serde_json::json!({
+                    "command": "link",
+                    "ok": true,
+                    "data": { "noop": true, "from": from_str, "to": to_str }
+                })
+            );
         } else {
             println!("(no-op) 링크가 이미 존재합니다: {} → {}", from_str, to_str);
         }
@@ -83,11 +90,14 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     crate::vault::util::append_sync_event(&vault_root, &event, None)?;
 
     if args.json {
-        println!("{}", serde_json::json!({
-            "command": "link",
-            "ok": true,
-            "data": { "from": from_str, "to": to_str }
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "link",
+                "ok": true,
+                "data": { "from": from_str, "to": to_str }
+            })
+        );
     } else {
         println!("✓ 링크 생성: {} ↔ {}", from_str, to_str);
     }
@@ -97,8 +107,9 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
 
 /// 정렬된 Vec에 중복 없이 삽입 (PLAN Phase 5: links 배열 ID 오름차순 유지)
 fn insert_sorted(vec: &mut Vec<String>, item: String) {
-    if vec.contains(&item) { return; }
+    if vec.contains(&item) {
+        return;
+    }
     let pos = vec.partition_point(|x| x < &item);
     vec.insert(pos, item);
 }
-
