@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0023"
+title = "Proposal 005: Collaborative Identity and Bot Support"
+created = "2026-04-13T05:25:02.893189900Z"
+updated = "2026-04-13T05:25:09.963182700Z"
+tags = [
+    "proposal",
+    "collaboration",
+    "bot",
+]
+links = []
+sources = []
+status = "draft"

@@ -1,7 +1,7 @@
+use clap::{Parser, Subcommand};
 use elendirna::cli;
 use elendirna::error::ElfError;
 use elendirna::vault::VaultArgs;
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -69,20 +69,23 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    let vault_args = VaultArgs { vault: cli.vault, global: cli.global };
+    let vault_args = VaultArgs {
+        vault: cli.vault,
+        global: cli.global,
+    };
     let result = match cli.command {
-        Commands::Init(args)     => cli::init::run(args),
-        Commands::Entry(args)    => run_entry(args, vault_args),
+        Commands::Init(args) => cli::init::run(args),
+        Commands::Entry(args) => run_entry(args, vault_args),
         Commands::Revision(args) => run_revision(args, vault_args),
-        Commands::Link(args)     => cli::link::run(args, vault_args),
+        Commands::Link(args) => cli::link::run(args, vault_args),
         Commands::Validate(args) => cli::validate::run(args, vault_args),
-        Commands::Bundle(args)   => cli::bundle::run(args, vault_args),
-        Commands::Query(args)    => cli::query::run(args, vault_args),
-        Commands::Graph(args)    => cli::graph::run(args, vault_args),
-        Commands::Serve(args)    => cli::serve::run(args),
-        Commands::Sync(args)     => cli::sync::run(args, vault_args),
-        Commands::Migrate(args)  => cli::migrate::run(args),
-        Commands::Help(args)     => cli::help::run(args),
+        Commands::Bundle(args) => cli::bundle::run(args, vault_args),
+        Commands::Query(args) => cli::query::run(args, vault_args),
+        Commands::Graph(args) => cli::graph::run(args, vault_args),
+        Commands::Serve(args) => cli::serve::run(args),
+        Commands::Sync(args) => cli::sync::run(args, vault_args),
+        Commands::Migrate(args) => cli::migrate::run(args),
+        Commands::Help(args) => cli::help::run(args),
     };
 
     if let Err(e) = result {
@@ -94,17 +97,20 @@ fn main() {
 
 fn run_entry(args: cli::entry::EntryArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
-        cli::entry::EntryCommand::New(a)    => cli::entry::run_new(a, vault_args),
-        cli::entry::EntryCommand::Show(a)   => cli::entry::run_show(a, vault_args),
-        cli::entry::EntryCommand::Edit(a)   => cli::entry::run_edit(a, vault_args),
-        cli::entry::EntryCommand::List(a)   => cli::entry::run_list(a, vault_args),
+        cli::entry::EntryCommand::New(a) => cli::entry::run_new(a, vault_args),
+        cli::entry::EntryCommand::Show(a) => cli::entry::run_show(a, vault_args),
+        cli::entry::EntryCommand::Edit(a) => cli::entry::run_edit(a, vault_args),
+        cli::entry::EntryCommand::List(a) => cli::entry::run_list(a, vault_args),
         cli::entry::EntryCommand::Status(a) => cli::entry::run_status(a, vault_args),
+        cli::entry::EntryCommand::Attach(a) => cli::entry::run_attach(a, vault_args),
+        cli::entry::EntryCommand::Detach(a) => cli::entry::run_detach(a, vault_args),
+        cli::entry::EntryCommand::Assets(a) => cli::entry::run_assets(a, vault_args),
     }
 }
 
 fn run_revision(args: cli::revision::RevisionArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
-        cli::revision::RevisionCommand::Add(a)  => cli::revision::run_add(a, vault_args),
+        cli::revision::RevisionCommand::Add(a) => cli::revision::run_add(a, vault_args),
         cli::revision::RevisionCommand::List(a) => cli::revision::run_list(a, vault_args),
     }
 }

@@ -1,8 +1,8 @@
+use crate::error::ElfError;
+use crate::vault::util::atomic_write;
 use chrono::{DateTime, FixedOffset, Local};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::error::ElfError;
-use crate::vault::util::atomic_write;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
@@ -23,8 +23,8 @@ impl Default for EntryStatus {
 impl std::fmt::Display for EntryStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Draft    => write!(f, "draft"),
-            Self::Stable   => write!(f, "stable"),
+            Self::Draft => write!(f, "draft"),
+            Self::Stable => write!(f, "stable"),
             Self::Archived => write!(f, "archived"),
         }
     }
@@ -100,11 +100,15 @@ impl NoteFrontmatter {
     /// note.md에서 frontmatter 파싱
     /// `---\n...\n---` 경계 split 후 key-value 줄 단위 파싱
     pub fn parse(content: &str) -> Option<(Self, &str)> {
-        let content = content.strip_prefix("---\r\n").or_else(|| content.strip_prefix("---\n"))?;
+        let content = content
+            .strip_prefix("---\r\n")
+            .or_else(|| content.strip_prefix("---\n"))?;
         let marker_idx = content.find("\n---")?;
         let fm_raw = &content[..marker_idx];
         let after_marker = &content[marker_idx + 4..];
-        let rest = after_marker.strip_prefix("\r\n").or_else(|| after_marker.strip_prefix("\n"))?;
+        let rest = after_marker
+            .strip_prefix("\r\n")
+            .or_else(|| after_marker.strip_prefix("\n"))?;
         // 줄 단위 파싱
         let mut id = String::new();
         let mut title = String::new();
@@ -139,7 +143,12 @@ impl NoteFrontmatter {
                     // block 형식은 아래 - 처리로 계속
                 } else {
                     // "  - tag" 형식
-                    tags.push(line.trim().trim_start_matches("- ").trim_matches('"').to_string());
+                    tags.push(
+                        line.trim()
+                            .trim_start_matches("- ")
+                            .trim_matches('"')
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -155,7 +164,12 @@ impl NoteFrontmatter {
                         // 무시
                     }
                 } else if in_tags && (line.starts_with("  - ") || line.starts_with("- ")) {
-                    tags.push(line.trim().trim_start_matches("- ").trim_matches('"').to_string());
+                    tags.push(
+                        line.trim()
+                            .trim_start_matches("- ")
+                            .trim_matches('"')
+                            .to_string(),
+                    );
                 } else if in_tags && !line.starts_with(' ') && !line.is_empty() {
                     in_tags = false;
                 }
@@ -165,7 +179,15 @@ impl NoteFrontmatter {
         if id.is_empty() || title.is_empty() {
             return None;
         }
-        Some((Self { id, title, baseline, tags }, rest))
+        Some((
+            Self {
+                id,
+                title,
+                baseline,
+                tags,
+            },
+            rest,
+        ))
     }
 
     /// note.md 읽고 frontmatter 파싱. 본문도 반환
@@ -187,9 +209,7 @@ impl NoteFrontmatter {
         let tags_str = if self.tags.is_empty() {
             "tags: []".to_string()
         } else {
-            let items: Vec<String> = self.tags.iter()
-                .map(|t| format!("  - \"{t}\""))
-                .collect();
+            let items: Vec<String> = self.tags.iter().map(|t| format!("  - \"{t}\"")).collect();
             format!("tags:\n{}", items.join("\n"))
         };
         format!(
@@ -204,4 +224,3 @@ impl NoteFrontmatter {
         atomic_write(note_path, content.as_bytes())
     }
 }
-

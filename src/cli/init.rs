@@ -1,8 +1,8 @@
-use clap::Args;
-use std::path::{Path, PathBuf};
 use crate::error::ElfError;
 use crate::vault::config::VaultConfig;
 use crate::vault::util::append_sync_event;
+use clap::Args;
+use std::path::{Path, PathBuf};
 
 // fix-005: v0.1 전용 CLAUDE.md 내용
 const CLAUDE_MD_V0_1: &str = r#"# Elendirna vault
@@ -108,14 +108,20 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
 
 fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)> {
     vec![
-        (root.join(".elendirna").join("config.toml"),            "vault 설정"),
-        (root.join(".elendirna").join("sync.jsonl"),              "sync 이벤트 로그"),
-        (root.join(".elendirna").join("entries"),                 "entry 디렉터리"),
-        (root.join(".elendirna").join("revisions"),               "revision 디렉터리"),
-        (root.join(".elendirna").join("assets"),                  "asset 디렉터리"),
-        (root.join("CLAUDE.md"),                                  "에이전트 안내"),
-        (root.join("README.md"),                                  "vault README"),
-        (root.join(".gitignore"),                                 ".gitignore"),
+        (root.join(".elendirna").join("config.toml"), "vault 설정"),
+        (
+            root.join(".elendirna").join("sync.jsonl"),
+            "sync 이벤트 로그",
+        ),
+        (root.join(".elendirna").join("entries"), "entry 디렉터리"),
+        (
+            root.join(".elendirna").join("revisions"),
+            "revision 디렉터리",
+        ),
+        (root.join(".elendirna").join("assets"), "asset 디렉터리"),
+        (root.join("CLAUDE.md"), "에이전트 안내"),
+        (root.join("README.md"), "vault README"),
+        (root.join(".gitignore"), ".gitignore"),
     ]
 }
 
@@ -166,7 +172,9 @@ fn git_add_force(root: &Path) {
     // git이 없거나 repo가 아니면 무시
     let _ = std::process::Command::new("git")
         .current_dir(root)
-        .args(["add", "--force",
+        .args([
+            "add",
+            "--force",
             ".elendirna/entries/.gitkeep",
             ".elendirna/revisions/.gitkeep",
             ".elendirna/assets/.gitkeep",
@@ -190,4 +198,3 @@ fn update_gitignore(root: &Path) -> Result<(), ElfError> {
     }
     Ok(())
 }
-

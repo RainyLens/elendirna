@@ -1,0 +1,14 @@
+schema_version = 1
+id = "N0053"
+title = "통찰: AI 토론의 사회자가 된 사람"
+created = "2026-04-24T13:07:11.432615100+09:00"
+updated = "2026-04-24T13:10:44.201481200+09:00"
+tags = [
+    "insight",
+    "agent-protocol",
+    "discussion",
+    "role-inversion",
+]
+links = []
+sources = []
+status = "draft"

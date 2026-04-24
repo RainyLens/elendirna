@@ -1,8 +1,8 @@
+use crate::error::ElfError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::error::ElfError;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
@@ -69,9 +69,15 @@ impl VaultConfig {
 
     /// 글로벌 config 읽기. 없으면 기본값(빈 vaults 맵).
     pub fn read_global() -> VaultConfig {
-        let Some(path) = Self::global_config_path() else { return Self::new("global") };
-        if !path.exists() { return Self::new("global") }
-        let Ok(raw) = std::fs::read_to_string(&path) else { return Self::new("global") };
+        let Some(path) = Self::global_config_path() else {
+            return Self::new("global");
+        };
+        if !path.exists() {
+            return Self::new("global");
+        }
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return Self::new("global");
+        };
         toml::from_str(&raw).unwrap_or_else(|_| Self::new("global"))
     }
 
@@ -81,8 +87,12 @@ impl VaultConfig {
         if alias == "global" || alias == "local" {
             return Ok(()); // 예약어 — 무시
         }
-        let Some(cfg_path) = Self::global_config_path() else { return Ok(()) };
-        let home_dir = cfg_path.parent().and_then(|p| p.parent())
+        let Some(cfg_path) = Self::global_config_path() else {
+            return Ok(());
+        };
+        let home_dir = cfg_path
+            .parent()
+            .and_then(|p| p.parent())
             .map(|p| p.to_path_buf())
             .unwrap_or_default();
 

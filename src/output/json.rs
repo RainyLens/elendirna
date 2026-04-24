@@ -10,12 +10,7 @@ pub fn success(command: &str, data: Value) -> Value {
 }
 
 /// 에러 응답 직렬화 헬퍼 (fix-015: 항상 stderr JSON)
-pub fn error_value(
-    slug: &str,
-    code: &str,
-    message: &str,
-    hint: Option<&str>,
-) -> Value {
+pub fn error_value(slug: &str, code: &str, message: &str, hint: Option<&str>) -> Value {
     serde_json::json!({
         "error":   slug,
         "code":    code,

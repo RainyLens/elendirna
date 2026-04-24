@@ -1,7 +1,7 @@
-/// `elf serve --mcp` — MCP 서버 진입점
-use clap::Args;
 use crate::error::ElfError;
 use crate::vault;
+/// `elf serve --mcp` — MCP 서버 진입점
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct ServeArgs {
@@ -37,7 +37,10 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                             .map_err(|_| ElfError::InvalidInput {
                                 message: "홈 디렉터리를 결정할 수 없습니다".to_string(),
                             })?;
-                        eprintln!("[elf] vault 없음 — 글로벌 vault 자동 생성: {}", home.display());
+                        eprintln!(
+                            "[elf] vault 없음 — 글로벌 vault 자동 생성: {}",
+                            home.display()
+                        );
                         crate::cli::init::run(crate::cli::init::InitArgs {
                             path: home.clone(),
                             dry_run: false,
@@ -55,8 +58,12 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     // v1 vault 자동 이관 (MCP stdio 보호: stderr만 사용)
     crate::cli::migrate::auto_migrate_silent(&vault_root);
 
-    crate::mcp::run_stdio(vault_root)
-        .map_err(|e| ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+    crate::mcp::run_stdio(vault_root).map_err(|e| {
+        ElfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })
 }
 
 /// `elf serve` (--mcp 없이) 호출 시 MCP config snippet을 stdout에 출력.
@@ -71,12 +78,16 @@ fn print_mcp_snippet(vault_path: Option<&std::path::Path>) {
         .map(|p| p.display().to_string())
         .or_else(|| {
             let cwd = std::env::current_dir().ok()?;
-            vault::find_vault_root(&cwd).ok().map(|p| p.display().to_string())
+            vault::find_vault_root(&cwd)
+                .ok()
+                .map(|p| p.display().to_string())
         })
         .unwrap_or_else(|| "/path/to/your/vault".to_string());
 
     println!("# Elendirna MCP 서버 설정 snippet");
-    println!("# Claude Desktop / claude_desktop_config.json 또는 .claude/mcp.json 에 추가하세요:\n");
+    println!(
+        "# Claude Desktop / claude_desktop_config.json 또는 .claude/mcp.json 에 추가하세요:\n"
+    );
     println!("{{");
     println!("  \"mcpServers\": {{");
     println!("    \"elendirna\": {{");

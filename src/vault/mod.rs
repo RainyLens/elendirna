@@ -9,8 +9,8 @@ pub mod util;
 #[cfg(test)]
 mod tests;
 
-use std::path::{Path, PathBuf};
 use crate::error::ElfError;
+use std::path::{Path, PathBuf};
 
 // ─── VaultArgs ────────────────────────────
 
@@ -78,7 +78,7 @@ pub fn parse_vault_alias(link: &str) -> Option<&str> {
 pub fn resolve_vault_alias(alias: &str) -> Option<PathBuf> {
     match alias {
         "global" => home_vault_root().ok(),
-        "local"  => {
+        "local" => {
             let cwd = std::env::current_dir().ok()?;
             find_vault_root(&cwd).ok()
         }

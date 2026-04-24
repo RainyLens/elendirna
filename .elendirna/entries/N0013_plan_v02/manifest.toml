@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0013"
+title = "PLAN_v0.2"
+created = "2026-04-09T15:46:21.798904400Z"
+updated = "2026-04-09T17:14:44.358028400Z"
+tags = []
+links = [
+    "N0011",
+    "N0018",
+    "N0019",
+]
+sources = []
+status = "draft"

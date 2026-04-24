@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0048"
+title = "Development Workflow: Public Upstream and Private Workbench"
+created = "2026-04-23T13:17:26.564901900+09:00"
+updated = "2026-04-23T13:17:40.232179200+09:00"
+tags = [
+    "workflow",
+    "development",
+    "git",
+    "privacy",
+    "release",
+]
+baseline = "N0047"
+links = []
+sources = []
+status = "draft"

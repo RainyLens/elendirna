@@ -1,7 +1,7 @@
-use clap::Args;
 use crate::error::ElfError;
+use crate::vault::ops::{BundleOptions, BundleSince, bundle_with_opts};
 use crate::vault::{self, VaultArgs};
-use crate::vault::ops::{bundle_with_opts, BundleOptions, BundleSince};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct BundleArgs {
@@ -24,44 +24,67 @@ pub struct BundleArgs {
 pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
 
-    let since = args.since.as_deref()
-        .map(|s| BundleSince::parse(s).ok_or_else(|| ElfError::InvalidInput {
-            message: format!("--since 형식 오류: '{s}' (N####@r#### 또는 RFC 3339 timestamp)"),
-        }))
+    let since = args
+        .since
+        .as_deref()
+        .map(|s| {
+            BundleSince::parse(s).ok_or_else(|| ElfError::InvalidInput {
+                message: format!("--since 형식 오류: '{s}' (N####@r#### 또는 RFC 3339 timestamp)"),
+            })
+        })
         .transpose()?;
 
-    let opts = BundleOptions { depth: args.depth, since };
+    let opts = BundleOptions {
+        depth: args.depth,
+        since,
+    };
     let b = bundle_with_opts(&vault_root, &args.id, opts)?;
+    let stats = b.stats();
 
     if args.json {
-        let revs: Vec<_> = b.revisions.iter().map(|r| serde_json::json!({
-            "rev_id":   r.rev_id.to_string(),
-            "baseline": r.baseline.to_string(),
-            "created":  r.created.to_rfc3339(),
-            "delta":    r.delta,
-        })).collect();
+        let revs: Vec<_> = b
+            .revisions
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "rev_id":   r.rev_id.to_string(),
+                    "baseline": r.baseline.to_string(),
+                    "created":  r.created.to_rfc3339(),
+                    "delta":    r.delta,
+                })
+            })
+            .collect();
 
-        let linked: Vec<_> = b.linked.iter().map(|le| {
-            if le.shallow {
-                serde_json::json!({
-                    "id":      le.entry.manifest.id,
-                    "title":   le.entry.manifest.title,
-                    "status":  le.entry.manifest.status.to_string(),
-                    "shallow": true,
-                })
-            } else {
-                serde_json::json!({
-                    "id":    le.entry.manifest.id,
-                    "title": le.entry.manifest.title,
-                    "note":  le.note_body,
-                })
-            }
-        }).collect();
+        let linked: Vec<_> = b
+            .linked
+            .iter()
+            .map(|le| {
+                if le.shallow {
+                    serde_json::json!({
+                        "id":      le.entry.manifest.id,
+                        "title":   le.entry.manifest.title,
+                        "status":  le.entry.manifest.status.to_string(),
+                        "shallow": true,
+                    })
+                } else {
+                    serde_json::json!({
+                        "id":    le.entry.manifest.id,
+                        "title": le.entry.manifest.title,
+                        "note":  le.note_body,
+                    })
+                }
+            })
+            .collect();
 
         let out = serde_json::json!({
             "command": "bundle",
             "ok": true,
             "data": {
+                "context_stats": {
+                    "estimated_bytes": stats.estimated_bytes,
+                    "entry_count": stats.entry_count,
+                    "revision_count": stats.revision_count,
+                },
                 "manifest": {
                     "id":       b.entry.manifest.id,
                     "title":    b.entry.manifest.title,
@@ -82,6 +105,10 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         let m = &b.entry.manifest;
 
         println!("=== BUNDLE: {} ===", m.id);
+        println!(
+            "context: ~{} bytes, {} entries, {} revisions",
+            stats.estimated_bytes, stats.entry_count, stats.revision_count,
+        );
 
         println!("\n--- manifest ---");
         println!("id:       {}", m.id);
@@ -106,7 +133,11 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             println!("\n--- revisions ---");
             for r in &b.revisions {
                 println!("\n[{}@{}]", m.id, r.rev_id);
-                println!("baseline: {}  created: {}", r.baseline, r.created.format("%Y-%m-%d %H:%M"));
+                println!(
+                    "baseline: {}  created: {}",
+                    r.baseline,
+                    r.created.format("%Y-%m-%d %H:%M")
+                );
                 println!("{}", r.delta.trim());
             }
         }
@@ -117,12 +148,22 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 let lm = &le.entry.manifest;
                 if le.shallow {
                     println!("\n[{}] {} (shallow)", lm.id, lm.title);
-                    println!("status: {}  created: {}", lm.status, lm.created.format("%Y-%m-%d"));
+                    println!(
+                        "status: {}  created: {}",
+                        lm.status,
+                        lm.created.format("%Y-%m-%d")
+                    );
                 } else {
                     println!("\n[{}] {}", lm.id, lm.title);
-                    println!("status: {}  created: {}", lm.status, lm.created.format("%Y-%m-%d"));
+                    println!(
+                        "status: {}  created: {}",
+                        lm.status,
+                        lm.created.format("%Y-%m-%d")
+                    );
                     // note 첫 단락만 (최대 3줄)
-                    let preview: String = le.note_body.trim()
+                    let preview: String = le
+                        .note_body
+                        .trim()
                         .lines()
                         .filter(|l| !l.starts_with('#'))
                         .take(3)

@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0054"
+title = "Agent-Discussion Protocol v1.0 설계 초안"
+created = "2026-04-24T13:18:18.201640500+09:00"
+updated = "2026-04-24T13:18:52.822595200+09:00"
+tags = [
+    "agent-protocol",
+    "discussion",
+    "multi-agent",
+    "design",
+    "proposal",
+]
+baseline = "N0053"
+links = []
+sources = []
+status = "draft"

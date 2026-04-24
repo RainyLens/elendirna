@@ -2,16 +2,15 @@
 ///
 /// `elf` 바이너리를 assert_cmd로 호출하지 않고, 라이브러리 함수를 직접 호출합니다.
 /// (바이너리 빌드 없이도 `cargo test`로 실행 가능)
-
 use elendirna::cli::entry::{NewArgs, ShowArgs, run_new, run_show};
 use elendirna::cli::init::{InitArgs, run as init_run};
 use elendirna::cli::link::{LinkArgs, run as link_run};
 use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
 use elendirna::schema::manifest::Manifest;
 use elendirna::schema::validate::run_all;
+use elendirna::vault::VaultArgs;
 use elendirna::vault::entry::Entry;
 use elendirna::vault::id::EntryId;
-use elendirna::vault::VaultArgs;
 
 use tempfile::TempDir;
 
@@ -25,7 +24,8 @@ fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
         dry_run: false,
         name: Some("test-vault".to_string()),
         global: false,
-    }).unwrap();
+    })
+    .unwrap();
     (dir, guard)
 }
 
@@ -35,13 +35,17 @@ fn cd(dir: &TempDir) {
 
 fn new_entry(dir: &TempDir, title: &str) -> String {
     cd(dir);
-    run_new(NewArgs {
-        title: title.to_string(),
-        baseline: None,
-        tags: vec![],
-        dry_run: false,
-        json: false,
-    }, VaultArgs::default()).unwrap();
+    run_new(
+        NewArgs {
+            title: title.to_string(),
+            baseline: None,
+            tags: vec![],
+            dry_run: false,
+            json: false,
+        },
+        VaultArgs::default(),
+    )
+    .unwrap();
     // 방금 생성된 entry ID 반환
     let entries = Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
@@ -49,13 +53,17 @@ fn new_entry(dir: &TempDir, title: &str) -> String {
 
 fn new_entry_with_baseline(dir: &TempDir, title: &str, baseline: &str) -> String {
     cd(dir);
-    run_new(NewArgs {
-        title: title.to_string(),
-        baseline: Some(baseline.to_string()),
-        tags: vec![],
-        dry_run: false,
-        json: false,
-    }, VaultArgs::default()).unwrap();
+    run_new(
+        NewArgs {
+            title: title.to_string(),
+            baseline: Some(baseline.to_string()),
+            tags: vec![],
+            dry_run: false,
+            json: false,
+        },
+        VaultArgs::default(),
+    )
+    .unwrap();
     let entries = Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
@@ -69,17 +77,22 @@ fn add_revision(dir: &TempDir, entry_id: &str, delta: &str) {
             dry_run: false,
             json: false,
         }),
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn link(dir: &TempDir, from: &str, to: &str) {
     cd(dir);
-    link_run(LinkArgs {
-        from: from.to_string(),
-        to: to.to_string(),
-        dry_run: false,
-        json: false,
-    }, VaultArgs::default()).unwrap();
+    link_run(
+        LinkArgs {
+            from: from.to_string(),
+            to: to.to_string(),
+            dry_run: false,
+            json: false,
+        },
+        VaultArgs::default(),
+    )
+    .unwrap();
 }
 
 // ─────────────────────────────────────────
@@ -100,7 +113,11 @@ fn scenario_3day_workflow() {
     assert_eq!(entries[0].manifest.title, "벡터 검색이 지식 검색의 답이다");
 
     // Day 2: revision 추가
-    add_revision(&dir, "N0001", "가정 수정: 벡터 검색만으로는 컨텍스트 손실이 발생한다.");
+    add_revision(
+        &dir,
+        "N0001",
+        "가정 수정: 벡터 검색만으로는 컨텍스트 손실이 발생한다.",
+    );
 
     // revision 파일 확인
     let rev_dir = dir.path().join(".elendirna/revisions/N0001");
@@ -129,9 +146,13 @@ fn scenario_3day_workflow() {
 
     // validate → 0 errors
     let result = run_all(dir.path()).unwrap();
-    assert_eq!(result.error_count(), 0,
+    assert_eq!(
+        result.error_count(),
+        0,
         "validate errors: {:?}",
-        result.issues.iter()
+        result
+            .issues
+            .iter()
             .filter(|i| i.severity == elendirna::schema::validate::Severity::Error)
             .map(|i| &i.message)
             .collect::<Vec<_>>()
@@ -150,10 +171,14 @@ fn criterion_entry_show_json_parseable() {
 
     // show --json이 파싱 가능한 JSON을 반환하는지
     // (stdout 캡처 대신 run_show가 오류 없이 실행되는지 확인)
-    run_show(ShowArgs {
-        id: "N0001".to_string(),
-        json: true,
-    }, VaultArgs::default()).unwrap();
+    run_show(
+        ShowArgs {
+            id: "N0001".to_string(),
+            json: true,
+        },
+        VaultArgs::default(),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -183,8 +208,8 @@ fn criterion_sync_jsonl_records_events() {
 
     // 모든 줄이 유효한 JSON인지
     for line in &lines {
-        let v: serde_json::Value = serde_json::from_str(line)
-            .unwrap_or_else(|_| panic!("Invalid JSON line: {line}"));
+        let v: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|_| panic!("Invalid JSON line: {line}"));
         assert!(v.get("ts").is_some());
         assert!(v.get("agent").is_some());
         assert!(v.get("action").is_some());
@@ -197,13 +222,16 @@ fn criterion_idempotent_entry_new() {
     new_entry(&dir, "Idempotent Test");
     // 동일 title 재호출 → AlreadyExists Err (exit code 3)
     cd(&dir);
-    let result = run_new(NewArgs {
-        title: "Idempotent Test".to_string(),
-        baseline: None,
-        tags: vec![],
-        dry_run: false,
-        json: false,
-    }, VaultArgs::default());
+    let result = run_new(
+        NewArgs {
+            title: "Idempotent Test".to_string(),
+            baseline: None,
+            tags: vec![],
+            dry_run: false,
+            json: false,
+        },
+        VaultArgs::default(),
+    );
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.exit_code(), 3);

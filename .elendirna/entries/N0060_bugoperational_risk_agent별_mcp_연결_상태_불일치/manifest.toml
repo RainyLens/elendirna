@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0060"
+title = "Bug/Operational Risk: agent별 MCP 연결 상태 불일치와 CLI fallback 필요"
+created = "2026-04-24T18:34:21.350289300+09:00"
+updated = "2026-04-24T18:34:40.462974400+09:00"
+tags = [
+    "bug",
+    "mcp",
+    "dogfood",
+    "handoff",
+    "cli-fallback",
+]
+baseline = "N0059"
+links = []
+sources = []
+status = "draft"

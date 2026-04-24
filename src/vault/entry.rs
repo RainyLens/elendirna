@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
 use crate::error::ElfError;
 use crate::schema::manifest::{Manifest, NoteFrontmatter};
 use crate::vault::id::{EntryId, title_to_slug};
 use crate::vault::util::append_sync_event;
+use std::path::{Path, PathBuf};
 
 pub struct Entry {
     pub dir: PathBuf,
@@ -18,11 +18,16 @@ impl Entry {
     pub fn find_all(vault_root: &Path) -> Vec<Entry> {
         let entries_dir = Self::entries_dir(vault_root);
         let mut result = vec![];
-        let Ok(rd) = std::fs::read_dir(&entries_dir) else { return result };
+        let Ok(rd) = std::fs::read_dir(&entries_dir) else {
+            return result;
+        };
         for e in rd.flatten() {
             if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 if let Ok(m) = Manifest::read(&e.path()) {
-                    result.push(Entry { dir: e.path(), manifest: m });
+                    result.push(Entry {
+                        dir: e.path(),
+                        manifest: m,
+                    });
                 }
             }
         }
@@ -39,7 +44,10 @@ impl Entry {
             let name = e.file_name().to_string_lossy().to_string();
             if name.starts_with(&id_str) && e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 if let Ok(m) = Manifest::read(&e.path()) {
-                    return Some(Entry { dir: e.path(), manifest: m });
+                    return Some(Entry {
+                        dir: e.path(),
+                        manifest: m,
+                    });
                 }
             }
         }
@@ -58,7 +66,10 @@ impl Entry {
             if let Some((_id_part, dir_slug)) = name.split_once('_') {
                 if dir_slug == slug {
                     if let Ok(m) = Manifest::read(&e.path()) {
-                        return Some(Entry { dir: e.path(), manifest: m });
+                        return Some(Entry {
+                            dir: e.path(),
+                            manifest: m,
+                        });
                     }
                 }
             }
@@ -108,7 +119,10 @@ impl Entry {
         // sync.jsonl (fix-013)
         append_sync_event(vault_root, "entry.new", Some(&id.to_string()))?;
 
-        Ok(Entry { dir: entry_dir, manifest })
+        Ok(Entry {
+            dir: entry_dir,
+            manifest,
+        })
     }
 
     pub fn note_path(&self) -> PathBuf {

@@ -1,6 +1,6 @@
+use crate::error::ElfError;
 /// `elf guide --json` — AI-readable 커맨드 표면 출력
 use clap::Args;
-use crate::error::ElfError;
 
 #[derive(Debug, Args)]
 pub struct HelpArgs {

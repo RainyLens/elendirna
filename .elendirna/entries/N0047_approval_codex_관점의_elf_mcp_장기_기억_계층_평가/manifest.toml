@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0047"
+title = "Approval: Codex 관점의 elf MCP 장기 기억 계층 평가"
+created = "2026-04-23T09:36:51.319026700+09:00"
+updated = "2026-04-24T13:02:10.479262200+09:00"
+tags = [
+    "approval",
+    "mcp",
+    "ai-memory",
+    "dogfood",
+    "workflow",
+]
+baseline = "N0034"
+links = []
+sources = []
+status = "draft"

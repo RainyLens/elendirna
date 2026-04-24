@@ -1,8 +1,8 @@
-use clap::Args;
 use crate::error::ElfError;
-use crate::vault::{self, id::EntryId, VaultArgs};
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
+use crate::vault::{self, VaultArgs, id::EntryId};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct RevisionArgs {
@@ -41,7 +41,7 @@ pub struct AddArgs {
 /// 테스트 호환용 compat dispatch (VaultArgs::default = cwd 탐색)
 pub fn run(args: RevisionArgs) -> Result<(), ElfError> {
     match args.command {
-        RevisionCommand::Add(a)  => run_add(a, VaultArgs::default()),
+        RevisionCommand::Add(a) => run_add(a, VaultArgs::default()),
         RevisionCommand::List(a) => run_list(a, VaultArgs::default()),
     }
 }
@@ -53,8 +53,10 @@ pub fn run_add(args: AddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let entry_id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
         message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
     })?;
-    let mut entry = Entry::find_by_id(&vault_root, &entry_id)
-        .ok_or_else(|| ElfError::NotFound { id: args.id.clone() })?;
+    let mut entry =
+        Entry::find_by_id(&vault_root, &entry_id).ok_or_else(|| ElfError::NotFound {
+            id: args.id.clone(),
+        })?;
 
     // delta 수집: --delta 플래그 → stdin (Q2)
     let delta = match args.delta {
@@ -89,7 +91,11 @@ pub fn run_add(args: AddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
 
     // manifest updated 갱신 (Q3: revision.add)
     entry.manifest.touch_and_write(&entry.dir)?;
-    crate::vault::util::append_sync_event(&vault_root, "revision.add", Some(&entry_id.to_string()))?;
+    crate::vault::util::append_sync_event(
+        &vault_root,
+        "revision.add",
+        Some(&entry_id.to_string()),
+    )?;
 
     if args.json {
         let out = serde_json::json!({
@@ -129,25 +135,40 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let revisions = crate::vault::ops::revision_list(&vault_root, &args.id)?;
 
     if args.json {
-        let out: Vec<_> = revisions.iter().map(|r| serde_json::json!({
-            "entry_id": r.entry_id.to_string(),
-            "rev_id":   r.rev_id.to_string(),
-            "baseline": r.baseline.to_string(),
-            "created":  r.created.to_rfc3339(),
-            "delta":    r.delta,
-        })).collect();
+        let out: Vec<_> = revisions
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "entry_id": r.entry_id.to_string(),
+                    "rev_id":   r.rev_id.to_string(),
+                    "baseline": r.baseline.to_string(),
+                    "created":  r.created.to_rfc3339(),
+                    "delta":    r.delta,
+                })
+            })
+            .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
         if revisions.is_empty() {
             println!("(revision 없음)");
         } else {
             for r in &revisions {
-                println!("{}  baseline: {}  {}",
+                println!(
+                    "{}  baseline: {}  {}",
                     r.rev_id,
                     r.baseline,
                     r.created.format("%Y-%m-%d %H:%M"),
                 );
-                println!("  {}", r.delta.lines().next().unwrap_or("").chars().take(72).collect::<String>());
+                println!(
+                    "  {}",
+                    r.delta
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(72)
+                        .collect::<String>()
+                );
             }
         }
     }

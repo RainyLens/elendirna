@@ -1,8 +1,8 @@
+use crate::error::ElfError;
+use crate::vault::ops;
+use crate::vault::{self, VaultArgs};
 /// `elf sync record` / `elf sync log` — AI 세션 핸드오프 로그 관리 (Phase 7)
 use clap::{Args, Subcommand};
-use crate::error::ElfError;
-use crate::vault::{self, VaultArgs};
-use crate::vault::ops;
 
 #[derive(Debug, Args)]
 pub struct SyncArgs {
@@ -57,7 +57,7 @@ pub struct LogArgs {
 pub fn run(args: SyncArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     match args.command {
         SyncCommand::Record(a) => run_record(a, vault_args),
-        SyncCommand::Log(a)    => run_log(a, vault_args),
+        SyncCommand::Log(a) => run_log(a, vault_args),
     }
 }
 
@@ -82,11 +82,14 @@ pub fn run_log(args: LogArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
     let events = ops::sync_log(&vault_root, Some(args.tail), args.agent.as_deref())?;
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&events).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&events).unwrap_or_default()
+        );
         return Ok(());
     }
     for event in &events {
-        let ts    = event.get("ts").and_then(|v| v.as_str()).unwrap_or("");
+        let ts = event.get("ts").and_then(|v| v.as_str()).unwrap_or("");
         let agent = event.get("agent").and_then(|v| v.as_str()).unwrap_or("");
         if let Some(summary) = event.get("summary").and_then(|v| v.as_str()) {
             println!("[{ts}] ({agent}) {summary}");

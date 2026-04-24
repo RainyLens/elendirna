@@ -1,6 +1,6 @@
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use regex::Regex;
 
 use crate::error::ElfError;
 use crate::schema::manifest::NoteFrontmatter;
@@ -40,8 +40,15 @@ pub struct Issue {
 
 #[derive(Debug, Clone)]
 pub enum AutoFix {
-    RenameFile { from: PathBuf, to: PathBuf },
-    UpdateFrontmatter { path: PathBuf, field: String, value: String },
+    RenameFile {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    UpdateFrontmatter {
+        path: PathBuf,
+        field: String,
+        value: String,
+    },
 }
 
 // ─────────────────────────────────────────
@@ -54,11 +61,17 @@ pub struct ValidateResult {
 
 impl ValidateResult {
     pub fn error_count(&self) -> usize {
-        self.issues.iter().filter(|i| i.severity == Severity::Error).count()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == Severity::Error)
+            .count()
     }
 
     pub fn warning_count(&self) -> usize {
-        self.issues.iter().filter(|i| i.severity == Severity::Warning).count()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == Severity::Warning)
+            .count()
     }
 }
 
@@ -128,17 +141,23 @@ fn check_naming(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
     // revision 파일명 검사
     for entry in entries {
         let rev_dir = Revision::rev_dir(vault_root, &entry_id_from_manifest(entry));
-        if !rev_dir.exists() { continue; }
+        if !rev_dir.exists() {
+            continue;
+        }
         if let Ok(rd) = std::fs::read_dir(&rev_dir) {
             for e in rd.flatten() {
                 let name = e.file_name().to_string_lossy().to_string();
-                if name == ".gitkeep" { continue; }
+                if name == ".gitkeep" {
+                    continue;
+                }
                 if !rev_file_re.is_match(&name) {
                     issues.push(Issue {
                         severity: Severity::Error,
                         kind: IssueKind::Naming,
                         path: e.path(),
-                        message: format!("revision 파일명 형식 위반: '{name}' (r####.md 형식 필요)"),
+                        message: format!(
+                            "revision 파일명 형식 위반: '{name}' (r####.md 형식 필요)"
+                        ),
                         fix: None,
                     });
                 }
@@ -198,16 +217,28 @@ fn check_schema(entries: &[Entry], issues: &mut Vec<Issue>) {
 fn check_consistency(entries: &[Entry], issues: &mut Vec<Issue>) {
     for entry in entries {
         let note_path = entry.note_path();
-        if !note_path.exists() { continue; }
-        let Ok((fm, _)) = NoteFrontmatter::read(&note_path) else { continue };
+        if !note_path.exists() {
+            continue;
+        }
+        let Ok((fm, _)) = NoteFrontmatter::read(&note_path) else {
+            continue;
+        };
 
         let m = &entry.manifest;
         let fields = [
-            ("id",       fm.id == m.id,              fm.id.clone(),                         m.id.clone()),
-            ("title",    fm.title == m.title,         fm.title.clone(),                      m.title.clone()),
-            ("baseline", fm.baseline == m.baseline,
+            ("id", fm.id == m.id, fm.id.clone(), m.id.clone()),
+            (
+                "title",
+                fm.title == m.title,
+                fm.title.clone(),
+                m.title.clone(),
+            ),
+            (
+                "baseline",
+                fm.baseline == m.baseline,
                 fm.baseline.as_deref().unwrap_or("null").to_string(),
-                m.baseline.as_deref().unwrap_or("null").to_string()),
+                m.baseline.as_deref().unwrap_or("null").to_string(),
+            ),
         ];
 
         for (field, matches, fm_val, manifest_val) in fields {
@@ -340,7 +371,9 @@ fn check_dangling(
                                     severity: Severity::Warning,
                                     kind: IssueKind::Dangling,
                                     path: e.path(),
-                                    message: format!("dangling inline ref: '→ see {ref_id}'가 존재하지 않음"),
+                                    message: format!(
+                                        "dangling inline ref: '→ see {ref_id}'가 존재하지 않음"
+                                    ),
                                     fix: None,
                                 });
                             }
@@ -364,7 +397,9 @@ fn check_cycle(entries: &[Entry], issues: &mut Vec<Issue>) {
         .filter_map(|e| {
             e.manifest.baseline.as_ref().and_then(|b| {
                 // @r0000는 가상 기준점 — 사이클 없음
-                if EntryRevRef::is_virtual_baseline(b) { return None; }
+                if EntryRevRef::is_virtual_baseline(b) {
+                    return None;
+                }
                 let entry_part = b.split('@').next()?.to_string();
                 Some((e.manifest.id.clone(), entry_part))
             })
@@ -414,10 +449,14 @@ fn check_orphan(
     issues: &mut Vec<Issue>,
 ) -> Result<(), ElfError> {
     let rev_root = crate::vault::data_root(vault_root).join("revisions");
-    if !rev_root.exists() { return Ok(()); }
+    if !rev_root.exists() {
+        return Ok(());
+    }
 
     for e in std::fs::read_dir(&rev_root)?.flatten() {
-        if !e.file_type()?.is_dir() { continue; }
+        if !e.file_type()?.is_dir() {
+            continue;
+        }
         let name = e.file_name().to_string_lossy().to_string();
         if !entry_ids.contains(&name) {
             issues.push(Issue {
@@ -439,7 +478,9 @@ fn check_orphan(
 
 fn check_asset(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
     let assets_dir = crate::vault::data_root(vault_root).join("assets");
-    if !assets_dir.exists() { return; }
+    if !assets_dir.exists() {
+        return;
+    }
 
     // manifest에 등록된 sources 수집
     let registered: HashSet<String> = entries
@@ -451,7 +492,9 @@ fn check_asset(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
     if let Ok(rd) = std::fs::read_dir(&assets_dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name == ".gitkeep" { continue; }
+            if name == ".gitkeep" {
+                continue;
+            }
             if !registered.contains(&name) {
                 issues.push(Issue {
                     severity: Severity::Warning,
@@ -481,10 +524,16 @@ pub fn apply_fixes(issues: &[Issue]) -> Result<usize, ElfError> {
             AutoFix::UpdateFrontmatter { path, field, value } => {
                 if let Ok((mut fm, body)) = NoteFrontmatter::read(path) {
                     match field.as_str() {
-                        "id"       => fm.id = value.clone(),
-                        "title"    => fm.title = value.clone(),
-                        "baseline" => fm.baseline = if value == "null" { None } else { Some(value.clone()) },
-                        "tags"     => {
+                        "id" => fm.id = value.clone(),
+                        "title" => fm.title = value.clone(),
+                        "baseline" => {
+                            fm.baseline = if value == "null" {
+                                None
+                            } else {
+                                Some(value.clone())
+                            }
+                        }
+                        "tags" => {
                             fm.tags = serde_json::from_str(value).unwrap_or_default();
                         }
                         _ => {}
@@ -503,7 +552,5 @@ pub fn apply_fixes(issues: &[Issue]) -> Result<usize, ElfError> {
 // ─────────────────────────────────────────
 
 fn entry_id_from_manifest(entry: &Entry) -> EntryId {
-    EntryId::from_str(&entry.manifest.id)
-        .unwrap_or_else(|| EntryId::new(0))
+    EntryId::from_str(&entry.manifest.id).unwrap_or_else(|| EntryId::new(0))
 }
-

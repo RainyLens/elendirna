@@ -1,7 +1,7 @@
-use clap::Args;
 use crate::error::ElfError;
 use crate::schema::validate::{self, IssueKind, Severity};
 use crate::vault::{self, VaultArgs};
+use clap::Args;
 
 #[derive(Debug, Args)]
 pub struct ValidateArgs {
@@ -59,34 +59,41 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             })
         }).collect();
 
-        println!("{}", serde_json::json!({
-            "command": "validate",
-            "ok": errors == 0,
-            "data": {
-                "errors": errors,
-                "warnings": warnings,
-                "issues": issues_json,
-            }
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "validate",
+                "ok": errors == 0,
+                "data": {
+                    "errors": errors,
+                    "warnings": warnings,
+                    "issues": issues_json,
+                }
+            })
+        );
     } else {
         if result.issues.is_empty() {
             println!("✓ All checks passed");
         } else {
             for issue in &result.issues {
                 let prefix = match issue.severity {
-                    Severity::Error   => "ERROR  ",
+                    Severity::Error => "ERROR  ",
                     Severity::Warning => "WARN   ",
                 };
                 let kind = match issue.kind {
-                    IssueKind::Naming      => "naming",
-                    IssueKind::Schema      => "schema",
+                    IssueKind::Naming => "naming",
+                    IssueKind::Schema => "schema",
                     IssueKind::Consistency => "consistency",
-                    IssueKind::Dangling    => "dangling",
-                    IssueKind::Cycle       => "cycle",
-                    IssueKind::Orphan      => "orphan",
-                    IssueKind::Asset       => "asset",
+                    IssueKind::Dangling => "dangling",
+                    IssueKind::Cycle => "cycle",
+                    IssueKind::Orphan => "orphan",
+                    IssueKind::Asset => "asset",
                 };
-                let fixable = if issue.fix.is_some() { " [--fix로 자동 수정 가능]" } else { "" };
+                let fixable = if issue.fix.is_some() {
+                    " [--fix로 자동 수정 가능]"
+                } else {
+                    ""
+                };
                 println!("{prefix}[{kind}] {}{fixable}", issue.message);
             }
             println!();

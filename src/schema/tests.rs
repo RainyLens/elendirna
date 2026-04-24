@@ -38,10 +38,10 @@ mod manifest {
 
 // ─── schema::validate ────────────────────
 mod validate {
-    use crate::cli::init::{InitArgs, run as init_run};
     use crate::cli::entry::{NewArgs, run_new};
+    use crate::cli::init::{InitArgs, run as init_run};
     use crate::schema::manifest::Manifest;
-    use crate::schema::validate::{run_all, IssueKind};
+    use crate::schema::validate::{IssueKind, run_all};
     use crate::vault::VaultArgs;
     use tempfile::TempDir;
 
@@ -60,13 +60,16 @@ mod validate {
 
     fn new_entry(dir: &TempDir, title: &str) {
         std::env::set_current_dir(dir.path()).unwrap();
-        run_new(NewArgs {
-            title: title.to_string(),
-            baseline: None,
-            tags: vec![],
-            dry_run: false,
-            json: false,
-        }, VaultArgs::default())
+        run_new(
+            NewArgs {
+                title: title.to_string(),
+                baseline: None,
+                tags: vec![],
+                dry_run: false,
+                json: false,
+            },
+            VaultArgs::default(),
+        )
         .unwrap();
     }
 
@@ -93,7 +96,11 @@ mod validate {
         m.write(&entry_dir).unwrap();
 
         let result = run_all(dir.path()).unwrap();
-        let dangling = result.issues.iter().filter(|i| i.kind == IssueKind::Dangling).count();
+        let dangling = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Dangling)
+            .count();
         assert!(dangling > 0);
     }
 
@@ -113,7 +120,11 @@ mod validate {
         m2.write(&e2_dir).unwrap();
 
         let result = run_all(dir.path()).unwrap();
-        let cycles = result.issues.iter().filter(|i| i.kind == IssueKind::Cycle).count();
+        let cycles = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Cycle)
+            .count();
         assert!(cycles > 0);
     }
 
@@ -124,7 +135,11 @@ mod validate {
         std::fs::create_dir_all(dir.path().join(".elendirna/revisions/N0099")).unwrap();
 
         let result = run_all(dir.path()).unwrap();
-        let orphans = result.issues.iter().filter(|i| i.kind == IssueKind::Orphan).count();
+        let orphans = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Orphan)
+            .count();
         assert!(orphans > 0);
     }
 }

@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0028"
+title = "sync.jsonl 비대화 분석 및 Thin Link 전략 제안"
+created = "2026-04-13T08:44:25.414841Z"
+updated = "2026-04-24T11:11:54.614576300+09:00"
+tags = [
+    "design-pattern",
+    "ai-behavior",
+    "optimization",
+]
+links = []
+sources = []
+status = "draft"

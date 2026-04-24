@@ -1,0 +1,313 @@
+{"action":"vault.init","agent":"human","ts":"2026-04-09T15:37:44.471442700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0001","ts":"2026-04-09T15:38:13.586585600+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"루트 디렉터리(.)로 Vault 재생성 및 N0001 정리 이관","ts":"2026-04-09T15:38:28.441511700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0002","ts":"2026-04-09T15:42:12.810569600+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"vault 마이그레이션(export/merge) 편의성 향상 기능에 대한 아이디어 노드를 N0002로 추가","ts":"2026-04-09T15:43:08.183158200+00:00"}
+{"action":"entry.new","agent":"human","id":"N0003","ts":"2026-04-09T15:46:20.213289800+00:00"}
+{"action":"entry.new","agent":"human","id":"N0004","ts":"2026-04-09T15:46:20.380985600+00:00"}
+{"action":"entry.new","agent":"human","id":"N0005","ts":"2026-04-09T15:46:20.543690900+00:00"}
+{"action":"entry.new","agent":"human","id":"N0006","ts":"2026-04-09T15:46:20.702854100+00:00"}
+{"action":"entry.new","agent":"human","id":"N0007","ts":"2026-04-09T15:46:20.857322200+00:00"}
+{"action":"entry.new","agent":"human","id":"N0008","ts":"2026-04-09T15:46:21.010706600+00:00"}
+{"action":"entry.new","agent":"human","id":"N0009","ts":"2026-04-09T15:46:21.167269+00:00"}
+{"action":"entry.new","agent":"human","id":"N0010","ts":"2026-04-09T15:46:21.323601900+00:00"}
+{"action":"entry.new","agent":"human","id":"N0011","ts":"2026-04-09T15:46:21.483630400+00:00"}
+{"action":"entry.new","agent":"human","id":"N0012","ts":"2026-04-09T15:46:21.646236100+00:00"}
+{"action":"entry.new","agent":"human","id":"N0013","ts":"2026-04-09T15:46:21.799774800+00:00"}
+{"action":"entry.new","agent":"human","id":"N0014","ts":"2026-04-09T15:46:21.957246700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0015","ts":"2026-04-09T15:46:22.112874800+00:00"}
+{"action":"entry.new","agent":"human","id":"N0016","ts":"2026-04-09T15:46:22.269198500+00:00"}
+{"action":"entry.new","agent":"human","id":"N0017","ts":"2026-04-09T15:46:22.424298500+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"옵션 1(Dogfooding) 적용: milestones 폴더 내 설계 문서를 공식 루트 Vault의 Entry로 모두 이관 완료","ts":"2026-04-09T15:46:22.611890+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"milestones 이하 문서들을 모두 root vault에 매핑 및 내용 삽입 성공","ts":"2026-04-09T15:47:33.125080800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0011","ts":"2026-04-09T15:50:56.254957400+00:00"}
+{"action":"link.N0011.N0013","agent":"human","ts":"2026-04-09T15:52:37.734828500+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"N0011(PLAN v0.1)과 N0013(PLAN v0.2)의 연관 관계를 link로 연결","ts":"2026-04-09T15:52:49.989082300+00:00"}
+{"action":"entry.new","agent":"human","id":"N0018","ts":"2026-04-09T16:19:03.735706400+00:00"}
+{"action":"link.N0018.N0004","agent":"human","ts":"2026-04-09T16:21:03.724077200+00:00"}
+{"action":"link.N0018.N0013","agent":"human","ts":"2026-04-09T16:21:03.884941800+00:00"}
+{"action":"link.N0018.N0002","agent":"human","ts":"2026-04-09T16:21:04.040056200+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"v0.3 논의 사항 정리: 버그픽스, 기능제안(export/merge, init --local-only, MCP auto-inject, SSE), 설계결정(ADR→Entry 흡수, dogfooding) 통합 기록","ts":"2026-04-09T16:21:04.205495600+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:26:47.908336700+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"N0018에 설계 결정 3-C 추가: CLAUDE.md를 MCP 프로토콜 계층으로 대체하는 3단계 전략 (도구 설명 트리거, server.description, elf help --json)","ts":"2026-04-09T16:27:45.579795200+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:30:03.685093800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:34:42.754685900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:35:35.442657800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:37:00.452605200+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T16:56:13.067536500+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"DESIGN.md에 이번 세션 합의 3건 반영: (1) §3.5 MCP 도구 설명 규칙 신설 (2) §5 ADR→Entry 흡수 반영 (3) milestones 참조를 vault entry 참조로 변경","ts":"2026-04-09T16:58:47.377966+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T17:10:57.241110800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-09T17:13:13.540837500+00:00"}
+{"action":"entry.new","agent":"human","id":"N0019","ts":"2026-04-09T17:14:34.599870100+00:00"}
+{"action":"link.N0019.N0018","agent":"human","ts":"2026-04-09T17:14:44.204628500+00:00"}
+{"action":"link.N0019.N0013","agent":"human","ts":"2026-04-09T17:14:44.358467900+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"N0019 (PLAN v0.3) 작성 완료. 4개 Phase, 7개 항목, 4개 성공 기준. N0018(논의), N0013(v0.2 계획)과 링크 연결.","ts":"2026-04-09T17:15:38.376763500+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"demo_vault를 tests/fixtures/demo_vault로 이동. 루트 vault가 실전 데모 역할을 대체하므로 demo_vault는 테스트 전용으로 격하.","ts":"2026-04-09T17:23:10.840708500+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"thiserror 1 → 2 업그레이드 완료. 63개 테스트 전통과. fix-002 재결정.","ts":"2026-04-09T22:14:50.768710500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0001","ts":"2026-04-10T06:45:23.468286900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-10T06:45:47.366693700+00:00"}
+{"agent":"human","entries":["N0001","N0018","N0019"],"event":"sync.record","session_id":null,"summary":"세션 아이디어 3건 Vault 등록 완료: N0001(r0001, 탄생 배경/산만함 anchor), N0018(r0009, IDEA-A vault 파라미터 / IDEA-B elf sessions / IDEA-C ~/.elendirna 글로벌 Vault). MCP 연결 점검 완료(cwd 방식). v0.2→main 병합, docs 브랜치 분리, demo_vault 정리도 이 세션에서 수행.","ts":"2026-04-10T06:45:56.853105300+00:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0018","N0019","N0004"],"event":"sync.record","session_id":null,"summary":"v0.3 구현 완료: compact layout(schema v2), elf migrate, global vault fallback, 버전 0.3.0 격상. 기존 v0.3 계획(N0019)은 v0.4로 이동. N0019 r0001에 인수인계 작성.","ts":"2026-04-13T00:39:25.096015400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0004","ts":"2026-04-13T00:50:31.933030300+00:00"}
+{"action":"entry.new","agent":"human","id":"N0020","ts":"2026-04-13T02:44:42.747305800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0020","ts":"2026-04-13T02:44:52.321049500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0017","ts":"2026-04-13T02:46:10.223310+00:00"}
+{"action":"link.N0017.N0020","agent":"human","ts":"2026-04-13T02:46:44.066096100+00:00"}
+{"action":"entry.new","agent":"human","id":"N0021","ts":"2026-04-13T04:44:29.641944400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-13T04:44:36.430481+00:00"}
+{"action":"revision.add","agent":"human","id":"N0017","ts":"2026-04-13T04:44:39.684814400+00:00"}
+{"action":"link.N0017.N0021","agent":"human","ts":"2026-04-13T04:44:47.551367800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-13T04:49:42.830159900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-13T05:03:08.785808+00:00"}
+{"agent":"human","entries":["N0018"],"event":"sync.record","session_id":null,"summary":"'Savepoint' 논의 마무리 및 도구 기반 탐색 효율성 지표(17 calls, 100% success)를 N0018 리비전으로 기록. 'New Entry + baseline' 방식을 표준 savepoint 워크플로로 확정.","ts":"2026-04-13T05:03:08.823311400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-13T05:05:46.043083100+00:00"}
+{"agent":"human","entries":["N0018"],"event":"sync.record","session_id":null,"summary":"퍼포먼스 개선을 위한 '도서관 전략'(Turn Reduction, Indexing, Checkpoint) 논의. 2분 35초(17 calls)의 소요 시간을 단축하기 위한 v0.3~v0.4 아키텍처 방향성을 N0018 r0012에 기록함. '사람과 AI의 공유 기억'으로서의 정체성 재확인.","ts":"2026-04-13T05:05:46.075030200+00:00"}
+{"action":"entry.new","agent":"human","id":"N0022","ts":"2026-04-13T05:18:11.406110200+00:00"}
+{"action":"revision.add","agent":"human","id":"N0022","ts":"2026-04-13T05:18:21.023967700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0023","ts":"2026-04-13T05:25:02.894401300+00:00"}
+{"action":"revision.add","agent":"human","id":"N0023","ts":"2026-04-13T05:25:09.963910700+00:00"}
+{"agent":"human","entries":["N0022","N0023","N0017"],"event":"sync.record","session_id":null,"summary":"다중 사용자(협업) 및 봇 참여 시나리오(N0022) 도출 및 관련 기술 제안(N0023, Proposal 005) 등록. 작성자(Author) 식별자 도입 및 봇의 퍼실리테이터 역할 정의.","ts":"2026-04-13T05:25:15.831124800+00:00"}
+{"action":"entry.new","agent":"human","id":"N0024","ts":"2026-04-13T05:26:24.973648500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0024","ts":"2026-04-13T05:26:33.561754900+00:00"}
+{"agent":"human","entries":["N0024"],"event":"sync.record","session_id":null,"summary":"Slack/메신저 채널을 Vault(프로젝트)로 운영하는 시나리오(N0024) 도출. 채팅의 휘발성을 Elendirna의 구조화된 기록으로 전환하는 '지식 결정화(Crystallization)' 개념 및 채널 간 지식 링크 활용 방안 제시.","ts":"2026-04-13T05:26:38.940915900+00:00"}
+{"action":"entry.new","agent":"human","id":"N0025","ts":"2026-04-13T05:27:53.183338900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0025","ts":"2026-04-13T05:28:01.335163200+00:00"}
+{"agent":"human","entries":["N0025"],"event":"sync.record","session_id":null,"summary":"지식의 계보와 네트워크를 입체적으로 보여주는 시각화 전략(N0025) 도출. 지식 네트워크, 계보 타임라인, 기여도 열지도의 3대 차원 제시 및 DOT/JSON/UI 등 기술적 구현 방안 제안.","ts":"2026-04-13T05:28:06.442388+00:00"}
+{"action":"entry.new","agent":"human","id":"N0026","ts":"2026-04-13T06:47:41.250918+00:00"}
+{"action":"revision.add","agent":"human","id":"N0026","ts":"2026-04-13T06:47:51.020483+00:00"}
+{"action":"revision.add","agent":"human","id":"N0026","ts":"2026-04-13T06:49:16.945914800+00:00"}
+{"agent":"human","entries":["N0026"],"event":"sync.record","session_id":null,"summary":"도구 사용 패턴 분석 세션: '불평의 정보 밀도'와 '시간차 페어 프로그래밍' 개념 정립 및 N0026 박제. 업무 보안을 위해 구체적 식별자를 Blur 처리(Anonymized)하여 기록함.","ts":"2026-04-13T06:49:16.983140200+00:00"}
+{"action":"revision.add","agent":"human","id":"N0025","ts":"2026-04-13T07:47:56.904701500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0020","ts":"2026-04-13T07:53:25.996167400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0019","ts":"2026-04-13T08:24:57.952547900+00:00"}
+{"action":"entry.new","agent":"human","id":"N0027","ts":"2026-04-13T08:31:41.423183800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0027","ts":"2026-04-13T08:31:47.717313500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0019","ts":"2026-04-13T08:31:51.036487100+00:00"}
+{"agent":"human","entries":["N0019","N0027"],"event":"sync.record","session_id":null,"summary":"Entry 상태 관리(draft/stable/archived) 전환 기준 및 신규 명령어(elf entry status) 제안을 Proposal 006(N0027)으로 등록하고 PLAN v0.3(N0019)에 링크함.","ts":"2026-04-13T08:31:51.067975+00:00"}
+{"action":"revision.add","agent":"human","id":"N0027","ts":"2026-04-13T08:33:16.466175500+00:00"}
+{"agent":"human","entries":["N0027","N0019"],"event":"sync.record","session_id":null,"summary":"웹 Gemini의 '상태 부패(Status Rot)' 비판을 바탕으로 지식의 생명주기와 자가 치유(Self-healing) 전략을 Proposal 006(N0027)에 보강함. 복잡한 자동화 로직 구현은 오버헤드를 고려하여 의도적으로 지연(Postponed) 처리하고, 다중 모델 교차 검증을 통해 향후 필요 시점에 다시 논의하기로 함.","ts":"2026-04-13T08:38:38.525864500+00:00"}
+{"action":"entry.new","agent":"human","id":"N0028","ts":"2026-04-13T08:44:25.416100800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0028","ts":"2026-04-13T08:44:32.767155700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0029","ts":"2026-04-13T08:53:25.838734900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0029","ts":"2026-04-13T08:53:44.542724700+00:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"v0.3.2: MCP 모드에서 vault 부재 시 글로벌 vault 자동 생성/관리 기능 구현 및 검증 완료","ts":"2026-04-13T09:28:10.516652+00:00"}
+{"action":"revision.add","agent":"human","id":"N0027","ts":"2026-04-13T10:21:45.293159300+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-13T10:44:33.573495300+00:00"}
+{"action":"revision.add","agent":"human","id":"N0019","ts":"2026-04-13T10:51:26.125975600+00:00"}
+{"action":"revision.add","agent":"human","id":"N0019","ts":"2026-04-13T10:59:53.524906800+00:00"}
+{"agent":"claude-opus-4-6","entries":["N0018","N0019"],"event":"sync.record","session_id":null,"summary":"N0018 r0013: Gemini MCP 우회 현상 실증 관찰 기록. N0019 r0004: AGENTS.md 도입 및 bundle --since 액션 아이템. N0019 r0005: Recap Entry(지난 이야기 패턴) 구상 기록.","ts":"2026-04-13T11:00:01.972103500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-13T11:02:04.436975900+00:00"}
+{"agent":"claude-opus-4-6","entries":["N0018"],"event":"sync.record","session_id":null,"summary":"N0018 r0014: dogfooding vault가 코드베이스 내에 위치함으로써 MCP 우회를 유발하는 아이러니 기록. 일반 사용자(글로벌 vault)에겐 발생하지 않는 dogfooding 특유의 문제.","ts":"2026-04-13T11:02:34.560452100+00:00"}
+{"action":"revision.add","agent":"human","id":"N0018","ts":"2026-04-14T02:31:26.679468300+00:00"}
+{"agent":"claude-sonnet-4-6","entries":[],"event":"sync.record","session_id":null,"summary":"N0018 r0015: multi-vault 설계 결정 기록. @vault: 네임스페이스(global=절대/local=파라미터 전용/alias=config), cwd=인텐트 신호 검증(현행 탐색 우선순위가 이미 정확), --vault 파라미터는 예외 탈출구 위상. 구현은 v0.4 범위.","ts":"2026-04-14T02:31:35.114410400+00:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0004","N0019","N0029","N0030","N0031"],"event":"sync.record","session_id":null,"summary":"v0.4 스코프 확정(MCP description·snippet·bundle --since·bundle --depth·help --json·multi-vault). elf entry status는 N0031(SQLite Activity Index)과 연계. N0030 SSE Transport 별도 entry 신설(선결: multi-vault, author 필드 강제 가능성). N0031 SQLite Activity Index 신설(N0028 §2.C 연결, elf sessions·bundle --since·status 이력 통합). N0029 r0002: FAQ 그냥 Git 쓰면 안 되나요? 추가.","ts":"2026-04-14T02:31:00.000000+00:00"}
+{"action":"entry.new","agent":"human","id":"N0032","ts":"2026-04-14T06:14:57.406941900+00:00"}
+{"action":"revision.add","agent":"human","id":"N0032","ts":"2026-04-14T06:15:43.283094600+00:00"}
+{"action":"revision.add","agent":"human","id":"N0004","ts":"2026-04-14T06:53:17.923757200+00:00"}
+{"action":"entry.new","agent":"human","id":"N0030","ts":"2026-04-14T06:48:06.163908800+00:00"}
+{"action":"revision.add","agent":"human","id":"N0030","ts":"2026-04-14T06:50:06.670244200+00:00"}
+{"agent":"human","entries":["N0030"],"event":"sync.record","session_id":null,"summary":"v0.4 구현 계획 확정. 7개 항목 (Multi-Vault + auto-alias, entry status, MCP description 강화, serve snippet, bundle --since/--depth, help --json). vault_name을 implicit alias로 활용하는 방안 설계. PLAN v0.4 entry 신설 (N0030).","ts":"2026-04-14T06:50:14.320157100+00:00"}
+{"agent":"claude","entries":["N0030"],"event":"sync.record","session_id":null,"summary":"v0.4 구현 완료. Multi-Vault(--vault/--global), entry status, bundle --depth/--since, MCP 자기서술 강화, elf serve snippet, elf help --json. PR #3 생성.","ts":"2026-04-16T00:04:17.227202800+00:00"}
+{"action":"entry.new","agent":"human","id":"N0036","ts":"2026-04-16T01:48:03.648084600+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:18.070008+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:29.384322400+00:00"}
+{"action":"revision.add","agent":"human","id":"N0036","ts":"2026-04-16T01:48:41.992089500+00:00"}
+{"action":"revision.add","agent":"human","id":"N0030","ts":"2026-04-16T01:48:47.417847800+00:00"}
+{"action":"link.N0036.N0030","agent":"human","ts":"2026-04-16T01:48:50.352728800+00:00"}
+{"action":"link.N0036.N0035","agent":"human","ts":"2026-04-16T01:48:50.381773800+00:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0030","N0036"],"event":"sync.record","session_id":null,"summary":"v0.4 전체 구현 완료 및 crates.io v0.4.0 게시. Multi-Vault, entry status, bundle depth/since, MCP 자기서술, elf serve snippet, elf help --json. PR #3 머지.","ts":"2026-04-16T01:48:58.884736700+00:00"}
+{"action":"entry.new","agent":"human","id":"N0037","ts":"2026-04-16T13:28:25.841592100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0037","ts":"2026-04-16T13:28:31.711554+09:00"}
+{"action":"entry.new","agent":"human","id":"N0038","ts":"2026-04-16T13:39:53.718465100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:40:01.822836+09:00"}
+{"agent":"human","entries":["N0037","N0038"],"event":"sync.record","session_id":null,"summary":"CLI 패닉 버그(N0037) 원인 분석 및 Vault 강제 격리 설계 정책(N0038) 정정 기록. Implicit Fallback 제거 및 유도형 UI로의 개선 방향 확립.","ts":"2026-04-16T13:40:08.768501400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:52:07.157114+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T13:56:24.043234700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T15:27:53.909838700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0037","ts":"2026-04-16T15:28:55.834769+09:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0037","N0038"],"event":"sync.record","session_id":null,"summary":"N0037 fix: elf help→guide rename으로 clap 충돌 해결. N0038 r0004: Desktop/local vault 전환 문제 근본 원인 기록, session_start에 vault_root/vault_kind/hint 추가(1단계 적용)","ts":"2026-04-16T15:29:01.532009600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T15:41:18.480858200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-16T16:25:11.876203800+09:00"}
+{"action":"entry.new","agent":"human","id":"N0039","ts":"2026-04-16T16:25:15.387182700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-16T16:25:28.069417200+09:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0037","N0038","N0039"],"event":"sync.record","session_id":null,"summary":"N0037 fix 완료(elf help→guide). N0038 설계 완결(r4~r6): Desktop/local vault 전환 문제 근본 원인+세부 동작 확정. N0039 생성: MCP multi-vault 구현 안건 저장","ts":"2026-04-16T16:25:33.808959900+09:00"}
+{"action":"entry.new","agent":"human","id":"N0040","ts":"2026-04-16T16:59:33.770770700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T16:59:49.028484500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:01:34.475116400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-16T17:03:00.370563300+09:00"}
+{"agent":"claude","entries":["N0024","N0040"],"event":"sync.record","session_id":null,"summary":"UX 인사이트 수집(N0024) 및 MCP vault 출처 누락 보안 버그 발견·수정(N0040). v0.4.3→v0.4.4 릴리즈. vault_kind 판별 버그도 함께 수정.","ts":"2026-04-16T18:22:34.506072600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0041","ts":"2026-04-16T20:30:14.611135400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-16T20:30:22.988797+09:00"}
+{"agent":"claude","entries":["N0040","N0041"],"event":"sync.record","session_id":null,"summary":"sync_record MCP entries 역직렬화 버그 기록(N0041). global vault 단일 사용 결정. N0039 우선순위 하향.","ts":"2026-04-16T20:30:27.189841400+09:00"}
+{"agent":"human","entries":["N0044"],"event":"sync.record","session_id":null,"summary":"전역 vault 오염 정밀 정리 (N0043 삭제, N0044 정규화 및 local 편입, 외부 덤프 파일 제거)","ts":"2026-04-20T18:54:30.178420300+09:00"}
+{"agent":"human","entries":["N0025","N0006"],"event":"sync.record","session_id":null,"summary":"인터랙티브 시각화 실험: D3.js 기반 실시간 그래프 서버(elf_ui.py) 프로토타입 제작 및 리비전 사이드바 전략 검증.","ts":"2026-04-21T19:24:46.751299300+09:00"}
+{"agent":"human","entries":["N0025","N0026","N0044"],"event":"sync.record","session_id":null,"summary":"세션 종료: 시각화 전략 프로토타입 검증 및 Vault 타임스탬프를 통한 AI의 시간적 맥락 유지(Temporal Grounding) 효과 확인.","ts":"2026-04-21T20:52:05.122018400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0026","ts":"2026-04-21T20:52:45.684042200+09:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"Vault 로컬 경로 참조 확인 및 MCP/CLI 건전성 체크 완료 (정상)","ts":"2026-04-22T12:29:36.357077300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0045","ts":"2026-04-22T12:30:04.556427500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0045","ts":"2026-04-22T12:30:06.121275+09:00"}
+{"action":"status.changed.N0045.stable","agent":"human","id":"N0045","ts":"2026-04-22T12:30:11.218970200+09:00"}
+{"action":"status.changed.N0045.archived","agent":"human","id":"N0045","ts":"2026-04-22T12:30:14.418478+09:00"}
+{"agent":"human","entries":["N0045"],"event":"sync.record","session_id":null,"summary":"Vault 로컬 경로 읽기/쓰기(MCP/CLI) 정상 동작 확인 완료 및 테스트 엔트리(N0045) 아카이브 정리","ts":"2026-04-22T12:30:18.432233100+09:00"}
+{"agent":"human","entries":["N0029"],"event":"sync.record","session_id":null,"summary":"제안된 아이디어들의 프로젝트 핵심 철학(N0029) 및 헌법 합치성 검토 완료 (모두 적합)","ts":"2026-04-22T12:36:22.567846300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0046","ts":"2026-04-22T15:17:02.010001600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-22T15:17:06.831025400+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"단일 단계 Undo 매커니즘(1-step Undo) 제안 및 N0046 엔트리 등록 완료","ts":"2026-04-22T15:17:10.107334200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-22T15:18:32.064797400+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"Undo 대상 정의에 대한 모델 분석 및 N0046 업데이트 (전역 시간축 vs 엔트리별 모델)","ts":"2026-04-22T15:18:35.309217200+09:00"}
+{"agent":"human","entries":["N0046"],"event":"sync.record","session_id":null,"summary":"로컬 vault 경로가 D:\\code_etc\\elendirna로 정상 활성화되어 있음을 확인하고, 최근 맥락이 N0046 단일 단계 Undo 제안에 집중되어 있음을 정리함. validate 결과 errors=0, warnings=1.","ts":"2026-04-23T09:35:19.187439800+09:00"}
+{"action":"entry.new","agent":"human","id":"N0047","ts":"2026-04-23T09:36:51.320602400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:37:54.531194800+09:00"}
+{"agent":"human","entries":["N0047","N0028","N0034","N0008"],"event":"sync.record","session_id":null,"summary":"Codex 관점의 elf MCP 사용 감상을 검토해 N0047 approval 엔트리로 추출함. current summary, link 정합성, sync_record 자동화를 승인된 개선 포인트로 정리.","ts":"2026-04-23T09:37:58.354436+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:45:21.379765900+09:00"}
+{"agent":"human","entries":["N0047","N0034"],"event":"sync.record","session_id":null,"summary":"N0047에 bundle --since가 revision chain 비대화의 1차 완충 장치이며, 현 문제는 기능 부재보다 사용 안내 부족이라는 보완 판단을 추가함.","ts":"2026-04-23T09:45:23.839843700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T09:48:19.287220800+09:00"}
+{"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"N0047에 bundle depth를 시간축이 아닌 관계 확산 제어 장치로 정리하고, depth=0/1/2+의 사용 시나리오와 피로감 기준을 추가함.","ts":"2026-04-23T09:48:22.115410100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T10:02:03.889569800+09:00"}
+{"agent":"human","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"session_start active 응답에 context_hints.bundle_policy를 추가해 depth/since 선택 규칙을 주입함. cargo test 전체 통과.","ts":"2026-04-23T10:02:06.100600600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0048","ts":"2026-04-23T13:17:26.566734800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0048","ts":"2026-04-23T13:17:40.232873+09:00"}
+{"agent":"human","entries":["N0048"],"event":"sync.record","session_id":null,"summary":"N0048에 public upstream/private workbench remote 운영 지침을 기록함. upstream은 명시적 public 반영에만 사용하고 기본 push는 private origin으로 유지.","ts":"2026-04-23T13:17:46.587863700+09:00"}
+{"action":"entry.new","agent":"human","id":"N0049","ts":"2026-04-23T13:44:56.246644500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0049","ts":"2026-04-23T13:45:12.057521300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0033","ts":"2026-04-23T13:47:03.982206300+09:00"}
+{"agent":"human","entries":["N0033","N0048","N0046"],"event":"sync.record","session_id":null,"summary":"N0033에 홈랩 기반 Web MCP/API key 호스팅 검토 사항을 낮은 우선순위 제안으로 추가함. vault 경계, key scope, write safety, audit를 핵심 검토 항목으로 정리.","ts":"2026-04-23T13:47:12.189168200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-23T14:02:34.553312100+09:00"}
+{"agent":"human","entries":["N0034"],"event":"sync.record","session_id":null,"summary":"N0034에 entry revision과 sync_record의 역할 분리 정책을 추가함. 세션 맥락은 sync 계층으로 유도하고, entry revision은 의사결정/설계 변경/지식 delta 중심으로 유지하는 방향으로 정리.","ts":"2026-04-23T14:02:37.325224300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0050","ts":"2026-04-23T14:04:06.500928100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:04:17.659523600+09:00"}
+{"agent":"human","entries":["N0050","N0034"],"event":"sync.record","session_id":null,"summary":"N0050을 생성해 Elendirna의 AI 유도 디자인 원칙을 기록함. 행동은 최대한 자연스럽게 유도하되, 컨텍스트 오염으로 강박적 규칙이나 과잉 행동이 남지 않게 하는 soft steering 기준을 정리.","ts":"2026-04-23T14:04:21.103713600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"사용자가 제안한 sync_record/revision_add 유도 전략을 N0050의 non-compulsive AI guidance 원칙 관점에서 검토함. 구조화 입력과 diff-first 설명은 유효하되, 보상/자동 초안은 과잉 유도나 도구 복잡도 증가를 조심해야 한다는 판단을 남김.","ts":"2026-04-23T14:12:43.957984500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:16:37.541467700+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"src/mcp/mod.rs의 MCP tool descriptions에 diff-first revision_add, handover-oriented sync_record, session_start handover_status를 반영함. cargo test 전체 통과했고, N0050에 이 soft steering 적용 내용을 r0002로 기록함.","ts":"2026-04-23T14:16:42.485295+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T14:20:24.960100600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"Codex가 맥락 손실을 불안해하지 않도록 src/mcp/mod.rs에 context reassurance를 추가함. revision_add/bundle/session_start/server instructions가 짧은 delta도 bundle과 recent_sessions로 복원됨을 설명하며, cargo test 전체 통과.","ts":"2026-04-23T14:20:29.778047800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:04:36.155436600+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050에 하네스/유저 가이드/도구 UX 역할 분리 결론을 r0004로 기록함. 핵심은 데이터 품질은 하네스에, 모델별 활용법은 가이드에, sync/bundle/revision 역할 설명은 도구 UX에 둔다는 기준.","ts":"2026-04-23T15:04:42.176552800+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"[Handover] N0050 '하네스/유저가이드/도구UX' 원칙 확립. MCP 설명에 '복원 힌트'와 '증분(diff)' 개념을 주입하여 모델의 과잉 기록을 제어하고 지능을 압축에 집중시킴.","ts":"2026-04-23T15:05:17.235137700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:07:29.849961700+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050 r0005에 Claude의 기록 제안 UX 관찰을 기록함. 기록 품질은 tool description뿐 아니라 모델이 결론 타이밍을 감지해 제안하고 사용자가 범위를 좁혀주는 상호작용에 좌우된다는 내용.","ts":"2026-04-23T15:07:33.515509100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-23T15:13:27.962225800+09:00"}
+{"agent":"human","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"N0050 r0006에 Claude 관찰의 confounder를 기록함. 지인 사용 사례에서도 Claude 성향 가능성은 보이나, 세션 초반 elf start-session 유도 멘트가 start-session 실행을 거의 확정시키는 사용자 발화 효과를 분리해야 함.","ts":"2026-04-23T15:13:32.047480400+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"MCP 토큰 소모량에 대한 코드/기록 검토: query/entry_list는 얇지만 bundle 기본 depth=1과 full revision chain, 긴 sync_record가 주요 낭비 지점이라는 의견을 정리함.","ts":"2026-04-23T15:44:23.241292500+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"bundle context_stats 구현: core BundleOutput.stats()에 estimated_bytes/entry_count/revision_count를 추가하고 CLI/MCP bundle 응답에 노출, 통합 테스트로 카운트 검증. cargo test 전체 통과.","ts":"2026-04-23T16:01:18.081437300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0028","ts":"2026-04-23T16:06:41.905479+09:00"}
+{"agent":"codex","entries":["N0028"],"event":"sync.record","session_id":null,"summary":"N0028 r0002에 bundle context_stats 변경점과 의견을 기록함. stats는 토큰 절약을 강제하지 않지만 에이전트가 bundle 비용을 인지하고 depth/since 선택을 조정하게 하는 휴리스틱이라는 결론.","ts":"2026-04-23T16:06:46.101830500+09:00"}
+{"action":"entry.new","agent":"human","id":"N0051","ts":"2026-04-23T16:12:53.718149800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-23T16:13:31.484586400+09:00"}
+{"agent":"human","entries":["N0051","N0020","N0039","N0040"],"event":"sync.record","session_id":null,"summary":"N0051에 로컬 repo 코드 작업 중 비즈니스 로직 판단을 위해 global vault를 명시 조회하는 시나리오를 기록함. local-first write boundary, global read provenance, 사용자 승인 기반 global 갱신 원칙을 정리.","ts":"2026-04-23T16:14:08.113202800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-23T16:21:06.186085100+09:00"}
+{"agent":"human","entries":["N0051","N0038","N0039","N0040"],"event":"sync.record","session_id":null,"summary":"N0051 시나리오의 구현 상태를 코드 기준으로 점검하고 r0002에 기록함. 현재는 CLI 전역 플래그와 MCP 응답 vault 출처 표시는 구현되어 있으나, MCP tool 호출 단위 vault override와 session local 등록은 미구현이라는 결론.","ts":"2026-04-23T16:21:45.794758200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-23T16:35:41.875434900+09:00"}
+{"agent":"human","entries":["N0047","N0051"],"event":"sync.record","session_id":null,"summary":"사용자의 관찰을 N0047 r0005에 기록함. Codex의 장황한 기록 방식이 원류 ELF의 'AI에게 연구 지시를 내리고 결과를 연구 노트로 축적하던 패턴'과 재접속한다는 해석을 정리.","ts":"2026-04-23T16:35:49.973457300+09:00"}
+{"agent":"Codex","entries":["N0038","N0039","N0040","N0051"],"event":"sync.record","session_id":null,"summary":"Codex Desktop 환경에서 현재 MCP가 참조하는 vault 경로와 경로 결정 기전을 점검함. 현재 활성 vault는 D:\\code_etc\\elendirna(local)이며, MCP tool 호출 단위 vault override/session local 등록은 아직 구현되지 않은 상태로 확인.","ts":"2026-04-24T09:41:26.770719400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0051","ts":"2026-04-24T09:42:07.016112300+09:00"}
+{"agent":"Codex","entries":["N0051"],"event":"sync.record","session_id":null,"summary":"현재 MCP 구조가 단일 vault_root 고정 방식이므로 같은 세션 내 local/global 자료 혼합 또는 유출 위험은 낮고, 주요 리스크는 잘못된 primary vault로 시작되는 경우라는 평가를 N0051 r0003에 기록함.","ts":"2026-04-24T09:42:14.682689800+09:00"}
+{"agent":"Codex","entries":["N0018","N0019","N0030","N0035","N0038","N0051"],"event":"sync.record","session_id":null,"summary":"사용자가 제시한 v1→v2 compact layout→global vault→MCP vault 혼선→단일 primary 고정 구조의 연대기를 N0018/N0019/N0030/N0035/N0038/N0051 기준으로 대조함. 큰 흐름은 맞고, 마지막 단계는 '자료 혼합 방지용 고정'이라기보다 아직 tool 호출 단위 override/session local 등록이 미구현이라 서버 시작 시 primary vault 하나에 고정되는 상태로 정리.","ts":"2026-04-24T10:06:36.363508500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:09:18.401997+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"Claude Desktop MCP는 앱/서비스형 고정 실행 컨텍스트라 global 기준으로 뜨기 쉽고, 설정/옵션도 LOCALAPPDATA 하위 관리 폴더로 복사되는 것으로 관찰됨. Codex Desktop은 repo/폴더 기준 세션이라 같은 현상이 관찰되지 않았다는 host-specific 차이를 N0038 r0007에 기록함.","ts":"2026-04-24T10:09:23.486800600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:10:06.113152700+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"현재 조치의 성격을 host-specific CWD/설정 복사 문제를 없애는 근본 해결이 아니라, '그럼에도 불구하고' 출처 표시와 단일 primary 고정으로 혼합·오염 가능성을 줄이는 완화 계층으로 N0038 r0008에 정리함.","ts":"2026-04-24T10:10:10.567609200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:15:55.207301900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-24T10:16:08.027529100+09:00"}
+{"agent":"Codex","entries":["N0038","N0039"],"event":"sync.record","session_id":null,"summary":"multi-vault 호출 정책을 정리함. vault 생략 시 local-first 및 기존 primary/fallback 룰을 따르되 모든 응답에 resolved vault 출처를 포함하고, vault 명시 시 global/local/alias/절대경로로 강제 접근하며 resolve 실패 시 자동 fallback하지 않는 원칙을 N0038 r0009와 N0039 r0002에 기록함.","ts":"2026-04-24T10:16:12.635520300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:16:41.440291+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"multi-vault 호출 정책에 대한 리스크 분석을 N0038 r0010에 기록함. 핵심 리스크는 조용한 global fallback, local 의미 불안정, stale alias, 명시 write 오염, 에이전트의 출처 무시이며, 보완책으로 fallback warning, session local 등록, write confirm, vault_resolution 메타데이터를 제안함.","ts":"2026-04-24T10:16:49.780825400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:22:07.331534600+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"multi-vault 보완 제안에 대한 세부 의견을 N0038 r0011에 기록함. fallback은 warning과 fallback:true를 함께 반환하고, local/global만 hard-reserved alias로 적용하며, vault_resolution으로 선택 이유를 드러내고, global/external write는 confirm을 요구하며, sync_record에는 alias 수준 vault_refs만 남기는 방향을 권고함.","ts":"2026-04-24T10:22:10.815575100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T10:24:32.866584600+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"reserved alias 후보 중 default와 parent를 별도 검토함. default는 생략과 동일한 명시 표현으로 매력 있으나 모호성이 있고, parent는 nested repo에는 유용하지만 host/CWD 의존과 경계 확장 리스크가 커서 둘 다 우선 future-reserved candidate로 두는 방향을 N0038 r0012에 기록함.","ts":"2026-04-24T10:24:36.659029100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T10:44:01.279343900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T10:56:11.913611700+09:00"}
+{"agent":"human","entries":["N0021"],"event":"sync.record","session_id":null,"summary":"N0021 r0004에 CLI 우선 첨부파일 구현 계획을 기록함. entry attach/detach/assets 명령, 저장 규칙, 테스트/DoD, Phase2(sha256/full validate) 경계를 명시.","ts":"2026-04-24T10:56:19.000871+09:00"}
+{"agent":"Codex","entries":["N0021","N0038","N0039","N0041","N0046","N0047","N0049","N0051","N0023","N0044"],"event":"sync.record","session_id":null,"summary":"여러 구현 계획과 proposal을 검토해 다음 버전 후보를 선별함. 우선순위는 MCP multi-vault 호출 단위 제어/안전장치, CLI 첨부파일 MVP, sync_record 버그, undo 순으로 판단.","ts":"2026-04-24T11:00:01.781991600+09:00"}
+{"agent":"Codex","entries":["N0021","N0039","N0051"],"event":"sync.record","session_id":null,"summary":"MCP stdio 조건에서 파일 전송 가능성을 검토함. 표준 파일 업로드 primitive보다는 local path 기반 attach가 우선이고, binary 직접 전달은 base64 JSON payload로 가능하지만 비효율적이므로 후속 HTTP/chunk 계층 후보로 판단.","ts":"2026-04-24T11:01:40.163273500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0039","ts":"2026-04-24T11:06:02.509851400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:06:02.544975+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:06:02.608216900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-24T11:06:02.642869600+09:00"}
+{"agent":"Codex","entries":["N0039","N0021","N0041","N0046"],"event":"sync.record","session_id":null,"summary":"다음 버전 우선순위를 기록함: multi-vault와 첨부파일 CLI/MCP는 구현 후보로 확정, sync_record 역직렬화는 버그픽스 후보 유지, undo는 추가 논의 보류.","ts":"2026-04-24T11:06:05.560125400+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"N0041 sync_record 역직렬화 이슈를 사용자에게 짧은 보고서 형태로 리마인드함. 영향은 MCP 세션 종료 기록 실패와 장기 기억 handoff 신뢰도 저하로 정리.","ts":"2026-04-24T11:07:23.286079600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:10:10.409978100+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"sync_record 이슈의 영향 해석을 정정함. sync_record는 헌법상 의무가 아니라 선택적 handoff 장치이며, 문제는 MCP entries 배열 입력이 실패하는 API 품질 버그로 좁혀 기록.","ts":"2026-04-24T11:10:13.705816500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:11:03.541317600+09:00"}
+{"agent":"Codex","entries":["N0041"],"event":"sync.record","session_id":null,"summary":"sync_record의 제품적 역할을 정리함. source of truth가 아니라 AI가 맥락을 유연하게 복원하도록 돕는 힌트/윤활제이며, 핵심 의도는 entry-revision 구조만으로도 성립한다고 기록.","ts":"2026-04-24T11:11:08.174679100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0028","ts":"2026-04-24T11:11:54.615155600+09:00"}
+{"agent":"Codex","entries":["N0028","N0034","N0050","N0041"],"event":"sync.record","session_id":null,"summary":"sync_record의 초기 선언 여부를 확인함. N0028 Thin Link와 N0050 Non-Compulsive Guidance에 이미 존재하며, N0034의 source of truth 표현이 활동 로그 재생성 관점임을 N0028에 보충 기록.","ts":"2026-04-24T11:11:58.437567400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-24T11:13:43.044157900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-24T11:13:43.081088400+09:00"}
+{"agent":"Codex","entries":["N0050","N0047","N0028"],"event":"sync.record","session_id":null,"summary":"Codex 초기 세션의 과한 맥락 기록을 재평가함. 장황한 기록은 단점도 있지만 연구형 기록 양식으로 가치가 있으므로 강제 억제보다 상황별 밀도 조절이 적절하다고 기록.","ts":"2026-04-24T11:13:46.166313200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0050","ts":"2026-04-24T11:15:34.498660200+09:00"}
+{"agent":"Codex","entries":["N0050"],"event":"sync.record","session_id":null,"summary":"AI guidance의 강제성이 강할수록 강박성, 토큰 비효율, 응답 풍부함 손실을 낳을 수 있다는 제품 원칙을 N0050에 기록.","ts":"2026-04-24T11:15:37.230501400+09:00"}
+{"action":"entry.new","agent":"human","id":"N0052","ts":"2026-04-24T11:16:23.158251+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:16:52.894051100+09:00"}
+{"agent":"Codex","entries":["N0052","N0039","N0021","N0041","N0046"],"event":"sync.record","session_id":null,"summary":"PLAN v0.5를 새 entry N0052로 생성하고 구현 계획을 정리함. 확정 스코프는 MCP multi-vault 완성, 첨부파일 CLI/MCP MVP, sync_record entries 역직렬화 수정이며 undo는 논의 보류로 둠.","ts":"2026-04-24T11:16:56.507144400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T11:19:39.732413300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:19:39.789879600+09:00"}
+{"agent":"Codex","entries":["N0041","N0052"],"event":"sync.record","session_id":null,"summary":"sync_record.entries의 세부 정책을 확정함. 공식 입력은 JSON array지만, sync_record가 보조 힌트 계층이므로 string, comma-separated, stringified JSON array를 느슨하게 수용하는 fail-soft 정책으로 기록.","ts":"2026-04-24T11:19:43.483682500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-24T11:20:09.278154800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:20:09.382535500+09:00"}
+{"agent":"Codex","entries":["N0034","N0052"],"event":"sync.record","session_id":null,"summary":"sqlite와 sync.jsonl은 파생/보조 계층이며, 둘 다 없어도 entry/revision/manifest 기반 핵심 기능은 정상 작동해야 한다는 아키텍처 원칙을 기록.","ts":"2026-04-24T11:20:12.694263800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0034","ts":"2026-04-24T11:21:13.017595+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:21:13.052099800+09:00"}
+{"agent":"Codex","entries":["N0034","N0052"],"event":"sync.record","session_id":null,"summary":"중복 기록 탐지는 유용하지만 의미 중복 판정은 MCP 내 저부하 LLM/embedding 없이는 어렵다고 기록. deterministic 후보 제시 + AI/human 판단 조합을 후속 후보로 둠.","ts":"2026-04-24T11:21:16.394634800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:22:37.040241300+09:00"}
+{"agent":"Codex","entries":["N0052"],"event":"sync.record","session_id":null,"summary":"v0.5 결정 상태를 정리함. 큰 스코프 미결은 undo 하나만 남았고, 나머지는 구현 세부 정책 또는 후속 후보로 분리된다고 기록.","ts":"2026-04-24T11:22:41.959671100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:26:43.110132300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:26:43.204659100+09:00"}
+{"agent":"Codex","entries":["N0052","N0021"],"event":"sync.record","session_id":null,"summary":"v0.5 세부 정책을 기록함: attach/detach sync event 실패는 warning, external/global write confirm은 강제보다 AI/클라이언트 선택, asset key 충돌은 affix 숫자로 해결하고 최종 asset_key/stored_filename을 API result에 반환.","ts":"2026-04-24T11:26:47.631434+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T11:29:59.080506300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T11:29:59.162208700+09:00"}
+{"agent":"Codex","entries":["N0021","N0052"],"event":"sync.record","session_id":null,"summary":"첨부파일 asset key 충돌 정책을 확정함. 충돌은 실패가 아니라 affix로 자동 해결하며, API result에 collision=true와 warnings[]를 함께 반환하도록 기록.","ts":"2026-04-24T11:30:03.549160500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0038","ts":"2026-04-24T12:45:57.465495500+09:00"}
+{"agent":"Codex","entries":["N0038"],"event":"sync.record","session_id":null,"summary":"Claude Desktop code가 Claude Code와 달리 vault까지 global 기준으로 수신하는 host-specific 관찰을 N0038에 기록함.","ts":"2026-04-24T12:46:00.192287500+09:00"}
+{"agent":"Codex","entries":["N0052","N0038","N0039","N0051","N0021"],"event":"sync.record","session_id":null,"summary":"PLAN v0.5를 리뷰하기 위해 multi-vault, local/global 경계, 첨부파일 MVP 관련 entry를 확인함. 주요 쟁점은 global/external write confirm 약화, attach atomicity/path safety, MVP 검증 경계로 정리.","ts":"2026-04-24T12:56:49.014779500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0047","ts":"2026-04-24T13:02:10.480574100+09:00"}
+{"agent":"Codex","entries":["N0047"],"event":"sync.record","session_id":null,"summary":"Claude가 Codex 리뷰를 요청한 뒤 vault/sync를 통해 리뷰 맥락이 공유된 관찰을 N0047에 기록함. sync_record를 cross-agent handoff channel로 볼 수 있다는 제품적 함의를 정리.","ts":"2026-04-24T13:02:13.098546600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0053","ts":"2026-04-24T13:07:11.434818700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0053","ts":"2026-04-24T13:07:55.380099700+09:00"}
+{"agent":"claude","entries":["N0053","N0052","N0050","N0047"],"event":"sync.record","session_id":null,"summary":"N0053 생성: AI 토론에서 사람이 사회자 역할을 맡는 구도 관찰. N0052 리뷰 세션이 Claude+codex 양쪽 참여 + 사람 판단 구조로 자연스럽게 구성된 것을 기록. discussion 모드에 필요한 구조 요구(attribution/contested status/승격 경로/종결 포인터) 정리, 사회자 UX skin 후보 제시.","ts":"2026-04-24T13:08:01.201199800+09:00"}
+{"agent":"Codex","entries":["N0053"],"event":"sync.record","session_id":null,"summary":"N0053을 확인함. 핵심 주제는 AI 간 토론에서 사람이 사회자/판정자로 이동하는 역할 반전과, handoff를 discussion protocol로 확장할 때 필요한 attribution/contested/resolution 구조로 파악.","ts":"2026-04-24T13:08:07.225816100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0053","ts":"2026-04-24T13:09:33.138483200+09:00"}
+{"agent":"Codex","entries":["N0053"],"event":"sync.record","session_id":null,"summary":"N0053에 multi-agent live discussion 시나리오를 추가함. 채팅방을 discussion bus로, elf/vault를 shared durable memory로 두고 Codex/Claude Code/Gemini CLI가 함께 토론하는 운영 모델과 리스크를 정리.","ts":"2026-04-24T13:09:39.165059+09:00"}
+{"action":"revision.add","agent":"human","id":"N0053","ts":"2026-04-24T13:10:10.840548100+09:00"}
+{"agent":"Codex","entries":["N0053"],"event":"sync.record","session_id":null,"summary":"N0053에 사용자의 감상을 추가함. multi-agent discussion은 생산성 도구일 뿐 아니라 사람이 사회자이자 관객으로 지켜보는 재미가 있는 경험이며, 관전 UX와 기록 UX를 분리해야 한다고 정리.","ts":"2026-04-24T13:10:13.620506400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0053","ts":"2026-04-24T13:10:44.202673200+09:00"}
+{"agent":"Codex","entries":["N0053"],"event":"sync.record","session_id":null,"summary":"N0053에 delegated moderator 모델을 추가함. Gemini를 중재자/진행자로 두고 Codex와 Claude Code에 질문·작업을 분배하는 구조와, 사람이 최종 승격 gate로 남아야 하는 운영 원칙을 정리.","ts":"2026-04-24T13:10:49.211299400+09:00"}
+{"action":"entry.new","agent":"human","id":"N0054","ts":"2026-04-24T13:18:18.203651200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0054","ts":"2026-04-24T13:18:52.823216700+09:00"}
+{"agent":"Codex","entries":["N0053","N0054"],"event":"sync.record","session_id":null,"summary":"이미지의 multi-agent discussion 연구 결과를 N0054 Agent-Discussion Protocol v1.0 설계 초안으로 분리 기록함. Propose->Verify->Promote lifecycle, attribution/stance/status/source/human-gate 스키마 축, CLI skin 후보를 정리.","ts":"2026-04-24T13:19:01.505022+09:00"}
+{"action":"entry.new","agent":"human","id":"N0055","ts":"2026-04-24T14:25:14.872800200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0055","ts":"2026-04-24T14:25:26.146809500+09:00"}
+{"agent":"human","entries":["N0055"],"event":"sync.record","session_id":null,"summary":"TDalsa 카메라 Dark/White Calibration 수행 절차를 절차형 지식으로 저장. 사전 설정, ffm/ccf/cpa/uss/usd 명령과 주의점을 포함.","ts":"2026-04-24T14:25:28.953474300+09:00"}
+{"agent":"Codex","entries":[],"event":"sync.record","session_id":null,"summary":"N0055 TDalsa 카메라 Calibration 수행 절차 기록을 롤백함. 해당 entry/revision 디렉터리를 제거하고 validate로 index를 재생성했으며, N0055 조회가 실패하는 것을 확인.","ts":"2026-04-24T14:27:49.619339200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0040","ts":"2026-04-24T14:28:36.087866+09:00"}
+{"agent":"Codex","entries":["N0040"],"event":"sync.record","session_id":null,"summary":"N0055 롤백 원인을 MCP multi-vault 오작동 사례로 N0040에 보강함. Codex에서는 local primary가 정상 작동하기 때문에 오히려 global 지식으로 남길 내용이 local vault에 기록될 수 있다는 반대 방향 오염과 write intent 확인 필요성을 정리.","ts":"2026-04-24T14:28:41.728915900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0052","ts":"2026-04-24T14:41:55.922088400+09:00"}
+{"action":"entry.new","agent":"human","id":"N0055","ts":"2026-04-24T14:44:31.448703100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0055","ts":"2026-04-24T14:44:36.939046600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0056","ts":"2026-04-24T14:57:14.163630200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0056","ts":"2026-04-24T14:57:19.409727200+09:00"}
+{"action":"entry.new","agent":"human","id":"N0057","ts":"2026-04-24T15:14:13.443412600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0057","ts":"2026-04-24T15:14:18.956810500+09:00"}
+{"agent":"Codex","entries":["N0055"],"event":"sync.record","session_id":null,"summary":"Phase 1 MCP multi-vault 구현 검수 완료: resolve_tool_vault/session_start 구조, alias 해석 경계, entry_attach 노출, MCP wrapper 테스트 공백을 주요 보완점으로 식별. cargo check 및 cargo test 통과 확인.","ts":"2026-04-24T15:17:40.505300600+09:00"}
+{"agent":"Codex","entries":["N0055"],"event":"sync.record","session_id":null,"summary":"Gemini의 강한 기록 행동은 subagent 존재보다 MCP tool affordance, 세션 규칙, 모델별 instruction-following 성향이 결합된 결과일 가능성이 높다는 해석을 공유.","ts":"2026-04-24T15:21:36.562390300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0055","ts":"2026-04-24T15:31:14.830336300+09:00"}
+{"agent":"Codex","entries":["N0055"],"event":"sync.record","session_id":null,"summary":"Phase 1 MCP multi-vault 보완 구현 완료: local alias cwd 의존 제거, vault root 검증/정규화, lock poison 오류 처리, resolver 단위 테스트 추가. cargo check 및 cargo test 통과.","ts":"2026-04-24T15:31:20.429716700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0021","ts":"2026-04-24T17:17:26.442067200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0041","ts":"2026-04-24T17:17:26.487571100+09:00"}
+{"agent":"Codex","entries":["N0021","N0041"],"event":"sync.record","session_id":null,"summary":"Phase 2/3 구현 검수 완료: attachment copy/key 충돌/cleanup 안전 보완과 FlexibleEntries hard-reject 경로 추가. cargo check 및 cargo test 전체 통과.","ts":"2026-04-24T17:17:44.605857200+09:00"}
+{"action":"entry.new","agent":"human","id":"N0058","ts":"2026-04-24T17:24:27.833578900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0058","ts":"2026-04-24T17:24:33.676575500+09:00"}
+{"agent":"Gemini (Manager)","entries":["N0052","N0055","N0056","N0057","N0058"],"event":"sync.record","session_id":null,"summary":"v0.5 Multi-vault & Attachments 구현 및 검수 완료. 총 76개 테스트 통과. release note(N0058) 작성.","ts":"2026-04-24T17:24:38.827310600+09:00"}
+{"agent":"Codex","entries":["N0021","N0041"],"event":"sync.record","session_id":null,"summary":"Phase 2/3 검수 작업의 실행 품질을 회고: 실제 보완은 유효했지만 cargo fmt 범위와 병렬 cargo test 실행에서 작업 통제가 미흡했음을 정리.","ts":"2026-04-24T18:14:14.704476200+09:00"}
+{"action":"entry.new","agent":"human","id":"N0059","ts":"2026-04-24T18:15:43.226161900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0059","ts":"2026-04-24T18:16:07.267456500+09:00"}
+{"agent":"Codex","entries":["N0059","N0021","N0041","N0052"],"event":"sync.record","session_id":null,"summary":"v0.5 사후강평 Codex 버전 entry N0059를 생성하고 Phase 2/3 검수의 보완점, 누락 리스크, 작업 운영상 미흡점을 기록.","ts":"2026-04-24T18:16:10.900390800+09:00"}
+{"agent":"claude-sonnet-4-6","entries":[],"event":"sync.record","session_id":null,"summary":"세션 시작 — 최근 기록 확인 및 N0059 v0.5 사후강평 revision 작성 예정","ts":"2026-04-24T18:23:01.967059600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0059","ts":"2026-04-24T18:27:39.035682100+09:00"}
+{"agent":"claude-sonnet-4-6","entries":["N0059"],"event":"sync.record","session_id":null,"summary":"localvault MCP .mcp.json 설정 완료 및 N0059에 Claude 관점 v0.5 사후강평(r0002) 작성. Codex r0001과 나란히 기록됨.","ts":"2026-04-24T18:27:44.641468600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0059","ts":"2026-04-24T18:29:30.184198700+09:00"}
+{"action":"entry.new","agent":"human","id":"N0060","ts":"2026-04-24T18:34:21.351545300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0060","ts":"2026-04-24T18:34:40.463704100+09:00"}
+{"agent":"Codex","entries":["N0060","N0059"],"event":"sync.record","session_id":null,"summary":"Claude MCP 단절 발견을 agent별 MCP availability 불일치 리스크로 기록. dogfooding 환경에서는 MCP 실패 시 CLI fallback command 힌트를 제공하는 개선 방향을 N0060에 정리.","ts":"2026-04-24T18:34:44.373421+09:00"}
