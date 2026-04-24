@@ -1,0 +1,14 @@
+schema_version = 1
+id = "N0056"
+title = "Instruction: Phase 2 - Attachments MVP (CLI/MCP)"
+created = "2026-04-24T14:57:14.162093300+09:00"
+updated = "2026-04-24T14:57:19.408891+09:00"
+tags = [
+    "instruction",
+    "claude-code",
+    "v0.5",
+    "attachment",
+]
+links = []
+sources = []
+status = "draft"
