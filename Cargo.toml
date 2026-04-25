@@ -1,10 +1,10 @@
 [package]
 name = "elendirna"
-version = "0.4.5"
+version = "0.5.0"
 edition = "2024"
 description = "Agent-friendly knowledge base CLI. Manages personal knowledge as Base-Delta entries with AI-enforced conventions."
 license = "MIT"
-repository = "https://github.com/RainyLens/elendirna"
+repository = "https://github.com/elen-labs/elendirna"
 readme = "README.md"
 keywords = ["knowledge-base", "cli", "ai", "notes", "markdown"]
 categories = ["command-line-utilities"]

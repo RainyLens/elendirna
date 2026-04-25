@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.5.0] — 2026-04-25
+
+### 주요 기능
+
+#### MCP Multi-Vault
+- 모든 MCP tool에 `vault` 파라미터 추가 — 호출 단위로 vault 선택 가능
+- `resolve_tool_vault()` 도입: 우선순위는 explicit `vault` 파라미터 → session-local default → server default
+- `session_start` 결과에 현재 default vault 정보 포함, 이후 호출이 자연스럽게 같은 vault에 묶이도록 안내
+
+#### Attachment MVP
+- `entry_attach` / `entry_detach` MCP tool + 대응 CLI 신규
+- assets 저장은 `create_new` 모드 — 동일 stored_filename 충돌 시 거부
+- manifest 기반 collision check + detach 시 orphan asset 자동 정리
+- `AttachmentResult`에 `size` 필드 포함
+
+#### FlexibleEntries
+- `sync_record`의 `entries` 필드를 flexible 역직렬화로 처리 — 단일 ID 문자열, 배열, 객체 형식을 모두 받아들임
+- 외부 caller(특히 AI agent)의 작은 형식 차이로 sync 기록이 거부되던 문제 해소
+
+### 내부 변경
+- 죽은 `_label` 파라미터, `stored_filename` 잔여 코드 정리
+- detach 동작 주석 정정
+- crates.io 메타데이터 정리 (repository URL → `elen-labs/elendirna`)
+- 전체 테스트 풀 스위트 통과, clippy `-D warnings` 클린
+
+---
+
+## [0.4.4] — 2026-04-22
+
+### 패치
+- N0041 관련 vault 운영 버그 수정 및 세션 회고 반영
+- `vault_kind` 감지 로직 보강 (v0.4.3 후속)
+
+---
+
+## [0.4.3] — 2026-04-22
+
+### 패치
+- 모든 MCP tool 응답에 `vault` / `vault_kind` 필드 포함 — 멀티 vault 환경에서 호출 결과의 출처를 명시
+- `vault_info()`의 `vault_kind` 감지 로직 정정
+
+---
+
 ## [0.4.2] — 2026-04-16
 
 ### 패치

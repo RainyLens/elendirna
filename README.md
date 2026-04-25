@@ -2,7 +2,7 @@
 
 > Model-independent context restoration for AI-assisted work. Inspired by [ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF).
 
-![crates.io](https://img.shields.io/crates/v/elendirna.svg) [![Rust](https://github.com/RainyLens/elendirna/actions/workflows/rust.yml/badge.svg)](https://github.com/RainyLens/elendirna/actions/workflows/rust.yml)
+![crates.io](https://img.shields.io/crates/v/elendirna.svg) [![Rust](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml/badge.svg)](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml)
 
 Elendirna는 작업 맥락을 **Base-Delta** 구조로 기록해, 세션이 끊기거나 AI 모델이 바뀌어도 "왜 여기까지 왔는지"를 다시 복원할 수 있게 합니다. CLI는 vault 규칙을 강제하고, MCP 서버는 AI 에이전트가 필요한 entry, revision chain, linked context를 선택적으로 읽도록 돕습니다.
 
