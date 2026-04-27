@@ -1,5 +1,5 @@
 use crate::error::ElfError;
-use crate::vault;
+use crate::vault::{self, VaultOrigin, VaultResolution};
 /// `elf serve --mcp` — MCP 서버 진입점
 use clap::Args;
 
@@ -21,16 +21,21 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
         return Ok(());
     }
 
-    let vault_root = match args.vault {
-        Some(path) => vault::normalize_vault_root(path),
+    let resolution: VaultResolution = match args.vault {
+        Some(path) => VaultResolution {
+            path: vault::normalize_vault_root(path),
+            origin: VaultOrigin::ExplicitPath,
+        },
         None => match std::env::var("ELF_VAULT") {
-            Ok(env_path) => vault::normalize_vault_root(std::path::PathBuf::from(env_path)),
+            Ok(env_path) => VaultResolution {
+                path: vault::normalize_vault_root(std::path::PathBuf::from(env_path)),
+                origin: VaultOrigin::EnvVar,
+            },
             Err(_) => {
                 let cwd = std::env::current_dir()?;
-                match vault::find_vault_root(&cwd) {
-                    Ok(root) => root,
+                match vault::find_local_vault_root(&cwd) {
+                    Ok(root) => VaultResolution { path: root, origin: VaultOrigin::CwdSearch },
                     Err(ElfError::NotAVault) => {
-                        // vault를 찾지 못하면 글로벌 vault(~/.elendirna/)를 자동 생성
                         let home = std::env::var("USERPROFILE")
                             .or_else(|_| std::env::var("HOME"))
                             .map(std::path::PathBuf::from)
@@ -47,7 +52,7 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                             name: Some("global".to_string()),
                             global: true,
                         })?;
-                        home
+                        VaultResolution { path: home, origin: VaultOrigin::FallbackGlobal }
                     }
                     Err(e) => return Err(e),
                 }
@@ -56,9 +61,9 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     };
 
     // v1 vault 자동 이관 (MCP stdio 보호: stderr만 사용)
-    crate::cli::migrate::auto_migrate_silent(&vault_root);
+    crate::cli::migrate::auto_migrate_silent(&resolution.path);
 
-    crate::mcp::run_stdio(vault_root).map_err(|e| {
+    crate::mcp::run_stdio(resolution).map_err(|e| {
         ElfError::Io(std::io::Error::new(
             std::io::ErrorKind::Other,
             e.to_string(),

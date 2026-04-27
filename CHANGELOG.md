@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.1] — 2026-04-27
+
+### 패치
+
+#### vault 출처(provenance) 추적 + FallbackGlobal 쓰기 보호
+- `VaultOrigin` enum 추가 (`ExplicitPath`, `ExplicitGlobal`, `Alias`, `EnvVar`, `CwdSearch`, `FallbackGlobal`)
+- `VaultResolution { path, origin }` 구조체 추가 — vault 경로와 그 출처를 함께 전달
+- `find_local_vault_root()` 추가 — CWD 탐색 전용, 글로벌 폴백 없음 (FallbackGlobal 감지 기반)
+- `elf serve --mcp` → `run_stdio(VaultResolution)` 시그니처 변경, provenance 캡처
+- 모든 MCP 응답에 `vault_origin` 필드 포함 (`explicit_path`, `cwd_search`, `fallback_global` 등)
+- FallbackGlobal vault 감지 시 `fallback: true` 필드 추가
+- mutating 도구 7개 (`entry_new`, `entry_status`, `revision_add`, `sync_record`, `validate`, `entry_attach`, `entry_detach`)에 `confirm: bool` 파라미터 추가
+- FallbackGlobal vault에 `confirm=true` 없이 쓰기 시도 시 `invalid_params` 오류 반환
+
+---
+
 ## [0.5.0] — 2026-04-25
 
 ### 주요 기능

@@ -10,7 +10,24 @@ pub mod util;
 mod tests;
 
 use crate::error::ElfError;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum VaultOrigin {
+    ExplicitPath,
+    ExplicitGlobal,
+    Alias(String),
+    EnvVar,
+    CwdSearch,
+    FallbackGlobal,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VaultResolution {
+    pub path: PathBuf,
+    pub origin: VaultOrigin,
+}
 
 // ─── VaultArgs ────────────────────────────
 
@@ -106,6 +123,21 @@ pub fn find_vault_root(start: &Path) -> Result<PathBuf, ElfError> {
     if let Some(home) = home {
         if home.join(".elendirna").join("config.toml").exists() {
             return Ok(home);
+        }
+    }
+    Err(ElfError::NotAVault)
+}
+
+/// CWD 탐색 전용 — 글로벌 폴백 없음.
+/// `find_vault_root`와 달리 탐색 실패 시 Err(NotAVault) 반환.
+pub fn find_local_vault_root(start: &Path) -> Result<PathBuf, ElfError> {
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join(".elendirna").join("config.toml").exists() {
+            return Ok(current);
+        }
+        if !current.pop() {
+            break;
         }
     }
     Err(ElfError::NotAVault)

@@ -311,3 +311,33 @@
 {"action":"entry.new","agent":"human","id":"N0060","ts":"2026-04-24T18:34:21.351545300+09:00"}
 {"action":"revision.add","agent":"human","id":"N0060","ts":"2026-04-24T18:34:40.463704100+09:00"}
 {"agent":"Codex","entries":["N0060","N0059"],"event":"sync.record","session_id":null,"summary":"Claude MCP 단절 발견을 agent별 MCP availability 불일치 리스크로 기록. dogfooding 환경에서는 MCP 실패 시 CLI fallback command 힌트를 제공하는 개선 방향을 N0060에 정리.","ts":"2026-04-24T18:34:44.373421+09:00"}
+{"action":"entry.new","agent":"human","id":"N0061","ts":"2026-04-27T10:37:02.617495600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0062","ts":"2026-04-27T10:37:02.654382900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0061","ts":"2026-04-27T10:38:54.425947900+09:00"}
+{"agent":"Codex","entries":[],"event":"sync.record","session_id":null,"summary":"Reviewed Gemini's v0.5.1 MCP vault-resolution patch approach; key concerns are ambiguous 'local' semantics, insufficient mutation coverage, and need to propagate resolution source beyond src/mcp/mod.rs.","ts":"2026-04-27T10:40:28.102296300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T10:42:00.236876600+09:00"}
+{"agent":"claude","entries":["N0038","N0040","N0061","N0062"],"event":"sync.record","session_id":null,"summary":"vault alias 점검 세션: \"local\" alias 설계-구현 불일치, vault_resolution 누락, fallback warning 미구현, write confirm 미구현 확인. v0.5.1 패치 계획을 N0062에 수립. N0061에 Claude/Gemini/Codex CLI YOLO 모드 비교 지식 기록. Codex의 핵심 지적: provenance가 ElfMcpServer::new에서 이미 손실되므로 serve.rs까지 변경 필요.","ts":"2026-04-27T10:42:10.214243700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0054","ts":"2026-04-27T10:44:19.846117400+09:00"}
+{"action":"entry.new","agent":"human","id":"N0063","ts":"2026-04-27T10:45:15.958193400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0063","ts":"2026-04-27T10:45:53.189174100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0063","ts":"2026-04-27T10:50:07.898322700+09:00"}
+{"agent":"Codex","entries":["N0063"],"event":"sync.record","session_id":null,"summary":"Reviewed Rust MCP vault server v0.5.1 Round 2 proposal for launch-local vault resolution, write guard, schema confirm flag, and implementation order. No vault entries were modified.","ts":"2026-04-27T10:52:37.711320600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T10:53:27.694874700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T11:00:52.460314800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T11:02:10.518929500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T11:03:25.704030900+09:00"}
+{"agent":"Codex","entries":["N0046","N0062"],"event":"sync.record","session_id":null,"summary":"Reviewed v0.5.1 non-local write confirm design against pending N0046 single-step undo proposal. Conclusion: undo does not reduce confirm necessity; confirm remains per-call pre-write guard, undo remains single-slot post-write correction with important overwrite/race caveats.","ts":"2026-04-27T11:05:17.087651100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0046","ts":"2026-04-27T11:05:54.374959100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0062","ts":"2026-04-27T11:11:35.410810900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0063","ts":"2026-04-27T11:16:39.350193800+09:00"}
+{"action":"entry.new","agent":"human","id":"N0064","ts":"2026-04-27T11:16:42.369971800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:17:05.555513400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:17:56.057006+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:18:41.282877600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:20:05.686045700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:21:09.727468200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:21:32.958064600+09:00"}
+{"agent":"claude","entries":["N0061","N0062","N0063","N0064","N0046","N0054"],"event":"sync.record","session_id":null,"summary":"N0063 협업 가이드 수립(CLI 파라미터, MCP 점검, 역할분담, 루프 옵션, 사전 컨텍스트 주입). v0.5.1 2라운드 협업으로 최종 확정(local alias 수정 + VaultOrigin/Resolution + fallback warning + FallbackGlobal 조건 confirm). N0046 undo 연동 설계 보강. N0064 transplant/bonsai proposal 수립 — 주제 분리/지인 공유/alias 참조 세 시나리오 정리. Codex의 --dangerously-bypass-approvals-and-sandbox 플래그 정정도 N0061에 기록.","ts":"2026-04-27T11:22:09.060507100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-27T11:48:36.430496600+09:00"}
+{"agent":"Codex","entries":["N0052","N0062","N0064","N0054","N0046","N0055","N0056","N0057"],"event":"sync.record","session_id":null,"summary":"Ambient suggestion generation for elendirna: reviewed recent vault plans/proposals (N0052, N0062, N0064, N0054, N0046) and GitHub activity. Strongest open loops are the uncommitted v0.5.1 vault-alias patch, cross-vault link syntax prerequisite, and minimal discuss/propose workflow now validated by real multi-agent use.","ts":"2026-04-27T12:24:45.741390700+09:00"}
+{"agent":"Codex","entries":["N0063"],"event":"sync.record","session_id":null,"summary":"v0.5.1 구현 계획 코드 수준 검토: src/vault/mod.rs, src/mcp/mod.rs, src/cli/serve.rs 및 inline MCP tests 확인. 핵심 리스크는 current session_local_vault가 세션 기본값과 local alias 캡처를 겸하고 있어 v0.5.1에서 별도 필드가 필요하다는 점, find_vault_root가 global fallback provenance를 숨긴다는 점.","ts":"2026-04-27T12:30:35.421014100+09:00"}

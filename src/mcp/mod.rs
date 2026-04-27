@@ -1,4 +1,4 @@
-use crate::vault::ops;
+use crate::vault::{ops, VaultOrigin, VaultResolution};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::{Json, Parameters},
@@ -36,8 +36,8 @@ impl JsonSchema for Out {
 }
 
 pub struct ElfMcpServer {
-    vault_root: PathBuf,
-    session_local_vault: std::sync::RwLock<Option<PathBuf>>,
+    launch_resolution: VaultResolution,
+    session_local_vault: std::sync::RwLock<Option<VaultResolution>>,
     #[allow(dead_code)]
     tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
     #[allow(dead_code)]
@@ -45,29 +45,45 @@ pub struct ElfMcpServer {
 }
 
 impl ElfMcpServer {
-    pub fn new(vault_root: PathBuf) -> Self {
+    pub fn new(resolution: VaultResolution) -> Self {
+        let path = crate::vault::normalize_vault_root(resolution.path);
         Self {
-            vault_root: crate::vault::normalize_vault_root(vault_root),
+            launch_resolution: VaultResolution { path, origin: resolution.origin },
             session_local_vault: std::sync::RwLock::new(None),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
     }
 
-    /// vault 경로 → (절대경로 문자열, "local"|"global")
-    fn vault_info_for(path: &PathBuf) -> (String, &'static str) {
-        let display = path.display().to_string();
+    /// vault resolution → JSON 메타데이터 조각 (vault, vault_kind, vault_origin, fallback?, warning?)
+    fn vault_meta(res: &VaultResolution) -> serde_json::Value {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
             .map(PathBuf::from)
             .ok();
-        let normalized = crate::vault::normalize_vault_root(path.clone());
-        let canonical_path = normalized.canonicalize().unwrap_or(normalized);
-        let kind = match home {
-            Some(h) if h.canonicalize().unwrap_or_else(|_| h.clone()) == canonical_path => "global",
+        let normalized = crate::vault::normalize_vault_root(res.path.clone());
+        let canonical = normalized.canonicalize().unwrap_or(normalized);
+        let vault_kind = match &home {
+            Some(h) if h.canonicalize().unwrap_or_else(|_| h.clone()) == canonical => "global",
             _ => "local",
         };
-        (display, kind)
+        let origin_str = match &res.origin {
+            VaultOrigin::ExplicitPath => "explicit_path".to_string(),
+            VaultOrigin::ExplicitGlobal => "explicit_global".to_string(),
+            VaultOrigin::Alias(a) => format!("alias:{a}"),
+            VaultOrigin::EnvVar => "env_var".to_string(),
+            VaultOrigin::CwdSearch => "cwd_search".to_string(),
+            VaultOrigin::FallbackGlobal => "fallback_global".to_string(),
+        };
+        let mut meta = serde_json::json!({
+            "vault": res.path.display().to_string(),
+            "vault_kind": vault_kind,
+            "vault_origin": origin_str,
+        });
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) {
+            meta["fallback"] = serde_json::Value::Bool(true);
+        }
+        meta
     }
 
     fn ensure_vault_root(path: PathBuf, label: &str) -> Result<PathBuf, ErrorData> {
@@ -87,23 +103,30 @@ impl ElfMcpServer {
         Ok(root.canonicalize().unwrap_or(root))
     }
 
-    fn resolve_named_vault(&self, alias: &str) -> Result<PathBuf, ErrorData> {
-        let resolved = if alias == "local" {
-            self.vault_root.clone()
+    fn resolve_named_vault(&self, alias: &str) -> Result<VaultResolution, ErrorData> {
+        let (path, origin) = if alias == "local" {
+            (self.launch_resolution.path.clone(), self.launch_resolution.origin.clone())
+        } else if alias == "global" {
+            let p = crate::vault::resolve_vault_alias("global").ok_or_else(|| {
+                ErrorData::invalid_params("could not resolve global vault root", None)
+            })?;
+            (p, VaultOrigin::ExplicitGlobal)
         } else {
-            crate::vault::resolve_vault_alias(alias).ok_or_else(|| {
+            let p = crate::vault::resolve_vault_alias(alias).ok_or_else(|| {
                 ErrorData::invalid_params(
                     format!("vault alias '{alias}' could not be resolved"),
                     None,
                 )
-            })?
+            })?;
+            (p, VaultOrigin::Alias(alias.to_string()))
         };
-        Self::ensure_vault_root(resolved, alias)
+        let canon = Self::ensure_vault_root(path, alias)?;
+        Ok(VaultResolution { path: canon, origin })
     }
 
-    /// 도구 호출 시 사용할 vault 경로를 결정한다.
-    /// 우선순위: 명시적 파라미터 > 세션 로컬 볼트 > 서버 기본 볼트
-    fn resolve_tool_vault(&self, explicit_vault: Option<String>) -> Result<PathBuf, ErrorData> {
+    /// 도구 호출 시 사용할 vault를 결정한다.
+    /// 우선순위: 명시적 파라미터 > 세션 기본 볼트 > 서버 launch 볼트
+    fn resolve_tool_vault(&self, explicit_vault: Option<String>) -> Result<VaultResolution, ErrorData> {
         if let Some(alias) = explicit_vault {
             return self.resolve_named_vault(&alias);
         }
@@ -111,10 +134,11 @@ impl ElfMcpServer {
             .session_local_vault
             .read()
             .map_err(|_| ErrorData::internal_error("session vault lock is poisoned", None))?;
-        if let Some(ref p) = *guard {
-            return Ok(p.clone());
+        if let Some(ref res) = *guard {
+            return Ok(res.clone());
         }
-        Self::ensure_vault_root(self.vault_root.clone(), "server default")
+        let canon = Self::ensure_vault_root(self.launch_resolution.path.clone(), "server default")?;
+        Ok(VaultResolution { path: canon, origin: self.launch_resolution.origin.clone() })
     }
 }
 
@@ -217,6 +241,9 @@ struct EntryNewParams {
     tags: Option<Vec<String>>,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -227,6 +254,9 @@ struct EntryStatusParams {
     status: String,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -239,6 +269,9 @@ struct RevisionAddParams {
     delta: String,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -285,12 +318,18 @@ struct SyncRecordParams {
     session_id: Option<String>,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct ValidateParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -303,6 +342,9 @@ struct EntryAttachParams {
     name: Option<String>,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -313,6 +355,9 @@ struct EntryDetachParams {
     key: String,
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    confirm: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -343,8 +388,8 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<EntryListParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let mut entries = ops::entry_list(&vault);
+        let res = self.resolve_tool_vault(p.vault)?;
+        let mut entries = ops::entry_list(&res.path);
         if let Some(ref tag) = p.tag {
             entries.retain(|e| e.manifest.tags.contains(tag));
         }
@@ -363,10 +408,9 @@ impl ElfMcpServer {
                 })
             })
             .collect();
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(
-            serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind, "entries": out }),
-        )))
+        let mut result = serde_json::json!({ "ok": true, "entries": out });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry manifest + note body 조회. \
@@ -377,14 +421,11 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<EntryShowParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let r = ops::entry_show(&vault, &p.id)
+        let res = self.resolve_tool_vault(p.vault)?;
+        let r = ops::entry_show(&res.path, &p.id)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok": true,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
             "manifest": {
                 "id":       r.entry.manifest.id,
                 "title":    r.entry.manifest.title,
@@ -396,29 +437,36 @@ impl ElfMcpServer {
                 "updated":  r.entry.manifest.updated,
             },
             "note": r.note_body,
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "새 entry 생성. \
         새로운 아이디어, 결정, 기록을 남길 때 사용. \
         기존 entry 내용 변경은 revision_add를 사용할 것.")]
     fn entry_new(&self, Parameters(p): Parameters<EntryNewParams>) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
         let r = ops::entry_new(
-            &vault,
+            &res.path,
             &p.title,
             p.baseline.as_deref(),
             p.tags.unwrap_or_default(),
         )
         .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok": true,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
             "id":    r.entry.manifest.id,
             "title": r.entry.manifest.title,
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry status 변경 (draft → stable → archived). \
@@ -433,7 +481,13 @@ impl ElfMcpServer {
         use crate::vault::id::EntryId;
         use crate::vault::util::append_sync_event;
 
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
 
         let new_status: EntryStatus = match p.status.as_str() {
             "draft" => EntryStatus::Draft,
@@ -450,7 +504,7 @@ impl ElfMcpServer {
         let id = EntryId::from_str(&p.id).ok_or_else(|| {
             ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
         })?;
-        let mut entry = Entry::find_by_id(&vault, &id)
+        let mut entry = Entry::find_by_id(&res.path, &id)
             .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
 
         let old_status = entry.manifest.status.clone();
@@ -461,17 +515,16 @@ impl ElfMcpServer {
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
         let event = format!("status.changed.{}.{}", id, entry.manifest.status);
-        let _ = append_sync_event(&vault, &event, Some(&id.to_string()));
+        let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
 
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok":   true,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
             "id":   id.to_string(),
             "from": old_status.to_string(),
             "to":   entry.manifest.status.to_string(),
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry에 revision(delta) 추가. \
@@ -483,18 +536,23 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<RevisionAddParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let r = ops::revision_add(&vault, &p.id, &p.delta)
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
+        let r = ops::revision_add(&res.path, &p.id, &p.delta)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok":       true,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
             "entry_id": r.revision.entry_id.to_string(),
             "rev_id":   r.revision.rev_id.to_string(),
             "baseline": r.revision.baseline.to_string(),
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry + revision chain + linked entries 수집. \
@@ -504,7 +562,7 @@ impl ElfMcpServer {
         depth=0: revisions만 (컨텍스트 절약), depth=1: 직접 linked 전문(기본), depth=2+: 2홉 이상 manifest만. \
         since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용).")]
     fn bundle(&self, Parameters(p): Parameters<BundleParams>) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
         let since = p
             .since
             .as_deref()
@@ -520,7 +578,7 @@ impl ElfMcpServer {
             since,
         };
 
-        let b = ops::bundle_with_opts(&vault, &p.id, opts)
+        let b = ops::bundle_with_opts(&res.path, &p.id, opts)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let stats = b.stats();
 
@@ -556,11 +614,8 @@ impl ElfMcpServer {
                 }
             })
             .collect();
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok": true,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
             "context_stats": {
                 "estimated_bytes": stats.estimated_bytes,
                 "entry_count": stats.entry_count,
@@ -579,21 +634,23 @@ impl ElfMcpServer {
             "note":      b.note_body,
             "revisions": revs,
             "linked":    linked,
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "sqlite 인덱스 기반 entry 검색. \
         전체 목록보다 빠름. \
         세션 시작 시 작업 범위 파악: query(tag='...')로 관련 entry를 먼저 탐색.")]
     fn query(&self, Parameters(p): Parameters<QueryParams>) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
         let filter = crate::vault::index::QueryFilter {
             tag: p.tag,
             status: p.status,
             baseline: None,
             title_contains: p.title_contains,
         };
-        let rows = crate::vault::index::query(&vault, &filter)
+        let rows = crate::vault::index::query(&res.path, &filter)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let out: Vec<_> = rows
             .iter()
@@ -606,10 +663,9 @@ impl ElfMcpServer {
                 })
             })
             .collect();
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(
-            serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind, "entries": out }),
-        )))
+        let mut result = serde_json::json!({ "ok": true, "entries": out });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(
@@ -621,37 +677,47 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<SyncRecordParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
         ops::sync_record(
-            &vault,
+            &res.path,
             &p.summary,
             p.agent.as_deref(),
             p.entries.map(|e| e.0).unwrap_or_default(),
             p.session_id,
         )
         .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(
-            serde_json::json!({ "ok": true, "vault": vault_path, "vault_kind": vault_kind }),
-        )))
+        let mut result = serde_json::json!({ "ok": true });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "vault 무결성 검사 + index.sqlite 재생성. \
         dangling link, orphan revision, schema 오류를 모두 검사. \
         vault 상태가 의심스럽거나 query 결과가 부정확할 때 사용.")]
     fn validate(&self, Parameters(p): Parameters<ValidateParams>) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let result = crate::schema::validate::run_all(&vault)
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
+        let vresult = crate::schema::validate::run_all(&res.path)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let _ = crate::vault::index::rebuild(&vault);
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
-            "ok":       result.error_count() == 0,
-            "vault": vault_path,
-            "vault_kind": vault_kind,
-            "errors":   result.error_count(),
-            "warnings": result.warning_count(),
-        }))))
+        let _ = crate::vault::index::rebuild(&res.path);
+        let mut out = serde_json::json!({
+            "ok":       vresult.error_count() == 0,
+            "errors":   vresult.error_count(),
+            "warnings": vresult.warning_count(),
+        });
+        out.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(out)))
     }
 
     #[tool(description = "파일을 entry에 첨부. \
@@ -661,21 +727,26 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<EntryAttachParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
         let file_path = std::path::Path::new(&p.file_path);
-        let r = ops::entry_attach(&vault, &p.id, file_path, p.name.as_deref())
+        let r = ops::entry_attach(&res.path, &p.id, file_path, p.name.as_deref())
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok":          true,
-            "vault":       vault_path,
-            "vault_kind":  vault_kind,
             "asset_key":   r.asset_key,
             "source_path": r.source_path,
             "size":        r.size,
             "collision":   r.collision,
             "warning":     r.warning,
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry에서 첨부 파일 해제. \
@@ -685,17 +756,22 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<EntryDetachParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let removed = ops::entry_detach(&vault, &p.id, &p.key)
+        let res = self.resolve_tool_vault(p.vault)?;
+        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
+            return Err(ErrorData::invalid_params(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+                None,
+            ));
+        }
+        let removed = ops::entry_detach(&res.path, &p.id, &p.key)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
-            "ok":        true,
-            "vault":     vault_path,
-            "vault_kind": vault_kind,
-            "removed":   removed,
-            "key":       p.key,
-        }))))
+        let mut result = serde_json::json!({
+            "ok":      true,
+            "removed": removed,
+            "key":     p.key,
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry에 등록된 첨부 파일 목록 조회. \
@@ -704,8 +780,8 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<EntryAssetsParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        let vault = self.resolve_tool_vault(p.vault)?;
-        let assets = ops::entry_assets(&vault, &p.id)
+        let res = self.resolve_tool_vault(p.vault)?;
+        let assets = ops::entry_assets(&res.path, &p.id)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let out: Vec<_> = assets
             .iter()
@@ -718,13 +794,12 @@ impl ElfMcpServer {
                 })
             })
             .collect();
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        Ok(Json(Out(serde_json::json!({
-            "ok":        true,
-            "vault":     vault_path,
-            "vault_kind": vault_kind,
-            "assets":    out,
-        }))))
+        let mut result = serde_json::json!({
+            "ok":     true,
+            "assets": out,
+        });
+        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 
     #[tool(
@@ -748,20 +823,18 @@ impl ElfMcpServer {
             *guard = Some(resolved);
         }
 
-        let vault = self.resolve_tool_vault(None)?;
-        let entries = ops::entry_list(&vault);
+        let res = self.resolve_tool_vault(None)?;
+        let entries = ops::entry_list(&res.path);
         let entry_count = entries.len();
 
-        let recent_sessions = ops::sync_log(&vault, Some(3), None).unwrap_or_default();
+        let recent_sessions = ops::sync_log(&res.path, Some(3), None).unwrap_or_default();
 
-        let (vault_path, vault_kind) = Self::vault_info_for(&vault);
-        let is_global = vault_kind == "global";
+        let meta = Self::vault_meta(&res);
+        let is_global = meta["vault_kind"].as_str().unwrap_or("local") == "global";
 
         if entry_count == 0 {
-            return Ok(Json(Out(serde_json::json!({
+            let mut result = serde_json::json!({
                 "ok": true,
-                "vault_root": vault_path,
-                "vault_kind": vault_kind,
                 "vault_status": "empty",
                 "entry_count": 0,
                 "ai_instructions": {
@@ -775,7 +848,9 @@ impl ElfMcpServer {
                     },
                     "tip": "사용자용 대화형 온보딩이 필요하면 'seed' MCP 프롬프트를 주입하세요."
                 }
-            }))));
+            });
+            result.as_object_mut().unwrap().extend(meta.as_object().unwrap().clone());
+            return Ok(Json(Out(result)));
         }
 
         let hint = if is_global {
@@ -788,10 +863,8 @@ impl ElfMcpServer {
             도구 호출 시 vault='global'을 지정하세요."
         };
 
-        Ok(Json(Out(serde_json::json!({
+        let mut result = serde_json::json!({
             "ok": true,
-            "vault_root": vault_path,
-            "vault_kind": vault_kind,
             "vault_status": "active",
             "entry_count": entry_count,
             "recent_sessions": recent_sessions,
@@ -807,7 +880,9 @@ impl ElfMcpServer {
                 ]
             },
             "hint": hint,
-        }))))
+        });
+        result.as_object_mut().unwrap().extend(meta.as_object().unwrap().clone());
+        Ok(Json(Out(result)))
     }
 }
 
@@ -883,10 +958,10 @@ impl ServerHandler for ElfMcpServer {
 // ─── 서버 진입점 ─────────────────────────
 
 /// stdio transport로 MCP 서버 구동 (blocking).
-pub fn run_stdio(vault_root: PathBuf) -> anyhow::Result<()> {
+pub fn run_stdio(resolution: VaultResolution) -> anyhow::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let server = ElfMcpServer::new(vault_root);
+        let server = ElfMcpServer::new(resolution);
         let transport = rmcp::transport::io::stdio();
         server.serve(transport).await?.waiting().await?;
         Ok(())
@@ -896,6 +971,7 @@ pub fn run_stdio(vault_root: PathBuf) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{ElfMcpServer, FlexibleEntries, normalize_entry_ids};
+    use crate::vault::{VaultOrigin, VaultResolution};
 
     static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -919,29 +995,38 @@ mod tests {
         let old_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(cwd_vault.path()).unwrap();
 
-        let server = ElfMcpServer::new(local.path().to_path_buf());
+        let server = ElfMcpServer::new(VaultResolution {
+            path: local.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        });
         let resolved = server
             .resolve_tool_vault(Some("local".to_string()))
             .unwrap();
 
         std::env::set_current_dir(old_cwd).unwrap();
-        assert_eq!(resolved, canonical(local.path()));
+        assert_eq!(resolved.path, canonical(local.path()));
     }
 
     #[test]
     fn resolve_explicit_vault_overrides_session_default() {
         let local = temp_vault("local");
         let session = temp_vault("session");
-        let server = ElfMcpServer::new(local.path().to_path_buf());
-        *server.session_local_vault.write().unwrap() = Some(canonical(session.path()));
+        let server = ElfMcpServer::new(VaultResolution {
+            path: local.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        });
+        *server.session_local_vault.write().unwrap() = Some(VaultResolution {
+            path: canonical(session.path()),
+            origin: VaultOrigin::CwdSearch,
+        });
 
         let default_resolved = server.resolve_tool_vault(None).unwrap();
         let explicit_resolved = server
             .resolve_tool_vault(Some("local".to_string()))
             .unwrap();
 
-        assert_eq!(default_resolved, canonical(session.path()));
-        assert_eq!(explicit_resolved, canonical(local.path()));
+        assert_eq!(default_resolved.path, canonical(session.path()));
+        assert_eq!(explicit_resolved.path, canonical(local.path()));
     }
 
     #[test]
