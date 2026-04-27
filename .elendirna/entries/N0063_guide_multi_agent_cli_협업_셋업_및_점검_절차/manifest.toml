@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0063"
+title = "Guide: Multi-Agent CLI 협업 셋업 및 점검 절차"
+created = "2026-04-27T10:45:15.953393100+09:00"
+updated = "2026-04-27T11:16:39.345565600+09:00"
+tags = [
+    "guide",
+    "multi-agent",
+    "cli",
+    "mcp",
+    "collaboration",
+    "checklist",
+]
+links = []
+sources = []
+status = "draft"
