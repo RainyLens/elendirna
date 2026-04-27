@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0065"
+title = "Idea: work_context = sync_record entry-axis view (HEAD = single entry)"
+created = "2026-04-27T20:57:41.401906800+09:00"
+updated = "2026-04-27T20:58:23.049021200+09:00"
+tags = [
+    "proposal",
+    "sync",
+    "work-context",
+    "sqlite",
+    "design",
+    "git-analogy",
+]
+links = []
+sources = []
+status = "draft"
