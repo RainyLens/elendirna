@@ -346,3 +346,11 @@
 {"action":"entry.new","agent":"human","id":"N0065","ts":"2026-04-27T20:57:41.404137500+09:00"}
 {"action":"revision.add","agent":"human","id":"N0065","ts":"2026-04-27T20:58:23.049839400+09:00"}
 {"agent":"claude","entries":[],"event":"sync.record","session_id":null,"summary":"work_context 아이디어 N0065 신규. 핵심: 새 데이터 모델 없이 기존 sync_record를 entry축으로 재인덱싱한 view. HEAD=단일 entry, sibling은 lazy hop, jsonl→sqlite SSoT 이동, bundle 응답에 sync_history 필드 추가. 잔여 결정은 entry 본문 마지막 섹션에 정리. 사용자가 집에서 마저 고민 예정.</summary>\n<parameter name=\"entries\">[\"N0065\"]","ts":"2026-04-27T20:58:29.572556300+09:00"}
+{"action":"entry.new","agent":"human","id":"N0066","ts":"2026-04-28T11:04:54.491976800+09:00"}
+{"action":"revision.add","agent":"human","id":"N0066","ts":"2026-04-28T11:06:27.497982900+09:00"}
+{"agent":"claude","entries":["N0066"],"event":"sync.record","session_id":null,"summary":"N0066 신규 — 외부 공유용 research note SSoT savepoint. 본문 r0001 작성 후 docs/research-note.md로 export (Source 헤더 + last synced 명기). 갱신 워크플로: vault에서 revision_add → docs/ export 시 헤더 sync 시점 갱신. 태그: promo, research-note, overview, export-source.","ts":"2026-04-28T11:07:47.043829300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-28T13:20:47.790014600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0067","ts":"2026-04-28T13:25:10.383526100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-04-28T13:25:40.814584500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0064","ts":"2026-04-28T13:25:44.130572300+09:00"}
+{"agent":"claude","entries":["N0064","N0067"],"event":"sync.record","session_id":null,"summary":"N0064 r0008 — transplant/bonsai에 안전 임계 추출 use case 실증 기록 (회사→범용 vault, 수동 처리됨, 도구 요구사항 후보 등록). N0067 신규 — 다른 머신 docs 이관 중 발견된 MCP per-call vault override 무력 + cwd local 자동 등록 부재 버그/UX. N0064 r0009 — entry seed 인터페이스 부재(entry_new(body=)/entry_import 필요), N0067과 cross-link.","ts":"2026-04-28T13:26:52.972017+09:00"}
