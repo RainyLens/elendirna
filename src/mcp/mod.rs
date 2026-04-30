@@ -973,8 +973,6 @@ mod tests {
     use super::{ElfMcpServer, FlexibleEntries, normalize_entry_ids};
     use crate::vault::{VaultOrigin, VaultResolution};
 
-    static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     fn temp_vault(name: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         crate::vault::config::VaultConfig::new(name)
@@ -989,10 +987,14 @@ mod tests {
 
     #[test]
     fn resolve_local_uses_server_vault_not_process_cwd() {
-        let _guard = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::CWD_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let local = temp_vault("local");
         let cwd_vault = temp_vault("cwd");
-        let old_cwd = std::env::current_dir().unwrap();
+        // CARGO_MANIFEST_DIR은 빌드 시점에 고정된 stable 경로. cleanup 복원이
+        // race로 fail하지 않도록 직전 테스트의 곧 삭제될 tempdir 대신 이걸 사용.
+        let restore_cwd = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         std::env::set_current_dir(cwd_vault.path()).unwrap();
 
         let server = ElfMcpServer::new(VaultResolution {
@@ -1003,7 +1005,7 @@ mod tests {
             .resolve_tool_vault(Some("local".to_string()))
             .unwrap();
 
-        std::env::set_current_dir(old_cwd).unwrap();
+        std::env::set_current_dir(restore_cwd).unwrap();
         assert_eq!(resolved.path, canonical(local.path()));
     }
 
