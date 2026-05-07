@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0065"
 title = "Idea: work_context = sync_record entry-axis view (HEAD = single entry)"
 created = "2026-04-27T20:57:41.401906800+09:00"
-updated = "2026-04-27T20:58:23.049021200+09:00"
+updated = "2026-05-07T10:58:37.232938700+09:00"
 tags = [
     "proposal",
     "sync",

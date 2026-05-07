@@ -359,3 +359,6 @@
 {"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-07T10:55:23.638760600+09:00"}
 {"agent":"Codex","entries":["N0067","N0038","N0040"],"event":"sync.record","session_id":null,"summary":"N0067 MCP per-call vault='local' 진단 리뷰: local은 현재 구현상 launch_resolution 별칭이며, CC Desktop cwd/home이면 global path를 local처럼 가리키는 인과가 타당함. 추가로 home cwd에서는 origin이 FallbackGlobal이 아니라 CwdSearch일 수 있어 fallback warning/confirm이 빠지는 함정을 확인.","ts":"2026-05-07T10:56:25.927001200+09:00"}
 {"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-07T10:57:29.976572500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0065","ts":"2026-05-07T10:58:37.233209900+09:00"}
+{"action":"entry.new","agent":"human","id":"N0069","ts":"2026-05-07T10:58:40.440285300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0069","ts":"2026-05-07T10:59:08.234183500+09:00"}
