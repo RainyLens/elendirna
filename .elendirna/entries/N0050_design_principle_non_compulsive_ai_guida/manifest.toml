@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0050"
 title = "Design Principle: Non-Compulsive AI Guidance"
 created = "2026-04-23T14:04:06.499760400+09:00"
-updated = "2026-04-24T11:15:34.498072900+09:00"
+updated = "2026-05-07T11:03:57.612903400+09:00"
 tags = [
     "design",
     "ai-behavior",
