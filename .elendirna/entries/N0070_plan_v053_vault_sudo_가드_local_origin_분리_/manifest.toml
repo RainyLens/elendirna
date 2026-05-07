@@ -1,0 +1,17 @@
+schema_version = 1
+id = "N0070"
+title = "PLAN v0.5.3: vault sudo 가드 + 'local' origin 분리 (N0038 정책 구현)"
+created = "2026-05-07T11:05:07.225394800+09:00"
+updated = "2026-05-07T11:08:56.375164+09:00"
+tags = [
+    "plan",
+    "v0.5.3",
+    "vault",
+    "mcp",
+    "security",
+    "sudo",
+]
+baseline = "N0038"
+links = []
+sources = []
+status = "draft"

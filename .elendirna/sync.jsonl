@@ -365,3 +365,7 @@
 {"action":"revision.add","agent":"human","id":"N0029","ts":"2026-05-07T11:03:37.634789700+09:00"}
 {"action":"revision.add","agent":"human","id":"N0050","ts":"2026-05-07T11:03:57.613204100+09:00"}
 {"action":"revision.add","agent":"human","id":"N0064","ts":"2026-05-07T11:04:17.921467600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0070","ts":"2026-05-07T11:05:07.225789300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0070","ts":"2026-05-07T11:05:45.596444700+09:00"}
+{"agent":"Codex","entries":["N0070","N0067","N0038","N0040"],"event":"sync.record","session_id":null,"summary":"N0070 PLAN v0.5.3 검토: 방향은 타당하나 home 판정은 find_vault_root 결과가 아니라 no-fallback cwd search 결과로 해야 하며, session_start(vault='global') stateful default와 escalated_write/confirm 정책 경계 보강 필요.","ts":"2026-05-07T11:08:25.940658600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0070","ts":"2026-05-07T11:08:56.375555300+09:00"}
