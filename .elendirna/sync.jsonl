@@ -356,3 +356,6 @@
 {"agent":"claude","entries":["N0064","N0067"],"event":"sync.record","session_id":null,"summary":"N0064 r0008 — transplant/bonsai에 안전 임계 추출 use case 실증 기록 (회사→범용 vault, 수동 처리됨, 도구 요구사항 후보 등록). N0067 신규 — 다른 머신 docs 이관 중 발견된 MCP per-call vault override 무력 + cwd local 자동 등록 부재 버그/UX. N0064 r0009 — entry seed 인터페이스 부재(entry_new(body=)/entry_import 필요), N0067과 cross-link.","ts":"2026-04-28T13:26:52.972017+09:00"}
 {"action":"revision.add","agent":"human","id":"N0063","ts":"2026-05-07T10:49:09.242612800+09:00"}
 {"action":"revision.add","agent":"human","id":"N0010","ts":"2026-05-07T10:51:27.091643700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-07T10:55:23.638760600+09:00"}
+{"agent":"Codex","entries":["N0067","N0038","N0040"],"event":"sync.record","session_id":null,"summary":"N0067 MCP per-call vault='local' 진단 리뷰: local은 현재 구현상 launch_resolution 별칭이며, CC Desktop cwd/home이면 global path를 local처럼 가리키는 인과가 타당함. 추가로 home cwd에서는 origin이 FallbackGlobal이 아니라 CwdSearch일 수 있어 fallback warning/confirm이 빠지는 함정을 확인.","ts":"2026-05-07T10:56:25.927001200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-07T10:57:29.976572500+09:00"}

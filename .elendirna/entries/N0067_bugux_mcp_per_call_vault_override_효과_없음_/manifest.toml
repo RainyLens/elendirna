@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0067"
 title = "Bug/UX: MCP per-call vault override 효과 없음 + cwd local vault 자동 등록 부재"
 created = "2026-04-28T13:25:10.382120500+09:00"
-updated = "2026-04-28T13:25:40.814049700+09:00"
+updated = "2026-05-07T10:57:29.976216800+09:00"
 tags = [
     "bug",
     "ux",
