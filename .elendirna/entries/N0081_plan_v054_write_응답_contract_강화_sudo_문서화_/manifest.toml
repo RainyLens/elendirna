@@ -1,0 +1,18 @@
+schema_version = 1
+id = "N0081"
+title = "PLAN v0.5.4: write 응답 contract 강화 + sudo 문서화 (N0070 Phase C/D/E splitoff)"
+created = "2026-05-11T17:37:15.678676300+09:00"
+updated = "2026-05-11T17:37:58.152042800+09:00"
+tags = [
+    "plan",
+    "v0.5.4",
+    "vault",
+    "mcp",
+    "security",
+    "sudo",
+    "docs",
+]
+baseline = "N0070"
+links = []
+sources = []
+status = "draft"

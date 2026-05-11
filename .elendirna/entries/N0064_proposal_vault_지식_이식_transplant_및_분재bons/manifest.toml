@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0064"
 title = "Proposal: Vault 지식 이식 (Transplant) 및 분재(Bonsai) 기능"
 created = "2026-04-27T11:16:42.368275300+09:00"
-updated = "2026-05-07T11:04:17.921081600+09:00"
+updated = "2026-05-08T15:55:46.568840200+09:00"
 tags = [
     "proposal",
     "vault",
