@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0078"
+title = "ancestor: Galatea — 같은 화두의 외부 이전 시도"
+created = "2026-05-08T23:54:46.669627700+09:00"
+updated = "2026-05-09T01:31:28.620956700+09:00"
+tags = [
+    "ancestor",
+    "history",
+    "motivation",
+]
+links = []
+sources = []
+status = "draft"

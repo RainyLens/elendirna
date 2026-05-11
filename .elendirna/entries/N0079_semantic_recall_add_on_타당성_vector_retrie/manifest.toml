@@ -1,0 +1,15 @@
+schema_version = 1
+id = "N0079"
+title = "semantic recall add-on 타당성 — vector retrieval이 elendirna schema와 갖는 fit"
+created = "2026-05-11T09:44:01.511359800+09:00"
+updated = "2026-05-11T09:48:23.463732500+09:00"
+tags = [
+    "idea",
+    "elen-labs",
+    "vector-retrieval",
+    "semantic-recall",
+    "schema-design",
+]
+links = []
+sources = []
+status = "draft"

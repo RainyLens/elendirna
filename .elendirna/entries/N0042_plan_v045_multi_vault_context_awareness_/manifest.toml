@@ -1,0 +1,14 @@
+schema_version = 1
+id = "N0042"
+title = "PLAN v0.4.5 — Multi-Vault Context Awareness 개선"
+created = "2026-04-16T12:53:17.163179900Z"
+updated = "2026-04-16T12:53:23.399807400Z"
+tags = [
+    "plan",
+    "v0.4.5",
+    "mcp",
+    "ux",
+]
+links = []
+sources = []
+status = "draft"

@@ -1,0 +1,9 @@
+schema_version = 1
+id = "N0068"
+title = "Fix: lib test CWD race — CWD_LOCK 분리로 인한 CI 간헐 fail (workbench/upstream 동시)"
+created = "2026-04-30T15:16:17.593979100+09:00"
+updated = "2026-04-30T15:16:54.661625800+09:00"
+tags = []
+links = []
+sources = []
+status = "draft"

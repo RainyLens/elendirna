@@ -1,0 +1,10 @@
+schema_version = 1
+id = "N0073"
+title = "Bug: MCP 비-string 파라미터 역직렬화 오류 (systemic — N0041 확장)"
+created = "2026-05-07T13:39:14.144506400+09:00"
+updated = "2026-05-07T13:39:40.392282400+09:00"
+tags = []
+baseline = "N0041"
+links = []
+sources = []
+status = "draft"

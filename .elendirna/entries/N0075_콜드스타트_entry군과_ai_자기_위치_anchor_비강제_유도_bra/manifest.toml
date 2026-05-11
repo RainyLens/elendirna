@@ -1,0 +1,10 @@
+schema_version = 1
+id = "N0075"
+title = "콜드스타트 entry군과 AI 자기-위치 anchor (비강제 유도 brainstorm)"
+created = "2026-05-07T22:05:32.590637700+09:00"
+updated = "2026-05-07T22:24:48.646742100+09:00"
+tags = ["brainstorm-seed"]
+baseline = "N0050"
+links = []
+sources = []
+status = "draft"
