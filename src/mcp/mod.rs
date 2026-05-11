@@ -106,6 +106,32 @@ impl ElfMcpServer {
         Ok(())
     }
 
+    /// guarded origin(FallbackGlobal | CwdSearchHome) + confirm=true로 가드를 통과한 write 응답에
+    /// `escalated_write: true` + `warning` 필드를 inject한다. 후속 agent가 응답 본문만 봐도
+    /// silent 성공이 아닌 의도된 escalation임을 인지 가능하게 함.
+    fn mark_escalated_if_needed(
+        result: &mut serde_json::Value,
+        res: &VaultResolution,
+        confirm: bool,
+    ) {
+        if confirm
+            && matches!(
+                res.origin,
+                VaultOrigin::FallbackGlobal | VaultOrigin::CwdSearchHome
+            )
+        {
+            if let Some(map) = result.as_object_mut() {
+                map.insert("escalated_write".into(), serde_json::Value::Bool(true));
+                map.insert(
+                    "warning".into(),
+                    serde_json::Value::String(
+                        "🚨 GLOBAL_WRITE_EXECUTED — confirm=true 통과로 host-default global vault에 쓰기가 실행되었습니다.".into()
+                    ),
+                );
+            }
+        }
+    }
+
     fn ensure_vault_root(path: PathBuf, label: &str) -> Result<PathBuf, ErrorData> {
         let root = crate::vault::normalize_vault_root(path);
         if !crate::vault::metadata_root(&root)
@@ -275,7 +301,7 @@ struct EntryNewParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -290,7 +316,7 @@ struct EntryStatusParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -307,7 +333,7 @@ struct RevisionAddParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -358,7 +384,7 @@ struct SyncRecordParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -369,7 +395,7 @@ struct ValidateParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -386,7 +412,7 @@ struct EntryAttachParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -401,7 +427,7 @@ struct EntryDetachParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -516,6 +542,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -572,6 +599,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -598,6 +626,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -744,6 +773,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -764,6 +794,7 @@ impl ElfMcpServer {
         out.as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut out, &res, p.confirm);
         Ok(Json(Out(out)))
     }
 
@@ -791,6 +822,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -814,6 +846,7 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
@@ -1123,6 +1156,76 @@ mod tests {
                 origin,
             };
             assert!(ElfMcpServer::ensure_write_confirmed(&res, false).is_ok());
+        }
+    }
+
+    /// guarded origin + confirm=true로 write 가드를 통과한 응답은
+    /// `escalated_write:true` + `warning` 필드를 반드시 inject해야 한다.
+    /// 후속 agent가 silent 성공으로 오해하지 않게 하는 응답 contract.
+    #[test]
+    fn escalated_write_field_present_when_guarded_and_confirmed() {
+        let temp = tempfile::tempdir().unwrap();
+        for origin in [VaultOrigin::FallbackGlobal, VaultOrigin::CwdSearchHome] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            let mut result = serde_json::json!({ "ok": true });
+            ElfMcpServer::mark_escalated_if_needed(&mut result, &res, true);
+            assert_eq!(result["escalated_write"], serde_json::Value::Bool(true));
+            let warning = result["warning"]
+                .as_str()
+                .expect("warning must be a string");
+            assert!(warning.contains("GLOBAL_WRITE_EXECUTED"));
+            assert!(warning.contains("🚨"));
+        }
+    }
+
+    /// 정상 origin(ExplicitPath/ExplicitGlobal/Alias/EnvVar/CwdSearch)에서는
+    /// confirm=true여도 escalated_write/warning 필드가 inject되지 않아야 한다.
+    /// 기존 클라이언트 호환 보장.
+    #[test]
+    fn escalated_write_absent_for_normal_origin() {
+        let temp = tempfile::tempdir().unwrap();
+        for origin in [
+            VaultOrigin::ExplicitPath,
+            VaultOrigin::ExplicitGlobal,
+            VaultOrigin::Alias("x".to_string()),
+            VaultOrigin::EnvVar,
+            VaultOrigin::CwdSearch,
+        ] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            let mut result = serde_json::json!({ "ok": true });
+            ElfMcpServer::mark_escalated_if_needed(&mut result, &res, true);
+            assert!(
+                result.get("escalated_write").is_none(),
+                "escalated_write should not be set for normal origin"
+            );
+            assert!(
+                result.get("warning").is_none(),
+                "warning should not be set for normal origin"
+            );
+        }
+    }
+
+    /// helper 단독 동작: confirm=false면 guarded origin이라도 inject 안 함.
+    /// 실제 호출 흐름에서는 ensure_write_confirmed가 먼저 reject하지만, 별개의 함수 책임으로
+    /// 명세화하여 호출 순서 변경 시 회귀를 잡는다.
+    #[test]
+    fn escalated_write_absent_when_confirm_false() {
+        let temp = tempfile::tempdir().unwrap();
+        for origin in [VaultOrigin::FallbackGlobal, VaultOrigin::CwdSearchHome] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            let mut result = serde_json::json!({ "ok": true });
+            ElfMcpServer::mark_escalated_if_needed(&mut result, &res, false);
+            assert!(result.get("escalated_write").is_none());
+            assert!(result.get("warning").is_none());
         }
     }
 
