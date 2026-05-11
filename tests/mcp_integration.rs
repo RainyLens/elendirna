@@ -306,13 +306,7 @@ fn mcp_entry_attach_copy_name_uses_filename_only() {
     let tmp_file = dir.path().join("source.txt");
     std::fs::write(&tmp_file, b"data").unwrap();
 
-    let r = ops::entry_attach(
-        dir.path(),
-        "N0001",
-        &tmp_file,
-        Some("../nested/evil.txt"),
-    )
-    .unwrap();
+    let r = ops::entry_attach(dir.path(), "N0001", &tmp_file, Some("../nested/evil.txt")).unwrap();
     assert_eq!(r.asset_key, "N0001_evil.txt");
     assert!(dir.path().join(".elendirna/assets/N0001_evil.txt").exists());
 }

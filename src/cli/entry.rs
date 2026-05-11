@@ -454,12 +454,8 @@ pub struct AttachArgs {
 
 pub fn run_attach(args: AttachArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
-    let r = crate::vault::ops::entry_attach(
-        &vault_root,
-        &args.id,
-        &args.file,
-        args.name.as_deref(),
-    )?;
+    let r =
+        crate::vault::ops::entry_attach(&vault_root, &args.id, &args.file, args.name.as_deref())?;
 
     if args.json {
         println!(

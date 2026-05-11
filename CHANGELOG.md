@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.5.4] — 2026-05-11
+
+### 패치
+
+#### vault sudo guard 확장 + write 응답 contract 강화
+
+v0.5.3 작업분 흡수 (sudo guard 확장):
+
+- `VaultOrigin::CwdSearchHome` variant 추가 — process CWD가 home과 일치할 때 결과 path는 global vault와 같지만 origin이 구분됨
+- `is_home_vault_root` helper — Windows USERPROFILE/HOME, junction, trailing slash, `\\?\` canonical path 차이를 단일 helper로 흡수 (양쪽 canonicalize 실패 시 보수적 false)
+- `elf serve --mcp` 시작 시 `find_local_vault_root` 결과를 home과 비교해 origin wrap
+- write 가드 확장 — 기존 `FallbackGlobal`만 보던 7곳을 `ensure_write_confirmed` helper로 centralize, `FallbackGlobal | CwdSearchHome` 모두 `confirm=true` 없이 reject (Claude Desktop처럼 process CWD가 home인 host에서 silent global write 함정 차단)
+- 에러 메시지 분기: `FallbackGlobal` → "writing to fallback-global vault...", `CwdSearchHome` → "writing to host-default global vault — cwd is at home, vault resolved to a global location"
+
+v0.5.4 작업분 (write 응답 contract):
+
+- `mark_escalated_if_needed` helper — guarded origin(`FallbackGlobal | CwdSearchHome`) + `confirm=true`로 가드를 통과한 write 응답에 `escalated_write: true` + `warning: "🚨 GLOBAL_WRITE_EXECUTED — ..."` 필드 inject
+- 7개 write tool 응답에 적용 — guarded origin 통과는 silent 성공이 아닌 시각적 escalation 신호로 노출
+- `confirm` schema description 갱신 — "true로 통과 시 응답에 escalated_write:true + warning 필드 동봉" 명시
+
+#### 응답 contract (v0.5.4 기준)
+
+- `vault` — resolved absolute path
+- `vault_kind` — `local` | `global`
+- `vault_origin` — `explicit_path` | `explicit_global` | `alias:<name>` | `env_var` | `cwd_search` | `cwd_search_home` | `fallback_global`
+- `fallback: true` — origin이 `fallback_global`일 때만
+- `escalated_write: true` + `warning` — guarded origin + `confirm=true` 통과 시에만
+
+### 내부
+
+- `cargo test --lib`: 61 passed (58 + 3 신규 escalated_write tests)
+- `cargo test --test mcp_integration`: 19 passed (회귀 0)
+- `cargo fmt`: pass
+
+---
+
 ## [0.5.1] — 2026-04-27
 
 ### 패치

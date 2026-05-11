@@ -20,6 +20,9 @@ pub enum VaultOrigin {
     Alias(String),
     EnvVar,
     CwdSearch,
+    /// cwd 탐색 결과 경로가 home vault root와 동일한 경우.
+    /// silent global write 방지를 위해 write 도구에서 `confirm=true`를 요구한다.
+    CwdSearchHome,
     FallbackGlobal,
 }
 
@@ -80,6 +83,25 @@ fn home_vault_root() -> Result<PathBuf, ElfError> {
         .map_err(|_| ElfError::InvalidInput {
             message: "홈 디렉터리를 결정할 수 없습니다".to_string(),
         })
+}
+
+/// 인자 path가 home vault root와 동일한지 canonical 비교로 판정.
+/// Windows USERPROFILE/HOME, junction, trailing slash, `\\?\` prefix 등 차이를 흡수한다.
+/// 둘 중 하나라도 canonicalize 실패 시 보수적으로 false 반환(기존 동작 유지).
+pub fn is_home_vault_root(path: &Path) -> bool {
+    let home = match home_vault_root() {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    let home_canon = match home.canonicalize() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let path_canon = match path.canonicalize() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    home_canon == path_canon
 }
 
 /// `@vault:<alias>:N####` 링크에서 alias 부분을 추출.

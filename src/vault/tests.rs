@@ -133,3 +133,36 @@ mod revision {
         assert_eq!(list[2].rev_id, RevisionId::new(3));
     }
 }
+
+// ─── vault::is_home_vault_root ───────────────
+mod home_root {
+    use crate::vault::is_home_vault_root;
+
+    #[test]
+    fn matches_actual_home() {
+        let home_str = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home_str.is_empty() {
+            return; // CI 보호: env 없으면 skip
+        }
+        let home = std::path::PathBuf::from(&home_str);
+        if !home.exists() {
+            return;
+        }
+        assert!(is_home_vault_root(&home));
+    }
+
+    #[test]
+    fn tempdir_is_not_home() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(!is_home_vault_root(temp.path()));
+    }
+
+    #[test]
+    fn nonexistent_path_is_false() {
+        // canonicalize 실패 path → false (보수적 degrade)
+        let bogus = std::path::PathBuf::from("/definitely-not-real-12345-elendirna");
+        assert!(!is_home_vault_root(&bogus));
+    }
+}
