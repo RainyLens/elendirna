@@ -1,4 +1,4 @@
-use crate::vault::{ops, VaultOrigin, VaultResolution};
+use crate::vault::{VaultOrigin, VaultResolution, ops};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::{Json, Parameters},
@@ -48,7 +48,10 @@ impl ElfMcpServer {
     pub fn new(resolution: VaultResolution) -> Self {
         let path = crate::vault::normalize_vault_root(resolution.path);
         Self {
-            launch_resolution: VaultResolution { path, origin: resolution.origin },
+            launch_resolution: VaultResolution {
+                path,
+                origin: resolution.origin,
+            },
             session_local_vault: std::sync::RwLock::new(None),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
@@ -57,15 +60,12 @@ impl ElfMcpServer {
 
     /// vault resolution → JSON 메타데이터 조각 (vault, vault_kind, vault_origin, fallback?, warning?)
     fn vault_meta(res: &VaultResolution) -> serde_json::Value {
-        let home = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .map(PathBuf::from)
-            .ok();
         let normalized = crate::vault::normalize_vault_root(res.path.clone());
         let canonical = normalized.canonicalize().unwrap_or(normalized);
-        let vault_kind = match &home {
-            Some(h) if h.canonicalize().unwrap_or_else(|_| h.clone()) == canonical => "global",
-            _ => "local",
+        let vault_kind = if crate::vault::is_home_vault_root(&canonical) {
+            "global"
+        } else {
+            "local"
         };
         let origin_str = match &res.origin {
             VaultOrigin::ExplicitPath => "explicit_path".to_string(),
@@ -73,6 +73,7 @@ impl ElfMcpServer {
             VaultOrigin::Alias(a) => format!("alias:{a}"),
             VaultOrigin::EnvVar => "env_var".to_string(),
             VaultOrigin::CwdSearch => "cwd_search".to_string(),
+            VaultOrigin::CwdSearchHome => "cwd_search_home".to_string(),
             VaultOrigin::FallbackGlobal => "fallback_global".to_string(),
         };
         let mut meta = serde_json::json!({
@@ -84,6 +85,25 @@ impl ElfMcpServer {
             meta["fallback"] = serde_json::Value::Bool(true);
         }
         meta
+    }
+
+    fn ensure_write_confirmed(res: &VaultResolution, confirm: bool) -> Result<(), ErrorData> {
+        if confirm {
+            return Ok(());
+        }
+        let message = match res.origin {
+            VaultOrigin::FallbackGlobal => Some(
+                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
+            ),
+            VaultOrigin::CwdSearchHome => Some(
+                "writing to host-default global vault requires confirm=true — cwd is at home, vault resolved to a global location",
+            ),
+            _ => None,
+        };
+        if let Some(message) = message {
+            return Err(ErrorData::invalid_params(message, None));
+        }
+        Ok(())
     }
 
     fn ensure_vault_root(path: PathBuf, label: &str) -> Result<PathBuf, ErrorData> {
@@ -105,7 +125,10 @@ impl ElfMcpServer {
 
     fn resolve_named_vault(&self, alias: &str) -> Result<VaultResolution, ErrorData> {
         let (path, origin) = if alias == "local" {
-            (self.launch_resolution.path.clone(), self.launch_resolution.origin.clone())
+            (
+                self.launch_resolution.path.clone(),
+                self.launch_resolution.origin.clone(),
+            )
         } else if alias == "global" {
             let p = crate::vault::resolve_vault_alias("global").ok_or_else(|| {
                 ErrorData::invalid_params("could not resolve global vault root", None)
@@ -121,12 +144,18 @@ impl ElfMcpServer {
             (p, VaultOrigin::Alias(alias.to_string()))
         };
         let canon = Self::ensure_vault_root(path, alias)?;
-        Ok(VaultResolution { path: canon, origin })
+        Ok(VaultResolution {
+            path: canon,
+            origin,
+        })
     }
 
     /// 도구 호출 시 사용할 vault를 결정한다.
     /// 우선순위: 명시적 파라미터 > 세션 기본 볼트 > 서버 launch 볼트
-    fn resolve_tool_vault(&self, explicit_vault: Option<String>) -> Result<VaultResolution, ErrorData> {
+    fn resolve_tool_vault(
+        &self,
+        explicit_vault: Option<String>,
+    ) -> Result<VaultResolution, ErrorData> {
         if let Some(alias) = explicit_vault {
             return self.resolve_named_vault(&alias);
         }
@@ -138,7 +167,10 @@ impl ElfMcpServer {
             return Ok(res.clone());
         }
         let canon = Self::ensure_vault_root(self.launch_resolution.path.clone(), "server default")?;
-        Ok(VaultResolution { path: canon, origin: self.launch_resolution.origin.clone() })
+        Ok(VaultResolution {
+            path: canon,
+            origin: self.launch_resolution.origin.clone(),
+        })
     }
 }
 
@@ -242,7 +274,9 @@ struct EntryNewParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -255,7 +289,9 @@ struct EntryStatusParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -270,7 +306,9 @@ struct RevisionAddParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -319,7 +357,9 @@ struct SyncRecordParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -328,7 +368,9 @@ struct ValidateParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -343,7 +385,9 @@ struct EntryAttachParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -356,7 +400,9 @@ struct EntryDetachParams {
     #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
     vault: Option<String>,
     #[serde(default)]
-    #[schemars(description = "fallback-global vault 쓰기 허용 확인 (선택, 기본 false)")]
+    #[schemars(
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false)"
+    )]
     confirm: bool,
 }
 
@@ -409,7 +455,10 @@ impl ElfMcpServer {
             })
             .collect();
         let mut result = serde_json::json!({ "ok": true, "entries": out });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -438,7 +487,10 @@ impl ElfMcpServer {
             },
             "note": r.note_body,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -447,12 +499,7 @@ impl ElfMcpServer {
         기존 entry 내용 변경은 revision_add를 사용할 것.")]
     fn entry_new(&self, Parameters(p): Parameters<EntryNewParams>) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         let r = ops::entry_new(
             &res.path,
             &p.title,
@@ -465,7 +512,10 @@ impl ElfMcpServer {
             "id":    r.entry.manifest.id,
             "title": r.entry.manifest.title,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -482,12 +532,7 @@ impl ElfMcpServer {
         use crate::vault::util::append_sync_event;
 
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
 
         let new_status: EntryStatus = match p.status.as_str() {
             "draft" => EntryStatus::Draft,
@@ -523,7 +568,10 @@ impl ElfMcpServer {
             "from": old_status.to_string(),
             "to":   entry.manifest.status.to_string(),
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -537,12 +585,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<RevisionAddParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         let r = ops::revision_add(&res.path, &p.id, &p.delta)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let mut result = serde_json::json!({
@@ -551,7 +594,10 @@ impl ElfMcpServer {
             "rev_id":   r.revision.rev_id.to_string(),
             "baseline": r.revision.baseline.to_string(),
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -635,7 +681,10 @@ impl ElfMcpServer {
             "revisions": revs,
             "linked":    linked,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -664,7 +713,10 @@ impl ElfMcpServer {
             })
             .collect();
         let mut result = serde_json::json!({ "ok": true, "entries": out });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -678,12 +730,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<SyncRecordParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         ops::sync_record(
             &res.path,
             &p.summary,
@@ -693,7 +740,10 @@ impl ElfMcpServer {
         )
         .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let mut result = serde_json::json!({ "ok": true });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -702,12 +752,7 @@ impl ElfMcpServer {
         vault 상태가 의심스럽거나 query 결과가 부정확할 때 사용.")]
     fn validate(&self, Parameters(p): Parameters<ValidateParams>) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         let vresult = crate::schema::validate::run_all(&res.path)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let _ = crate::vault::index::rebuild(&res.path);
@@ -716,7 +761,9 @@ impl ElfMcpServer {
             "errors":   vresult.error_count(),
             "warnings": vresult.warning_count(),
         });
-        out.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        out.as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(out)))
     }
 
@@ -728,12 +775,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryAttachParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         let file_path = std::path::Path::new(&p.file_path);
         let r = ops::entry_attach(&res.path, &p.id, file_path, p.name.as_deref())
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
@@ -745,7 +787,10 @@ impl ElfMcpServer {
             "collision":   r.collision,
             "warning":     r.warning,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -757,12 +802,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryDetachParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        if matches!(res.origin, VaultOrigin::FallbackGlobal) && !p.confirm {
-            return Err(ErrorData::invalid_params(
-                "writing to fallback-global vault requires confirm=true — add confirm:true to confirm intent",
-                None,
-            ));
-        }
+        Self::ensure_write_confirmed(&res, p.confirm)?;
         let removed = ops::entry_detach(&res.path, &p.id, &p.key)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let mut result = serde_json::json!({
@@ -770,7 +810,10 @@ impl ElfMcpServer {
             "removed": removed,
             "key":     p.key,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -798,7 +841,10 @@ impl ElfMcpServer {
             "ok":     true,
             "assets": out,
         });
-        result.as_object_mut().unwrap().extend(Self::vault_meta(&res).as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -849,7 +895,10 @@ impl ElfMcpServer {
                     "tip": "사용자용 대화형 온보딩이 필요하면 'seed' MCP 프롬프트를 주입하세요."
                 }
             });
-            result.as_object_mut().unwrap().extend(meta.as_object().unwrap().clone());
+            result
+                .as_object_mut()
+                .unwrap()
+                .extend(meta.as_object().unwrap().clone());
             return Ok(Json(Out(result)));
         }
 
@@ -881,7 +930,10 @@ impl ElfMcpServer {
             },
             "hint": hint,
         });
-        result.as_object_mut().unwrap().extend(meta.as_object().unwrap().clone());
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(meta.as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 }
@@ -987,9 +1039,7 @@ mod tests {
 
     #[test]
     fn resolve_local_uses_server_vault_not_process_cwd() {
-        let _guard = crate::CWD_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let local = temp_vault("local");
         let cwd_vault = temp_vault("cwd");
         // CARGO_MANIFEST_DIR은 빌드 시점에 고정된 stable 경로. cleanup 복원이
@@ -1038,9 +1088,94 @@ mod tests {
     }
 
     #[test]
+    fn write_guard_requires_confirm_for_implicit_global_origins() {
+        let temp = tempfile::tempdir().unwrap();
+
+        for (origin, expected) in [
+            (
+                VaultOrigin::FallbackGlobal,
+                "fallback-global vault requires confirm=true",
+            ),
+            (
+                VaultOrigin::CwdSearchHome,
+                "host-default global vault requires confirm=true",
+            ),
+        ] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            let err = ElfMcpServer::ensure_write_confirmed(&res, false).unwrap_err();
+            assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+            assert!(err.message.contains(expected));
+            assert!(ElfMcpServer::ensure_write_confirmed(&res, true).is_ok());
+        }
+
+        for origin in [
+            VaultOrigin::ExplicitPath,
+            VaultOrigin::ExplicitGlobal,
+            VaultOrigin::Alias("x".to_string()),
+            VaultOrigin::EnvVar,
+            VaultOrigin::CwdSearch,
+        ] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            assert!(ElfMcpServer::ensure_write_confirmed(&res, false).is_ok());
+        }
+    }
+
+    #[test]
     fn flex_entries_json_array() {
         let v = serde_json::json!(["N0001", "N0002"]);
         assert_eq!(normalize_entry_ids(v), vec!["N0001", "N0002"]);
+    }
+
+    /// 응답 계약 회귀 방지: CwdSearchHome state에서
+    /// `vault_kind="global"` + `vault_origin="cwd_search_home"` 조합이
+    /// 항상 함께 직렬화되어야 한다 (enum variant 추가 시 match 누락 방지).
+    #[test]
+    fn vault_meta_cwd_search_home_response_contract() {
+        let home_str = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home_str.is_empty() {
+            return; // CI 보호
+        }
+        let home = std::path::PathBuf::from(&home_str);
+        if !home.exists() {
+            return;
+        }
+        let res = VaultResolution {
+            path: home,
+            origin: VaultOrigin::CwdSearchHome,
+        };
+        let meta = ElfMcpServer::vault_meta(&res);
+        assert_eq!(meta["vault_kind"].as_str().unwrap(), "global");
+        assert_eq!(meta["vault_origin"].as_str().unwrap(), "cwd_search_home");
+    }
+
+    /// 기존 origin variants도 string round-trip 회귀 없는지 확인.
+    #[test]
+    fn vault_meta_origin_string_round_trip() {
+        let temp = tempfile::tempdir().unwrap();
+        for (origin, expected) in [
+            (VaultOrigin::ExplicitPath, "explicit_path".to_string()),
+            (VaultOrigin::ExplicitGlobal, "explicit_global".to_string()),
+            (VaultOrigin::Alias("x".to_string()), "alias:x".to_string()),
+            (VaultOrigin::EnvVar, "env_var".to_string()),
+            (VaultOrigin::CwdSearch, "cwd_search".to_string()),
+            (VaultOrigin::CwdSearchHome, "cwd_search_home".to_string()),
+            (VaultOrigin::FallbackGlobal, "fallback_global".to_string()),
+        ] {
+            let res = VaultResolution {
+                path: temp.path().to_path_buf(),
+                origin,
+            };
+            let meta = ElfMcpServer::vault_meta(&res);
+            assert_eq!(meta["vault_origin"].as_str().unwrap(), expected);
+        }
     }
 
     #[test]

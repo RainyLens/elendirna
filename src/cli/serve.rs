@@ -34,7 +34,14 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
             Err(_) => {
                 let cwd = std::env::current_dir()?;
                 match vault::find_local_vault_root(&cwd) {
-                    Ok(root) => VaultResolution { path: root, origin: VaultOrigin::CwdSearch },
+                    Ok(root) => {
+                        let origin = if vault::is_home_vault_root(&root) {
+                            VaultOrigin::CwdSearchHome
+                        } else {
+                            VaultOrigin::CwdSearch
+                        };
+                        VaultResolution { path: root, origin }
+                    }
                     Err(ElfError::NotAVault) => {
                         let home = std::env::var("USERPROFILE")
                             .or_else(|_| std::env::var("HOME"))
@@ -52,7 +59,10 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                             name: Some("global".to_string()),
                             global: true,
                         })?;
-                        VaultResolution { path: home, origin: VaultOrigin::FallbackGlobal }
+                        VaultResolution {
+                            path: home,
+                            origin: VaultOrigin::FallbackGlobal,
+                        }
                     }
                     Err(e) => return Err(e),
                 }
