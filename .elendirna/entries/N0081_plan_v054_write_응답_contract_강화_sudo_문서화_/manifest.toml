@@ -2,7 +2,7 @@ schema_version = 1
 id = "N0081"
 title = "PLAN v0.5.4: write 응답 contract 강화 + sudo 문서화 (N0070 Phase C/D/E splitoff)"
 created = "2026-05-11T17:37:15.678676300+09:00"
-updated = "2026-05-11T18:34:27.693054300+09:00"
+updated = "2026-05-12T11:35:54.215276900+09:00"
 tags = [
     "plan",
     "v0.5.4",
