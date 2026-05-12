@@ -28,8 +28,28 @@ mod init {
         assert!(dir.path().join(".elendirna/revisions").exists());
         assert!(dir.path().join(".elendirna/assets").exists());
         assert!(dir.path().join("CLAUDE.md").exists());
+        assert!(dir.path().join("AGENTS.md").exists());
+        assert!(dir.path().join("GEMINI.md").exists());
         assert!(dir.path().join("README.md").exists());
         assert!(dir.path().join(".gitignore").exists());
+    }
+
+    #[test]
+    fn agent_md_files_have_identical_content() {
+        // N0081 후속: AGENTS.md = generic agent 진입점. 세 파일은 동일 minimal 내용을 공유
+        let dir = tmp();
+        run(InitArgs {
+            path: dir.path().to_path_buf(),
+            dry_run: false,
+            name: None,
+            global: false,
+        })
+        .unwrap();
+        let claude = std::fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+        let agents = std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
+        let gemini = std::fs::read_to_string(dir.path().join("GEMINI.md")).unwrap();
+        assert_eq!(claude, agents);
+        assert_eq!(claude, gemini);
     }
 
     #[test]

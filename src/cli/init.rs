@@ -4,13 +4,20 @@ use crate::vault::util::append_sync_event;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
-// fix-005: v0.1 전용 CLAUDE.md 내용
-const CLAUDE_MD_V0_1: &str = r#"# Elendirna vault
+// fix-005 / N0081 후속: agent 진입점 (CLAUDE.md / AGENTS.md / GEMINI.md) 공통 minimal 내용
+const AGENT_MD_TEMPLATE: &str = r#"# Elendirna vault
 
 이 저장소는 `elf` CLI로만 수정합니다. 직접 파일 편집 금지.
 사용 가능한 명령: entry new / edit / show, revision add, link, validate (--help 참고).
 스키마/규칙 위반은 `elf validate`가 보고합니다 — 에러의 `fix` 필드를 따르면 됩니다.
 "#;
+
+// init이 생성하는 agent 진입점 파일들 (generic AGENTS.md 포함)
+const AGENT_MD_FILES: &[(&str, &str)] = &[
+    ("CLAUDE.md", "에이전트 안내 (Claude Code)"),
+    ("AGENTS.md", "에이전트 안내 (Codex / Copilot / VSCode agent 등)"),
+    ("GEMINI.md", "에이전트 안내 (Gemini CLI)"),
+];
 
 // fix-010: → see 패턴 안내 포함한 README 템플릿
 const README_TEMPLATE: &str = r#"# {vault_name}
@@ -107,7 +114,7 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
 }
 
 fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)> {
-    vec![
+    let mut files = vec![
         (root.join(".elendirna").join("config.toml"), "vault 설정"),
         (
             root.join(".elendirna").join("sync.jsonl"),
@@ -119,10 +126,13 @@ fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)>
             "revision 디렉터리",
         ),
         (root.join(".elendirna").join("assets"), "asset 디렉터리"),
-        (root.join("CLAUDE.md"), "에이전트 안내"),
-        (root.join("README.md"), "vault README"),
-        (root.join(".gitignore"), ".gitignore"),
-    ]
+    ];
+    for (name, desc) in AGENT_MD_FILES {
+        files.push((root.join(name), desc));
+    }
+    files.push((root.join("README.md"), "vault README"));
+    files.push((root.join(".gitignore"), ".gitignore"));
+    files
 }
 
 fn create_vault(root: &Path, vault_name: &str) -> Result<(), ElfError> {
@@ -145,10 +155,12 @@ fn create_vault(root: &Path, vault_name: &str) -> Result<(), ElfError> {
     let config = VaultConfig::new(vault_name);
     config.write(root)?;
 
-    // CLAUDE.md (fix-005)
-    let claude_md_path = root.join("CLAUDE.md");
-    if !claude_md_path.exists() {
-        atomic_write(&claude_md_path, CLAUDE_MD_V0_1.as_bytes())?;
+    // agent 진입점 md (fix-005 / N0081 후속): CLAUDE.md / AGENTS.md / GEMINI.md
+    for (name, _) in AGENT_MD_FILES {
+        let path = root.join(name);
+        if !path.exists() {
+            atomic_write(&path, AGENT_MD_TEMPLATE.as_bytes())?;
+        }
     }
 
     // README.md (fix-010)
