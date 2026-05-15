@@ -1,0 +1,17 @@
+schema_version = 1
+id = "N0084"
+title = "Pattern: agent dropped vault trace on code edit — write-side mirror of read-bias"
+created = "2026-05-15T10:06:50.781293500+09:00"
+updated = "2026-05-15T10:07:17.790108+09:00"
+tags = [
+    "ai-behavior",
+    "agent-tracking",
+    "sync_record",
+    "write-bias",
+    "dogfood",
+    "meta",
+]
+baseline = "N0082"
+links = []
+sources = []
+status = "draft"

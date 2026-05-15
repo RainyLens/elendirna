@@ -9,6 +9,7 @@ use std::path::PathBuf;
     name = "elf",
     about = "Elendirna vault CLI",
     version = env!("CARGO_PKG_VERSION"),
+    disable_help_subcommand = true,
 )]
 struct Cli {
     /// 모든 출력을 JSON으로 (fix-015: 에러는 --json 무관 항상 JSON/stderr)
@@ -62,8 +63,8 @@ enum Commands {
     /// v1 vault를 v2 compact layout으로 이관 (v0.3)
     Migrate(cli::migrate::MigrateArgs),
 
-    /// 전체 커맨드 표면 출력 (AI-readable)
-    #[command(name = "guide")]
+    /// 전체 커맨드 표면 출력 (AI-readable). `elf help`도 동일.
+    #[command(name = "guide", alias = "help")]
     Help(cli::help::HelpArgs),
 }
 
