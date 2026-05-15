@@ -454,6 +454,7 @@ struct SessionStartParams {
 #[tool_router]
 impl ElfMcpServer {
     #[tool(description = "vault의 전체 entry 목록 조회. tag/status 필터 지원. \
+        각 항목 메타: revisions(누적 r#### 수), links_out(이 entry가 거는 outbound link 수), linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), updated(최근 활동 시각) — 어느 entry가 활동적이고 hub인지 한눈에 파악. \
         세션 시작 시 작업 범위 파악에 사용. \
         개별 entry 내용은 entry_show 또는 bundle을 사용할 것 — 파일 직접 접근 금지.")]
     fn entry_list(
@@ -461,7 +462,10 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryListParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        let mut entries = ops::entry_list(&res.path);
+        let all_entries = ops::entry_list(&res.path);
+        // linked_by는 필터 전 전체 vault 기준 in-degree (필터로 인해 카운트가 줄지 않도록)
+        let linked_by_map = ops::compute_linked_by(&all_entries);
+        let mut entries = all_entries;
         if let Some(ref tag) = p.tag {
             entries.retain(|e| e.manifest.tags.contains(tag));
         }
@@ -471,12 +475,22 @@ impl ElfMcpServer {
         let out: Vec<_> = entries
             .iter()
             .map(|e| {
+                let rev_count = ops::revision_count(
+                    &res.path,
+                    &crate::vault::id::EntryId::from_str(&e.manifest.id).unwrap(),
+                );
+                let linked_by = linked_by_map.get(&e.manifest.id).copied().unwrap_or(0);
+                let links_out = ops::links_out_count(e);
                 serde_json::json!({
-                    "id":      e.manifest.id,
-                    "title":   e.manifest.title,
-                    "status":  e.manifest.status.to_string(),
-                    "tags":    e.manifest.tags,
-                    "created": e.manifest.created,
+                    "id":         e.manifest.id,
+                    "title":      e.manifest.title,
+                    "status":     e.manifest.status.to_string(),
+                    "tags":       e.manifest.tags,
+                    "created":    e.manifest.created,
+                    "updated":    e.manifest.updated,
+                    "revisions":  rev_count,
+                    "links_out":  links_out,
+                    "linked_by":  linked_by,
                 })
             })
             .collect();

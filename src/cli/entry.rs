@@ -221,7 +221,10 @@ pub struct ListArgs {
 pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
 
-    let mut entries = crate::vault::ops::entry_list(&vault_root);
+    let all_entries = crate::vault::ops::entry_list(&vault_root);
+    // linked_by는 필터 전 전체 vault 기준
+    let linked_by_map = crate::vault::ops::compute_linked_by(&all_entries);
+    let mut entries = all_entries;
 
     // 필터 적용
     if !args.tags.is_empty() {
@@ -241,41 +244,58 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         });
     }
 
+    let rev_count_for = |e: &Entry| -> u32 {
+        EntryId::from_str(&e.manifest.id)
+            .map(|id| crate::vault::ops::revision_count(&vault_root, &id))
+            .unwrap_or(0)
+    };
+    let linked_by_for = |e: &Entry| -> u32 {
+        linked_by_map.get(&e.manifest.id).copied().unwrap_or(0)
+    };
+
     if args.json {
         let out: Vec<_> = entries
             .iter()
             .map(|e| {
                 serde_json::json!({
-                    "id":       e.manifest.id,
-                    "title":    e.manifest.title,
-                    "status":   e.manifest.status.to_string(),
-                    "tags":     e.manifest.tags,
-                    "baseline": e.manifest.baseline,
-                    "created":  e.manifest.created,
-                    "updated":  e.manifest.updated,
+                    "id":         e.manifest.id,
+                    "title":      e.manifest.title,
+                    "status":     e.manifest.status.to_string(),
+                    "tags":       e.manifest.tags,
+                    "baseline":   e.manifest.baseline,
+                    "created":    e.manifest.created,
+                    "updated":    e.manifest.updated,
+                    "revisions":  rev_count_for(e),
+                    "links_out":  crate::vault::ops::links_out_count(e),
+                    "linked_by":  linked_by_for(e),
                 })
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else if entries.is_empty() {
+        println!("(entry 없음)");
     } else {
-        if entries.is_empty() {
-            println!("(entry 없음)");
-        } else {
-            for e in &entries {
-                let tags = if e.manifest.tags.is_empty() {
-                    String::new()
-                } else {
-                    format!("  [{}]", e.manifest.tags.join(", "))
-                };
-                println!(
-                    "{:<8} {:<40} [{}]  {}{}",
-                    e.manifest.id,
-                    e.manifest.title,
-                    e.manifest.status,
-                    e.manifest.created.format("%Y-%m-%d"),
-                    tags,
-                );
-            }
+        for e in &entries {
+            let tags = if e.manifest.tags.is_empty() {
+                String::new()
+            } else {
+                format!("  [{}]", e.manifest.tags.join(", "))
+            };
+            let rev = rev_count_for(e);
+            let lb = linked_by_for(e);
+            // r/l 컬럼: r<count> l<linked_by> — 0이면 점선으로 시각적 noise 감소
+            let rev_col = if rev == 0 { "r—".to_string() } else { format!("r{rev}") };
+            let lb_col = if lb == 0 { "l—".to_string() } else { format!("l{lb}") };
+            println!(
+                "{:<8} {:<40} [{}]  {}  {:>4} {:>4}{}",
+                e.manifest.id,
+                e.manifest.title,
+                e.manifest.status,
+                e.manifest.created.format("%Y-%m-%d"),
+                rev_col,
+                lb_col,
+                tags,
+            );
         }
     }
 

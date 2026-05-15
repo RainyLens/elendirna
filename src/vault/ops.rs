@@ -6,7 +6,7 @@ use crate::vault::util::append_sync_event;
 use chrono::{DateTime, FixedOffset};
 /// MCP 서버와 CLI가 공유하는 고수준 vault 조작 함수.
 /// 출력 로직 없음 — 호출자(CLI 핸들러 또는 MCP tool)가 결과를 직렬화한다.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -76,6 +76,46 @@ pub fn entry_show(vault_root: &Path, id_str: &str) -> Result<EntryShowResult, El
 /// 전체 entry 목록 조회. 필터는 호출자가 적용.
 pub fn entry_list(vault_root: &Path) -> Vec<Entry> {
     Entry::find_all(vault_root)
+}
+
+/// entry의 revision 개수 — `revisions/<id>/` 디렉토리의 최대 r#### 번호.
+/// revision이 없으면 0. validate가 sparse한 revision을 잡으므로 latest_id == count 가정.
+pub fn revision_count(vault_root: &Path, entry_id: &EntryId) -> u32 {
+    Revision::latest_id(vault_root, entry_id)
+        .map(|id| id.value())
+        .unwrap_or(0)
+}
+
+/// `entry id → 이 entry를 link하는 다른 entry의 수 (in-degree)` 맵을 빌드.
+/// 한 entry가 같은 대상을 여러 번 link해도 1로 카운트 (HashSet으로 중복 제거).
+pub fn compute_linked_by(entries: &[Entry]) -> HashMap<String, u32> {
+    let mut acc: HashMap<String, u32> = HashMap::new();
+    for e in entries {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for link in &e.manifest.links {
+            // "N0042" 또는 "N0042@r0003" 모두 entry ID 부분만 추출
+            let target = link.split('@').next().unwrap_or(link.as_str());
+            if target.is_empty() {
+                continue;
+            }
+            if seen.insert(target) {
+                *acc.entry(target.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    acc
+}
+
+/// entry의 outbound link 수 — 같은 대상 중복은 1로 dedupe.
+pub fn links_out_count(entry: &Entry) -> u32 {
+    let mut seen: HashSet<&str> = HashSet::new();
+    for link in &entry.manifest.links {
+        let target = link.split('@').next().unwrap_or(link.as_str());
+        if !target.is_empty() {
+            seen.insert(target);
+        }
+    }
+    seen.len() as u32
 }
 
 // ─── revision ────────────────────────────

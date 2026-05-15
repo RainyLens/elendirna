@@ -1,0 +1,16 @@
+schema_version = 1
+id = "N0083"
+title = "Feature: entry_list activity/hub meta (revisions/links_out/linked_by/updated)"
+created = "2026-05-15T10:06:24.282130800+09:00"
+updated = "2026-05-15T10:06:42.547676+09:00"
+tags = [
+    "feature",
+    "cli",
+    "mcp",
+    "activity-index",
+    "observability",
+]
+baseline = "N0034"
+links = []
+sources = []
+status = "draft"
