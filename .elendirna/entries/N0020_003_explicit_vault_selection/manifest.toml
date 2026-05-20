@@ -1,9 +1,0 @@
-schema_version = 1
-id = "N0020"
-title = "003-explicit-vault-selection"
-created = "2026-04-13T02:44:42.746103200Z"
-updated = "2026-04-13T07:53:25.995401900Z"
-tags = []
-links = ["N0017"]
-sources = []
-status = "draft"
