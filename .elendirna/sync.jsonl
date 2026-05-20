@@ -449,3 +449,40 @@
 {"action":"entry.new","agent":"human","id":"N0084","ts":"2026-05-15T10:06:50.781751200+09:00"}
 {"action":"revision.add","agent":"human","id":"N0084","ts":"2026-05-15T10:07:17.790414800+09:00"}
 {"agent":"human","entries":["N0083","N0084","N0034","N0082","N0037"],"event":"sync.record","session_id":null,"summary":"N0037 r0003 (elf help alias fix) 후속 추적에서 working tree 3개 파일(entry.rs/mcp/mod.rs/vault/ops.rs)이 어느 이슈에도 묶이지 않은 untracked agent 작업으로 판명. 사용자 의사에 따라 두 entry로 격상: N0083 Feature(entry_list activity/hub meta, baseline N0034) + N0084 Meta(write-side mirror of read-bias, baseline N0082 r0003 research-recording mode의 write 동형). N0083 r0001 / N0084 r0001로 발견 맥락 흡수. 코드 자체는 미커밋 상태 그대로(commit/version bump 시점은 사용자 검토 대기). 다음 세션 first action: N0083 PLAN화 여부 + N0084의 corrective(tool description / session_start affordance) 강도 결정.","ts":"2026-05-15T10:07:40.672434600+09:00"}
+{"action":"entry.new","agent":"human","id":"N0085","ts":"2026-05-15T10:15:22.246126700+09:00"}
+{"action":"entry.new","agent":"human","id":"N0086","ts":"2026-05-15T10:15:23.144694500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0085","ts":"2026-05-15T10:16:28.652754500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0086","ts":"2026-05-15T10:16:38.993133600+09:00"}
+{"agent":"human","entries":["N0085","N0086"],"event":"sync.record","session_id":null,"summary":"2026-05-15 cost telemetry 작업 안건 두 개 anchor. (N0085) entry_list 응답에 size hint 추가 — 과거 계획 회상되지만 vault 기록 없음, 정합성 확인하여 작업 안건화. sqlite size 또는 note.md stat을 응답 schema에 추가. (N0086) Default cost-aware parameters on bundle — 4 옵션 surface, (d) 응답 hint만 추가가 잠정 추천, 결정 보류. 둘 다 global N0034 cost telemetry design philosophy의 implementation arm. 진행 전 사용 패턴 데이터 수집 권장.","ts":"2026-05-15T10:17:02.339480100+09:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"Suggestion-generation pass: gathered repo/git/vault context only; no vault content changed.","ts":"2026-05-15T16:27:27.368535600+09:00"}
+{"agent":"human","entries":["N0084","N0085","N0086"],"event":"sync.record","session_id":null,"summary":"Suggestion-generation complete. Strong live candidates came from today’s local work items N0084-N0086 plus recent git activity; no overlapping public PRs were found for the fresh items.","ts":"2026-05-15T16:29:46.234475900+09:00"}
+{"action":"entry.new","agent":"human","id":"N0087","ts":"2026-05-18T13:35:30.433246600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0087","ts":"2026-05-18T13:36:06.257800400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-18T13:50:33.296928200+09:00"}
+{"action":"entry.new","agent":"human","id":"N0088","ts":"2026-05-18T13:53:43.666897100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0088","ts":"2026-05-18T13:54:28.093980700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-18T13:59:35.289781800+09:00"}
+{"agent":"human","entries":["N0087","N0067","N0088"],"event":"sync.record","session_id":null,"summary":"2026-05-18 elendirna v0.5.0→v0.5.4 업그레이드 세션. 세 산출: (1) N0087 비강제 안내의 자기-참조 — \"기록 압력 안 줘\" 발화 자체가 압력으로 작동하는 메타 관찰 + 입력 여부 명시 질문 해법. (2) N0067 r0004/r0005 v0.5.4 vault override fix 라이브 검증 (vault_origin=\"cwd_search\" 신규 필드 등장) + N0088 정책 발산 역참조. (3) N0088 버그 entry life cycle 정책 — archived 시맨틱(retrieval 보존) 검증 + reopen revision 패턴 정리(기존 프리미티브로 cover, baseline N0067). N0067 close 잔여 3건: 채택된 fix 옵션 식별 / CC Desktop 케이스 재현 / N0038 sudo 정합. 부수: v0.5.4에서 entry_new tags array 정상 작동 — N0073 비-string 파라미터 fix도 들어간 듯(별 entry 트래킹은 묵힘). 세션 전반부 vault override bug 라이브 발현 → 글로벌 N0036 archived(bug trail), CLI 우회 → 후반부 MCP 재시작 후 정상 작동 흐름. 다음 세션은 N0067 잔여 3건 또는 N0088 정책의 첫 실적용(N0067 close) 진행 가능.","ts":"2026-05-18T13:59:53.941108+09:00"}
+{"action":"entry.new","agent":"human","id":"N0089","ts":"2026-05-18T14:08:25.238070+09:00"}
+{"action":"revision.add","agent":"human","id":"N0089","ts":"2026-05-18T14:09:26.548836100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0067","ts":"2026-05-18T14:09:32.422942500+09:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"2026-05-18 desktop MCP 회복 세션. CC Desktop의 elendirna MCP가 v0.5.4 업그레이드 후 무한 재시작 루프에 빠진 케이스 — N0067의 \"CC Desktop 재현\" 잔여 항목이 변종 메커니즘으로 발현(silent global write가 아니라 auto-init이 already_initialized로 process suicide). N0089 신규(baseline N0067) — 증상/인과/fix 적용/코드 fix 후보 정리. N0067 r0006 — 잔여 (2) 변종 cover, → see N0089. Fix: claude_desktop_config.json elendirna args에 --global 추가 (백업: .bak.20260518). 사용자 다음 action = Claude Desktop 재시작 또는 MCP reload로 발효. 코드 fix 후보 = auto-init idempotent화 (v0.5.5 PLAN 후보).</summary>\n<parameter name=\"entries\">[\"N0089\", \"N0067\"]","ts":"2026-05-18T14:09:50.089327600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0089","ts":"2026-05-18T14:59:27.625021700+09:00"}
+{"action":"entry.new","agent":"human","id":"N0090","ts":"2026-05-20T11:38:09.083134100+09:00"}
+{"action":"revision.add","agent":"human","id":"N0090","ts":"2026-05-20T11:39:03.976880900+09:00"}
+{"action":"revision.add","agent":"human","id":"N0090","ts":"2026-05-20T11:49:46.176335600+09:00"}
+{"action":"revision.add","agent":"human","id":"N0090","ts":"2026-05-20T12:37:18.599014+09:00"}
+{"action":"entry.new","agent":"human","id":"N0091","ts":"2026-05-20T14:16:33.966057700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0091","ts":"2026-05-20T14:17:41.220569200+09:00"}
+{"action":"revision.add","agent":"human","id":"N0090","ts":"2026-05-20T14:18:12.992971300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0091","ts":"2026-05-20T14:52:21.844391400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0090","ts":"2026-05-20T14:52:28.308827300+09:00"}
+{"action":"revision.add","agent":"human","id":"N0086","ts":"2026-05-20T14:52:33.675853700+09:00"}
+{"action":"revision.add","agent":"human","id":"N0080","ts":"2026-05-20T14:52:40.455824500+09:00"}
+{"action":"revision.add","agent":"human","id":"N0091","ts":"2026-05-20T14:56:44.029279400+09:00"}
+{"action":"revision.add","agent":"human","id":"N0091","ts":"2026-05-20T15:40:19.520864800+09:00"}
+{"action":"status.changed.N0090.archived","agent":"human","id":"N0090","ts":"2026-05-20T15:40:19.871693700+09:00"}
+{"action":"status.changed.N0089.archived","agent":"human","id":"N0089","ts":"2026-05-20T15:40:20.868330100+09:00"}
+{"action":"status.changed.N0067.archived","agent":"human","id":"N0067","ts":"2026-05-20T15:40:21.409816100+09:00"}
+{"action":"status.changed.N0086.archived","agent":"human","id":"N0086","ts":"2026-05-20T15:40:21.548495+09:00"}
+{"agent":"human","entries":[],"event":"sync.record","session_id":null,"summary":"2026-05-20 v0.6.0 PR 구현 완료. N0091 main PLAN (messages[] 통합) + N0090 흡수(init context 분리) + N0086 (bundle default depth=0 + cost_hint bytes) + N0080 (entry tag mutability CLI/MCP). 사용자 결정 모두 반영 — (b) wrapper 보존 / (3) messages[] array / 이모지/prefix 없는 자연어 / (a)+(β) cost-aware default + bytes estimate / (β) CLI JSON contract도 migrate. codex 사전 검토 2회 + 사후 review 1회 모두 통과 (Blocker 0). cargo test 111+ tests 0 fail (lib 78 + mcp_integration 19 + serve_process_regression 1 + sqlite_integration 7 + schema 6). archived: N0090 N0089 N0067 N0086. v0.6.1 후속 PR 후보: alias 경계 정리(M-2) / MCP initialize 검증(M-3) / N0073 비-string 역직렬화 / info messages[] 통합(Cons-3). 다음 step: git workflow — workbench(origin) push까지 자율, upstream push는 vault 제외(메커니즘 사용자 raise 예정).</summary>\n<parameter name=\"entries\">[\"N0091\", \"N0090\", \"N0089\", \"N0086\", \"N0080\", \"N0067\"]","ts":"2026-05-20T15:40:40.593486100+09:00"}

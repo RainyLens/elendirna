@@ -1,0 +1,17 @@
+schema_version = 1
+id = "N0091"
+title = "PLAN v0.6+: vault_meta 응답 contract refactor — message level 시스템 (B splitoff)"
+created = "2026-05-20T14:16:33.964898300+09:00"
+updated = "2026-05-20T15:40:19.520525900+09:00"
+tags = [
+    "plan",
+    "v0.6",
+    "mcp",
+    "vault-meta",
+    "message-level",
+    "contract-refactor",
+]
+baseline = "N0090"
+links = []
+sources = []
+status = "draft"

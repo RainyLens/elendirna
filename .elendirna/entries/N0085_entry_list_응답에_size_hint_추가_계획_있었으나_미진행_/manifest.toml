@@ -1,0 +1,13 @@
+schema_version = 1
+id = "N0085"
+title = "entry_list 응답에 size hint 추가 — 계획 있었으나 미진행 (work item)"
+created = "2026-05-15T10:15:22.245722+09:00"
+updated = "2026-05-15T10:16:28.652257400+09:00"
+tags = [
+    "cost-telemetry",
+    "work-item",
+    "mcp",
+]
+links = []
+sources = []
+status = "draft"
