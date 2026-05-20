@@ -70,6 +70,69 @@ mod init {
         ));
     }
 
+    /// N0090 Phase A: Fallback context는 기존 vault가 있어도 stderr warning + Ok()로 종료.
+    /// MCP serve의 process suicide 회귀 방지.
+    #[test]
+    fn init_fallback_existing_vault_returns_ok() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let args = || InitArgs {
+            path: dir.path().to_path_buf(),
+            dry_run: false,
+            name: Some("test-vault".to_string()),
+            global: false,
+        };
+        run(args()).unwrap(); // 첫 init: 정상 생성
+        // 두 번째 호출 — Explicit이면 AlreadyInitialized, Fallback이면 Ok
+        let result = run_with_context(args(), InitContext::Fallback);
+        assert!(
+            result.is_ok(),
+            "Fallback init should not error on existing vault, got: {result:?}"
+        );
+    }
+
+    /// N0090 Phase A: Fallback context도 vault가 없으면 정상 생성.
+    /// "Fallback이라고 init을 건너뛰는" semantic이 아님을 확인.
+    #[test]
+    fn init_fallback_new_path_creates_vault() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let result = run_with_context(
+            InitArgs {
+                path: dir.path().to_path_buf(),
+                dry_run: false,
+                name: Some("fallback-new".to_string()),
+                global: false,
+            },
+            InitContext::Fallback,
+        );
+        assert!(result.is_ok());
+        assert!(dir.path().join(".elendirna/config.toml").exists());
+        assert!(dir.path().join(".elendirna/entries").exists());
+    }
+
+    /// N0090 Phase A: wrapper `run(args)`가 Explicit으로 위임하는지 명시 검증.
+    /// (init_duplicate_returns_error가 wrapper 경유로 cover하나, 시그니처 정확성 추가 보장)
+    #[test]
+    fn run_wrapper_delegates_to_explicit_context() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let args = || InitArgs {
+            path: dir.path().to_path_buf(),
+            dry_run: false,
+            name: Some("wrapper-test".to_string()),
+            global: false,
+        };
+        // 명시적으로 Explicit으로 첫 init
+        run_with_context(args(), InitContext::Explicit).unwrap();
+        // wrapper run 두 번째 호출 → 같은 결과 (AlreadyInitialized)
+        let err = run(args()).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::error::ElfError::AlreadyInitialized { .. }
+        ));
+    }
+
     #[test]
     fn init_dry_run_no_files() {
         let dir = tmp();

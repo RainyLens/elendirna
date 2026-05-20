@@ -21,16 +21,24 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
         return Ok(());
     }
 
-    let resolution: VaultResolution = match args.vault {
-        Some(path) => VaultResolution {
-            path: vault::normalize_vault_root(path),
-            origin: VaultOrigin::ExplicitPath,
-        },
-        None => match std::env::var("ELF_VAULT") {
-            Ok(env_path) => VaultResolution {
-                path: vault::normalize_vault_root(std::path::PathBuf::from(env_path)),
-                origin: VaultOrigin::EnvVar,
+    // N0090: launch_init_fallback은 Fallback init이 기존 vault를 채택한 경우만 true.
+    // (resolution, launch_init_fallback) 동시 반환.
+    let (resolution, launch_init_fallback): (VaultResolution, bool) = match args.vault {
+        Some(path) => (
+            VaultResolution {
+                path: vault::normalize_vault_root(path),
+                origin: VaultOrigin::ExplicitPath,
             },
+            false,
+        ),
+        None => match std::env::var("ELF_VAULT") {
+            Ok(env_path) => (
+                VaultResolution {
+                    path: vault::normalize_vault_root(std::path::PathBuf::from(env_path)),
+                    origin: VaultOrigin::EnvVar,
+                },
+                false,
+            ),
             Err(_) => {
                 let cwd = std::env::current_dir()?;
                 match vault::find_local_vault_root(&cwd) {
@@ -40,7 +48,7 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                         } else {
                             VaultOrigin::CwdSearch
                         };
-                        VaultResolution { path: root, origin }
+                        (VaultResolution { path: root, origin }, false)
                     }
                     Err(ElfError::NotAVault) => {
                         let home = std::env::var("USERPROFILE")
@@ -49,20 +57,32 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                             .map_err(|_| ElfError::InvalidInput {
                                 message: "홈 디렉터리를 결정할 수 없습니다".to_string(),
                             })?;
+                        // N0090: init 호출 전 기존 vault 존재 여부 사전 확인.
+                        // init이 Fallback 분기로 채택했는지 caller가 알아야 하므로.
+                        let home_already_initialized =
+                            home.join(".elendirna").join("config.toml").exists();
                         eprintln!(
                             "[elf] vault 없음 — 글로벌 vault 자동 생성: {}",
                             home.display()
                         );
-                        crate::cli::init::run(crate::cli::init::InitArgs {
-                            path: home.clone(),
-                            dry_run: false,
-                            name: Some("global".to_string()),
-                            global: true,
-                        })?;
-                        VaultResolution {
-                            path: home,
-                            origin: VaultOrigin::FallbackGlobal,
-                        }
+                        // N0090: Fallback context로 호출. 기존 vault가 이미 있으면
+                        // init은 stderr warning만 출력하고 Ok 반환 → process suicide 회피.
+                        crate::cli::init::run_with_context(
+                            crate::cli::init::InitArgs {
+                                path: home.clone(),
+                                dry_run: false,
+                                name: Some("global".to_string()),
+                                global: true,
+                            },
+                            crate::cli::init::InitContext::Fallback,
+                        )?;
+                        (
+                            VaultResolution {
+                                path: home,
+                                origin: VaultOrigin::FallbackGlobal,
+                            },
+                            home_already_initialized,
+                        )
                     }
                     Err(e) => return Err(e),
                 }
@@ -73,7 +93,7 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     // v1 vault 자동 이관 (MCP stdio 보호: stderr만 사용)
     crate::cli::migrate::auto_migrate_silent(&resolution.path);
 
-    crate::mcp::run_stdio(resolution).map_err(|e| {
+    crate::mcp::run_stdio(resolution, launch_init_fallback).map_err(|e| {
         ElfError::Io(std::io::Error::new(
             std::io::ErrorKind::Other,
             e.to_string(),
