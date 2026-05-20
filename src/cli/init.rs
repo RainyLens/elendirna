@@ -15,7 +15,10 @@ const AGENT_MD_TEMPLATE: &str = r#"# Elendirna vault
 // init이 생성하는 agent 진입점 파일들 (generic AGENTS.md 포함)
 const AGENT_MD_FILES: &[(&str, &str)] = &[
     ("CLAUDE.md", "에이전트 안내 (Claude Code)"),
-    ("AGENTS.md", "에이전트 안내 (Codex / Copilot / VSCode agent 등)"),
+    (
+        "AGENTS.md",
+        "에이전트 안내 (Codex / Copilot / VSCode agent 등)",
+    ),
     ("GEMINI.md", "에이전트 안내 (Gemini CLI)"),
 ];
 
@@ -65,7 +68,30 @@ pub struct InitArgs {
     pub global: bool,
 }
 
+/// init 호출 의도 — `elf init` 명시 호출과 MCP fallback init을 분리한다.
+///
+/// - `Explicit`: 사용자가 `elf init` (CLI) 또는 향후 명시 MCP init을 호출. 기존 vault가
+///   이미 있으면 `AlreadyInitialized` 오류 반환 (의도된 실패).
+/// - `Fallback`: MCP `serve` auto-init 등 vault 확보 의도의 호출. 기존 vault가 이미
+///   있으면 그 vault를 채택하고 stderr warning 출력 후 `Ok(())`로 종료 (idempotent).
+///
+/// N0089/N0090 참조 — v0.5.4까지는 두 경로가 같은 `AlreadyInitialized` 에러로 합쳐져
+/// Desktop host에서 process suicide → re-spawn 무한 루프를 유발했다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitContext {
+    Explicit,
+    Fallback,
+}
+
+/// `elf init` CLI 진입점. Explicit context로 위임한다. 외부 caller는 기존과 동일하게
+/// `cli::init::run(args)`를 호출하면 된다 (v0.5.4 이전 API 보존).
 pub fn run(args: InitArgs) -> Result<(), ElfError> {
+    run_with_context(args, InitContext::Explicit)
+}
+
+/// init 진입의 본체. context에 따라 기존 vault 발견 시 동작이 갈린다.
+/// MCP `serve` fallback이나 향후 다른 fallback caller는 이 함수를 `Fallback`으로 호출.
+pub(crate) fn run_with_context(args: InitArgs, ctx: InitContext) -> Result<(), ElfError> {
     let root = if args.global {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
@@ -78,12 +104,24 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
         args.path.canonicalize().unwrap_or(args.path.clone())
     };
 
-    // 중복 초기화 검사
+    // 중복 초기화 검사 — context에 따라 동작이 갈린다 (N0090)
     let config_path = root.join(".elendirna").join("config.toml");
     if config_path.exists() {
-        return Err(ElfError::AlreadyInitialized {
-            path: root.display().to_string(),
-        });
+        return match ctx {
+            InitContext::Explicit => Err(ElfError::AlreadyInitialized {
+                path: root.display().to_string(),
+            }),
+            InitContext::Fallback => {
+                // MCP serve auto-init 등 vault 확보 의도의 호출.
+                // 기존 vault를 채택하고 stderr warning 후 정상 종료한다.
+                // N0089 r0002 사용자 확정 phrasing.
+                eprintln!(
+                    "[elf] 기존 vault가 있으니 내용 섞임에 유의: {}",
+                    root.display()
+                );
+                Ok(())
+            }
+        };
     }
 
     // vault 이름 결정

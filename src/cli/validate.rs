@@ -1,4 +1,5 @@
 use crate::error::ElfError;
+use crate::output::message::{Message, MessageLevel, issue_kind_str, push_message};
 use crate::schema::validate::{self, IssueKind, Severity};
 use crate::vault::{self, VaultArgs};
 use clap::Args;
@@ -41,34 +42,38 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let warnings = result.warning_count();
 
     if args.json {
-        let issues_json: Vec<_> = result.issues.iter().map(|i| {
-            serde_json::json!({
-                "severity": match i.severity { Severity::Error => "error", Severity::Warning => "warning" },
-                "kind": match i.kind {
-                    IssueKind::Naming      => "naming",
-                    IssueKind::Schema      => "schema",
-                    IssueKind::Consistency => "consistency",
-                    IssueKind::Dangling    => "dangling",
-                    IssueKind::Cycle       => "cycle",
-                    IssueKind::Orphan      => "orphan",
-                    IssueKind::Asset       => "asset",
+        // N0091: CLI JSON contract도 messages[]로 통일 (MCP와 동일).
+        // 기존 `errors`/`warnings` 숫자 필드는 `error_count`/`warning_count`로 rename.
+        // 기존 `issues[]`는 messages[]로 통합. fixable 정보는 message 본문에 suffix로 보존.
+        let mut data = serde_json::json!({
+            "error_count":   errors,
+            "warning_count": warnings,
+        });
+        for issue in &result.issues {
+            let level = match issue.severity {
+                Severity::Error => MessageLevel::Error,
+                Severity::Warning => MessageLevel::Warning,
+            };
+            let kind = issue_kind_str(&issue.kind).to_string();
+            let mut message = format!("{}: {}", issue.path.display(), issue.message);
+            if issue.fix.is_some() {
+                message.push_str(" [--fix로 자동 수정 가능]");
+            }
+            push_message(
+                &mut data,
+                Message {
+                    level,
+                    kind,
+                    message,
                 },
-                "path": i.path.display().to_string(),
-                "message": i.message,
-                "fixable": i.fix.is_some(),
-            })
-        }).collect();
-
+            );
+        }
         println!(
             "{}",
             serde_json::json!({
                 "command": "validate",
                 "ok": errors == 0,
-                "data": {
-                    "errors": errors,
-                    "warnings": warnings,
-                    "issues": issues_json,
-                }
+                "data": data,
             })
         );
     } else {

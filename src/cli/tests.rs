@@ -70,6 +70,69 @@ mod init {
         ));
     }
 
+    /// N0090 Phase A: Fallback context는 기존 vault가 있어도 stderr warning + Ok()로 종료.
+    /// MCP serve의 process suicide 회귀 방지.
+    #[test]
+    fn init_fallback_existing_vault_returns_ok() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let args = || InitArgs {
+            path: dir.path().to_path_buf(),
+            dry_run: false,
+            name: Some("test-vault".to_string()),
+            global: false,
+        };
+        run(args()).unwrap(); // 첫 init: 정상 생성
+        // 두 번째 호출 — Explicit이면 AlreadyInitialized, Fallback이면 Ok
+        let result = run_with_context(args(), InitContext::Fallback);
+        assert!(
+            result.is_ok(),
+            "Fallback init should not error on existing vault, got: {result:?}"
+        );
+    }
+
+    /// N0090 Phase A: Fallback context도 vault가 없으면 정상 생성.
+    /// "Fallback이라고 init을 건너뛰는" semantic이 아님을 확인.
+    #[test]
+    fn init_fallback_new_path_creates_vault() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let result = run_with_context(
+            InitArgs {
+                path: dir.path().to_path_buf(),
+                dry_run: false,
+                name: Some("fallback-new".to_string()),
+                global: false,
+            },
+            InitContext::Fallback,
+        );
+        assert!(result.is_ok());
+        assert!(dir.path().join(".elendirna/config.toml").exists());
+        assert!(dir.path().join(".elendirna/entries").exists());
+    }
+
+    /// N0090 Phase A: wrapper `run(args)`가 Explicit으로 위임하는지 명시 검증.
+    /// (init_duplicate_returns_error가 wrapper 경유로 cover하나, 시그니처 정확성 추가 보장)
+    #[test]
+    fn run_wrapper_delegates_to_explicit_context() {
+        use crate::cli::init::{InitContext, run_with_context};
+        let dir = tmp();
+        let args = || InitArgs {
+            path: dir.path().to_path_buf(),
+            dry_run: false,
+            name: Some("wrapper-test".to_string()),
+            global: false,
+        };
+        // 명시적으로 Explicit으로 첫 init
+        run_with_context(args(), InitContext::Explicit).unwrap();
+        // wrapper run 두 번째 호출 → 같은 결과 (AlreadyInitialized)
+        let err = run(args()).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::error::ElfError::AlreadyInitialized { .. }
+        ));
+    }
+
     #[test]
     fn init_dry_run_no_files() {
         let dir = tmp();
@@ -258,6 +321,151 @@ mod entry {
         .unwrap();
         let entry_dir = dir.path().join(".elendirna/entries").join("N0001_dry_test");
         assert!(!entry_dir.exists());
+    }
+
+    // ─── entry tag (N0080) ───────────────────
+
+    /// N0080 Phase H: tag add는 멱등 — 같은 tag 두 번 add → 두 번째는 no-op
+    #[test]
+    fn tag_add_is_idempotent() {
+        use crate::cli::entry::{TagAddArgs, run_tag_add};
+        let (dir, _guard) = setup_vault();
+        run_new_in(&dir, "tag-test").unwrap();
+
+        let args = || TagAddArgs {
+            id: "N0001".to_string(),
+            tag: "alpha".to_string(),
+            json: false,
+        };
+        run_tag_add(args(), VaultArgs::default()).unwrap();
+        run_tag_add(args(), VaultArgs::default()).unwrap(); // 두 번째 = no-op
+
+        let m = Manifest::read(&dir.path().join(".elendirna/entries/N0001_tag_test")).unwrap();
+        assert_eq!(m.tags, vec!["alpha".to_string()]);
+    }
+
+    /// N0080 Phase H: tag remove는 없는 tag에 대해 no-op (에러 없음)
+    #[test]
+    fn tag_remove_no_op_when_absent() {
+        use crate::cli::entry::{TagRemoveArgs, run_tag_remove};
+        let (dir, _guard) = setup_vault();
+        run_new_in(&dir, "tag-rm").unwrap();
+
+        // 없는 tag remove → 에러 없음
+        run_tag_remove(
+            TagRemoveArgs {
+                id: "N0001".to_string(),
+                tag: "ghost".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+
+        let m = Manifest::read(&dir.path().join(".elendirna/entries/N0001_tag_rm")).unwrap();
+        assert!(m.tags.is_empty());
+    }
+
+    /// N0080 Phase H: tag set comma parser — trim + dedupe + empty drop
+    #[test]
+    fn tag_set_comma_parser_dedupe_trim_empty() {
+        use crate::cli::entry::{TagSetArgs, run_tag_set};
+        let (dir, _guard) = setup_vault();
+        run_new_in(&dir, "tag-set-parse").unwrap();
+
+        run_tag_set(
+            TagSetArgs {
+                id: "N0001".to_string(),
+                tags: "  alpha , beta ,, alpha ,  gamma".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+
+        let m = Manifest::read(&dir.path().join(".elendirna/entries/N0001_tag_set_parse")).unwrap();
+        assert_eq!(
+            m.tags,
+            vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()]
+        );
+    }
+
+    /// N0080 Phase H: tag set 빈 문자열은 모든 tag 제거
+    #[test]
+    fn tag_set_empty_clears_all() {
+        use crate::cli::entry::{TagAddArgs, TagSetArgs, run_tag_add, run_tag_set};
+        let (dir, _guard) = setup_vault();
+        run_new_in(&dir, "tag-set-clear").unwrap();
+
+        // 먼저 tag 두 개 추가
+        for t in ["a", "b"] {
+            run_tag_add(
+                TagAddArgs {
+                    id: "N0001".to_string(),
+                    tag: t.to_string(),
+                    json: false,
+                },
+                VaultArgs::default(),
+            )
+            .unwrap();
+        }
+
+        // 빈 string으로 set → clear
+        run_tag_set(
+            TagSetArgs {
+                id: "N0001".to_string(),
+                tags: "".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+
+        let m = Manifest::read(&dir.path().join(".elendirna/entries/N0001_tag_set_clear")).unwrap();
+        assert!(m.tags.is_empty());
+    }
+
+    /// N0080 Phase H: sync event가 add/remove/set 각각 기록됨 (smoke)
+    #[test]
+    fn tag_operations_record_sync_events() {
+        use crate::cli::entry::{
+            TagAddArgs, TagRemoveArgs, TagSetArgs, run_tag_add, run_tag_remove, run_tag_set,
+        };
+        let (dir, _guard) = setup_vault();
+        run_new_in(&dir, "tag-sync").unwrap();
+
+        run_tag_add(
+            TagAddArgs {
+                id: "N0001".to_string(),
+                tag: "x".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+        run_tag_remove(
+            TagRemoveArgs {
+                id: "N0001".to_string(),
+                tag: "x".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+        run_tag_set(
+            TagSetArgs {
+                id: "N0001".to_string(),
+                tags: "y,z".to_string(),
+                json: false,
+            },
+            VaultArgs::default(),
+        )
+        .unwrap();
+
+        let sync = std::fs::read_to_string(dir.path().join(".elendirna/sync.jsonl")).unwrap();
+        assert!(sync.contains("entry.tag.added.N0001.x"));
+        assert!(sync.contains("entry.tag.removed.N0001.x"));
+        assert!(sync.contains("entry.tag.set.N0001"));
     }
 }
 

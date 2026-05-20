@@ -106,6 +106,15 @@ fn run_entry(args: cli::entry::EntryArgs, vault_args: VaultArgs) -> Result<(), E
         cli::entry::EntryCommand::Attach(a) => cli::entry::run_attach(a, vault_args),
         cli::entry::EntryCommand::Detach(a) => cli::entry::run_detach(a, vault_args),
         cli::entry::EntryCommand::Assets(a) => cli::entry::run_assets(a, vault_args),
+        cli::entry::EntryCommand::Tag(a) => run_entry_tag(a, vault_args),
+    }
+}
+
+fn run_entry_tag(args: cli::entry::TagArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    match args.command {
+        cli::entry::TagCommand::Add(a) => cli::entry::run_tag_add(a, vault_args),
+        cli::entry::TagCommand::Remove(a) => cli::entry::run_tag_remove(a, vault_args),
+        cli::entry::TagCommand::Set(a) => cli::entry::run_tag_set(a, vault_args),
     }
 }
 

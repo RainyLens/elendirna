@@ -107,6 +107,27 @@ pub fn compute_linked_by(entries: &[Entry]) -> HashMap<String, u32> {
 }
 
 /// entry의 outbound link 수 — 같은 대상 중복은 1로 dedupe.
+/// N0091/N0086: bundle default depth=0 cost_hint용 추정 size.
+/// 각 link id의 manifest.toml + note.md file metadata만 읽어 size 합산 (open X — cheap).
+/// link id 해석 실패 또는 entry 미발견은 skip.
+pub fn estimate_linked_entry_bytes(vault_root: &Path, link_ids: &[String]) -> u64 {
+    let mut total: u64 = 0;
+    for id_str in link_ids {
+        let Some(id) = EntryId::from_str(id_str) else {
+            continue;
+        };
+        let Some(entry) = Entry::find_by_id(vault_root, &id) else {
+            continue;
+        };
+        for name in ["manifest.toml", "note.md"] {
+            if let Ok(meta) = std::fs::metadata(entry.dir.join(name)) {
+                total += meta.len();
+            }
+        }
+    }
+    total
+}
+
 pub fn links_out_count(entry: &Entry) -> u32 {
     let mut seen: HashSet<&str> = HashSet::new();
     for link in &entry.manifest.links {
