@@ -1,4 +1,4 @@
-use crate::output::message::{Message, MessageLevel, issue_kind_str, push_message};
+use crate::output::message::{Message, MessageLevel, MessageScope, issue_kind_str, push_message};
 use crate::vault::{VaultOrigin, VaultResolution, ops};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
@@ -36,13 +36,43 @@ impl JsonSchema for Out {
     }
 }
 
+/// 두 VaultResolution이 "같은 경로 + 같은 origin"으로 도달했는지 검사한다 (v0.6.1 M-2).
+///
+/// path는 canonicalize 후 비교 (symlink 차이 흡수). origin은 PartialEq로 variant 일치 검사.
+/// 같은 path여도 explicit `vault='global'`(ExplicitGlobal)와 FallbackGlobal launch는 다른
+/// resolution으로 간주 — init_fallback warning을 alias 응답에 새지 않게 좁히는 핵심 비교.
+fn resolutions_match(a: &VaultResolution, b: &VaultResolution) -> bool {
+    if a.origin != b.origin {
+        return false;
+    }
+    let ap = a.path.canonicalize().unwrap_or_else(|_| a.path.clone());
+    let bp = b.path.canonicalize().unwrap_or_else(|_| b.path.clone());
+    ap == bp
+}
+
+/// 단일 MCP session의 in-memory 상태 (N0091 r0006).
+///
+/// stdio transport는 1 process = 1 session이라 lookup이 trivial하지만, contract 일관성 +
+/// 미래 HTTP/SSE multi-session 대비를 위해 `HashMap<SessionId, SessionState>`로 두고
+/// 본 PR에선 단일 entry만 관리. sync_record/sync.jsonl 가상화는 implement 단 위임.
+#[derive(Default)]
+pub struct SessionState {
+    /// session_start(vault='...')로 지정된 세션 기본 vault (per-call override 가능).
+    /// 기존 전역 `session_local_vault: RwLock<Option<VaultResolution>>`를 흡수 (N0091 r0005).
+    pub local_vault: Option<VaultResolution>,
+}
+
 pub struct ElfMcpServer {
     launch_resolution: VaultResolution,
     /// launch 시점 auto-init이 `InitContext::Fallback` 분기로 기존 vault를 채택했는지 여부.
     /// true면 vault_meta 응답에 N0089 phrasing("기존 vault가 있으니 내용 섞임에 유의") inject.
     /// 단 응답의 resolved vault가 launch path와 같을 때만 (다른 alias 응답에 부착 X).
     launch_init_fallback: bool,
-    session_local_vault: std::sync::RwLock<Option<VaultResolution>>,
+    /// 모든 session의 in-memory state. stdio에선 단일 entry만 존재.
+    sessions: std::sync::RwLock<std::collections::HashMap<String, SessionState>>,
+    /// stdio 단일-session 모델의 현재 active session id. session_start가 새 UUID를 발급해 갱신.
+    /// None이면 아직 session_start 미호출 상태 (default vault만 사용).
+    current_session_id: std::sync::RwLock<Option<String>>,
     #[allow(dead_code)]
     tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
     #[allow(dead_code)]
@@ -58,10 +88,28 @@ impl ElfMcpServer {
                 origin: resolution.origin,
             },
             launch_init_fallback: false,
-            session_local_vault: std::sync::RwLock::new(None),
+            sessions: std::sync::RwLock::new(std::collections::HashMap::new()),
+            current_session_id: std::sync::RwLock::new(None),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
+    }
+
+    /// 현재 active session의 local_vault override를 읽는다.
+    /// session_start 미호출이거나 vault 미설정이면 None.
+    fn current_session_local_vault(&self) -> Result<Option<VaultResolution>, ErrorData> {
+        let cur_guard = self
+            .current_session_id
+            .read()
+            .map_err(|_| ErrorData::internal_error("current_session_id lock is poisoned", None))?;
+        let Some(ref sid) = *cur_guard else {
+            return Ok(None);
+        };
+        let sessions = self
+            .sessions
+            .read()
+            .map_err(|_| ErrorData::internal_error("sessions lock is poisoned", None))?;
+        Ok(sessions.get(sid).and_then(|s| s.local_vault.clone()))
     }
 
     /// N0090: launch 시점 init이 Fallback 분기였는지 표시. serve.rs가 init 결과를 전달.
@@ -104,22 +152,20 @@ impl ElfMcpServer {
         if matches!(res.origin, VaultOrigin::FallbackGlobal) {
             meta["fallback"] = serde_json::Value::Bool(true);
         }
-        // N0091: launch 시점 init_fallback 사실을 messages[]로 노출.
-        // 단 resolved vault가 launch path와 동일할 때만 — 다른 alias 응답에 오해 방지.
-        if self.launch_init_fallback {
-            let res_canon = res.path.canonicalize().unwrap_or_else(|_| res.path.clone());
-            let launch_canon = self
-                .launch_resolution
-                .path
-                .canonicalize()
-                .unwrap_or_else(|_| self.launch_resolution.path.clone());
-            if res_canon == launch_canon {
-                let msg = format!(
-                    "기존 vault가 있으니 내용 섞임에 유의: {}",
-                    self.launch_resolution.path.display()
-                );
-                push_message(&mut meta, Message::warning("init_context_fallback", msg));
-            }
+        // N0091 / v0.6.1 M-2: launch 시점 init_fallback 사실을 messages[]로 노출.
+        // 조건: 이 호출의 resolution이 launch resolution과 "동일한 길"로 도달했을 때만.
+        // 즉 path가 같아도 explicit `vault='global'`/`vault='local'` 등 user-specified
+        // origin으로 도달했다면 inject하지 않는다. 이렇게 좁히면 alias 호출에 launch
+        // 사실이 새는 것을 막을 수 있다 (v0.6.0 N0091 후속 known issue).
+        if self.launch_init_fallback && resolutions_match(&self.launch_resolution, res) {
+            let msg = format!(
+                "기존 vault가 있으니 내용 섞임에 유의: {}",
+                self.launch_resolution.path.display()
+            );
+            push_message(
+                &mut meta,
+                Message::warning("init_context_fallback", msg, MessageScope::Instance),
+            );
         }
         meta
     }
@@ -171,6 +217,7 @@ impl ElfMcpServer {
             Message::warning(
                 "escalated_write",
                 "confirm=true 통과로 host-default global vault에 쓰기가 실행되었습니다.",
+                MessageScope::Call,
             ),
         );
     }
@@ -228,12 +275,8 @@ impl ElfMcpServer {
         if let Some(alias) = explicit_vault {
             return self.resolve_named_vault(&alias);
         }
-        let guard = self
-            .session_local_vault
-            .read()
-            .map_err(|_| ErrorData::internal_error("session vault lock is poisoned", None))?;
-        if let Some(ref res) = *guard {
-            return Ok(res.clone());
+        if let Some(res) = self.current_session_local_vault()? {
+            return Ok(res);
         }
         let canon = Self::ensure_vault_root(self.launch_resolution.path.clone(), "server default")?;
         Ok(VaultResolution {
@@ -1088,6 +1131,7 @@ impl ElfMcpServer {
                     level,
                     kind: kind.to_string(),
                     message,
+                    scope: MessageScope::Call,
                 },
             );
         }
@@ -1121,7 +1165,10 @@ impl ElfMcpServer {
             .unwrap()
             .extend(self.vault_meta(&res).as_object().unwrap().clone());
         if let Some(w) = r.warning {
-            push_message(&mut result, Message::warning("attach_collision", w));
+            push_message(
+                &mut result,
+                Message::warning("attach_collision", w, MessageScope::Call),
+            );
         }
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
@@ -1193,14 +1240,35 @@ impl ElfMcpServer {
         &self,
         Parameters(p): Parameters<SessionStartParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        // vault 파라미터가 있으면 세션 로컬 볼트를 업데이트
-        if let Some(ref alias) = p.vault {
-            let resolved = self.resolve_named_vault(alias)?;
-            let mut guard = self
-                .session_local_vault
+        // N0091 r0006 (B1): 매 session_start 호출은 새 UUID v4 session_id를 발급한다.
+        // 같은 stdio process여도 새 session 시작으로 간주 — local_vault override를
+        // 깨끗하게 reset할 수 있는 정식 경로.
+        let session_id = uuid::Uuid::new_v4().to_string();
+
+        // session vault override를 결정 — explicit alias 있으면 resolve, 없으면 None.
+        let session_local = match p.vault.as_deref() {
+            Some(alias) => Some(self.resolve_named_vault(alias)?),
+            None => None,
+        };
+
+        // sessions map에 새 entry insert + current_session_id 갱신.
+        {
+            let mut sessions = self
+                .sessions
                 .write()
-                .map_err(|_| ErrorData::internal_error("session vault lock is poisoned", None))?;
-            *guard = Some(resolved);
+                .map_err(|_| ErrorData::internal_error("sessions lock is poisoned", None))?;
+            sessions.insert(
+                session_id.clone(),
+                SessionState {
+                    local_vault: session_local,
+                },
+            );
+        }
+        {
+            let mut cur = self.current_session_id.write().map_err(|_| {
+                ErrorData::internal_error("current_session_id lock is poisoned", None)
+            })?;
+            *cur = Some(session_id.clone());
         }
 
         let res = self.resolve_tool_vault(None)?;
@@ -1215,6 +1283,7 @@ impl ElfMcpServer {
         if entry_count == 0 {
             let mut result = serde_json::json!({
                 "ok": true,
+                "session_id": session_id,
                 "vault_status": "empty",
                 "entry_count": 0,
                 "ai_instructions": {
@@ -1248,6 +1317,7 @@ impl ElfMcpServer {
 
         let mut result = serde_json::json!({
             "ok": true,
+            "session_id": session_id,
             "vault_status": "active",
             "entry_count": entry_count,
             "recent_sessions": recent_sessions,
@@ -1424,10 +1494,19 @@ mod tests {
             path: local.path().to_path_buf(),
             origin: VaultOrigin::ExplicitPath,
         });
-        *server.session_local_vault.write().unwrap() = Some(VaultResolution {
-            path: canonical(session.path()),
-            origin: VaultOrigin::CwdSearch,
-        });
+        // v0.6.1 B1: SessionState로 흡수된 session local vault를 직접 inject.
+        // stdio runtime에선 session_start가 이 entry를 만들지만 unit test에선 수동 setup.
+        let sid = "test-session-1".to_string();
+        server.sessions.write().unwrap().insert(
+            sid.clone(),
+            crate::mcp::SessionState {
+                local_vault: Some(VaultResolution {
+                    path: canonical(session.path()),
+                    origin: VaultOrigin::CwdSearch,
+                }),
+            },
+        );
+        *server.current_session_id.write().unwrap() = Some(sid);
 
         let default_resolved = server.resolve_tool_vault(None).unwrap();
         let explicit_resolved = server
@@ -1636,6 +1715,99 @@ mod tests {
         };
         let meta = vault_meta_for_test(res, false);
         assert!(meta.get("messages").is_none());
+    }
+
+    /// v0.6.1 M-2: launch=FallbackGlobal + 같은 path를 explicit `vault='global'`
+    /// (ExplicitGlobal) 또는 alias로 다시 본 응답에는 init_fallback warning을
+    /// 부착하지 않는다. user가 의도적으로 그 vault를 지목한 호출 응답에 launch
+    /// 사실이 새는 것을 막는 alias 경계 회귀 방지.
+    #[test]
+    fn vault_meta_skip_init_fallback_for_explicit_same_path() {
+        let home_str = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home_str.is_empty() {
+            return;
+        }
+        let home = std::path::PathBuf::from(&home_str);
+        if !home.exists() {
+            return;
+        }
+        // launch = FallbackGlobal (auto-init이 기존 home vault를 채택)
+        let launch = VaultResolution {
+            path: home.clone(),
+            origin: VaultOrigin::FallbackGlobal,
+        };
+        let server = ElfMcpServer::new(launch).with_init_fallback(true);
+        // 호출이 같은 path를 explicit `vault='global'`로 본 경우 — ExplicitGlobal origin.
+        let explicit_res = VaultResolution {
+            path: home.clone(),
+            origin: VaultOrigin::ExplicitGlobal,
+        };
+        let meta = server.vault_meta(&explicit_res);
+        assert!(
+            meta.get("messages").is_none(),
+            "explicit alias로 본 응답엔 init_fallback warning 부착 X (M-2)"
+        );
+
+        // 또한 alias variant도 동일.
+        let alias_res = VaultResolution {
+            path: home,
+            origin: VaultOrigin::Alias("global".to_string()),
+        };
+        let meta = server.vault_meta(&alias_res);
+        assert!(meta.get("messages").is_none(), "alias 응답도 inject X (M-2)");
+    }
+
+    /// v0.6.1 B1: session_start는 매 호출마다 UUID v4 session_id를 응답에 노출한다.
+    /// 같은 instance에서 두 번 호출하면 서로 다른 id가 나와야 한다.
+    #[test]
+    fn session_start_emits_distinct_uuid_v4_per_call() {
+        use rmcp::handler::server::wrapper::Parameters;
+        let local = temp_vault("local");
+        let server = ElfMcpServer::new(VaultResolution {
+            path: local.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        });
+        let call = || {
+            server
+                .session_start(Parameters(super::SessionStartParams { vault: None }))
+                .unwrap()
+        };
+        let r1 = call();
+        let r2 = call();
+        // Json<Out>(Out(value)) — value의 session_id 추출
+        let v1 = &r1.0.0;
+        let v2 = &r2.0.0;
+        let sid1 = v1["session_id"].as_str().expect("session_id absent");
+        let sid2 = v2["session_id"].as_str().expect("session_id absent");
+        assert_ne!(sid1, sid2, "session_start는 매번 새 UUID 발급");
+        // UUID v4 형식 — 36자 + version nibble '4'
+        for sid in [sid1, sid2] {
+            assert_eq!(sid.len(), 36, "UUID v4는 36 chars");
+            // index 14 (0-based) = version nibble in canonical UUID string
+            assert_eq!(
+                sid.chars().nth(14),
+                Some('4'),
+                "version nibble은 4여야 함"
+            );
+        }
+    }
+
+    /// v0.6.1 B1: session_id는 session_start 응답에만 노출 — vault_meta 등 다른 응답엔
+    /// 포함되지 않는다 (사용자 명시 결정).
+    #[test]
+    fn session_id_only_in_session_start_response() {
+        let temp = tempfile::tempdir().unwrap();
+        let res = VaultResolution {
+            path: temp.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        };
+        let meta = vault_meta_for_test(res, false);
+        assert!(
+            meta.get("session_id").is_none(),
+            "vault_meta는 session_id 포함 X"
+        );
     }
 
     #[test]

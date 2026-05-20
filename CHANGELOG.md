@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.6.1] — 2026-05-20
+
+### 주요 변경 (breaking)
+
+#### Message `scope` 축 추가 (N0091 r0006)
+
+`Message { level, kind, message }` → `Message { level, kind, message, scope }`. `scope: MessageScope`는 사실의 시점 축을 표현:
+
+- `call`: 이 한 번의 호출에만 유효 — `escalated_write`, `validate:*`, `attach_collision`
+- `session`: 현재 MCP session(session_start ~ 종료) 동안 유의미 (현재 emit site 없음, reserve)
+- `instance`: MCP server process lifetime 사실 — `init_context_fallback` (launch 시점 결정)
+- **MCP + CLI JSON contract 양쪽에 `scope` 필드 신설**. `Message::info/warning/error` 빌더 시그니처에 `scope` 인자 추가 (호출처 모두 update)
+- `lowercase` serde rename — `"scope": "call"|"session"|"instance"`
+
+#### `session_start` 응답에 `session_id` 노출 (B1)
+
+- 매 `session_start` 호출은 UUID v4 형식 `session_id`를 응답에 포함 (`"session_id": "xxxxxxxx-...-4xxx-..."`)
+- 같은 stdio process 내 재호출도 새 session으로 간주 — 새 UUID 발급 + SessionState 신규 entry
+- **노출 위치**: `session_start` 응답에만. `vault_meta` / 다른 tool 응답에는 포함 X (사용자 명시 결정)
+
+#### `vault_meta` init_fallback inject 조건 좁힘 (M-2)
+
+v0.6.0 known issue 해소:
+
+- 기존: launch path와 resolved path만 비교 → 같은 home vault를 explicit `vault='global'`로 본 응답에도 `init_context_fallback` warning 부착됨
+- v0.6.1: launch resolution 전체(path + origin) 일치 시에만 inject. `FallbackGlobal`(launch)와 `ExplicitGlobal`(call)/`Alias("global")`(call)은 다른 resolution → alias 응답에 launch 사실이 새지 않음
+- 새 helper `resolutions_match(a, b)`: path canonicalize + origin variant equality
+
+### 내부 변경
+
+- `MessageScope` enum 신설 ([src/output/message.rs](src/output/message.rs))
+- `SessionState` struct 신설 ([src/mcp/mod.rs](src/mcp/mod.rs)) — 기존 전역 `session_local_vault: RwLock<Option<VaultResolution>>` 흡수. 단순 교체 (lifetime 깊이 X — stdio 1:1)
+- `ElfMcpServer`: `sessions: RwLock<HashMap<String, SessionState>>` + `current_session_id: RwLock<Option<String>>` 필드. 기존 전역 RwLock 제거
+- `current_session_local_vault(&self)` helper 신설 — `resolve_tool_vault` 내부 우선순위 lookup용
+- `uuid = { version = "1", features = ["v4"] }` 의존성 추가
+- `cargo test --all`: 115 tests passing (lib 82 + integration 6 + mcp_integration 19 + serve_process 1 + sqlite 7). 신규 unit test 4개 (`message_scope_serializes_as_lowercase` / `vault_meta_skip_init_fallback_for_explicit_same_path` / `session_start_emits_distinct_uuid_v4_per_call` / `session_id_only_in_session_start_response`)
+
+### Scope OUT (별 트랙)
+
+- info `messages[]` 통합 (`hint`/`next_action`/`context_hints` 등 info성 필드 통합) — Cons-3 묵힘
+- session-scope message emit site 식별
+- N0073 비-string param 역직렬화
+- 코드/commit vault index 회피 sweep
+- MCP initialize 응답 검증 보강 (M-3)
+- HTTP/SSE transport (elen-labs로 분리)
+
+---
+
 ## [0.6.0] — 2026-05-20
 
 ### 주요 변경 (breaking)

@@ -525,7 +525,7 @@ pub struct AttachArgs {
 }
 
 pub fn run_attach(args: AttachArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
-    use crate::output::message::{Message, push_message};
+    use crate::output::message::{Message, MessageScope, push_message};
 
     let vault_root = vault::resolve_vault_root(&vault_args)?;
     let r =
@@ -541,7 +541,10 @@ pub fn run_attach(args: AttachArgs, vault_args: VaultArgs) -> Result<(), ElfErro
             "collision":   r.collision,
         });
         if let Some(ref w) = r.warning {
-            push_message(&mut data, Message::warning("attach_collision", w.clone()));
+            push_message(
+                &mut data,
+                Message::warning("attach_collision", w.clone(), MessageScope::Call),
+            );
         }
         println!(
             "{}",
