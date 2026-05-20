@@ -1,4 +1,3 @@
-use crate::output::message::{Message, MessageLevel, issue_kind_str, push_message};
 use crate::vault::{VaultOrigin, VaultResolution, ops};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
@@ -38,10 +37,6 @@ impl JsonSchema for Out {
 
 pub struct ElfMcpServer {
     launch_resolution: VaultResolution,
-    /// launch 시점 auto-init이 `InitContext::Fallback` 분기로 기존 vault를 채택했는지 여부.
-    /// true면 vault_meta 응답에 N0089 phrasing("기존 vault가 있으니 내용 섞임에 유의") inject.
-    /// 단 응답의 resolved vault가 launch path와 같을 때만 (다른 alias 응답에 부착 X).
-    launch_init_fallback: bool,
     session_local_vault: std::sync::RwLock<Option<VaultResolution>>,
     #[allow(dead_code)]
     tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
@@ -57,29 +52,14 @@ impl ElfMcpServer {
                 path,
                 origin: resolution.origin,
             },
-            launch_init_fallback: false,
             session_local_vault: std::sync::RwLock::new(None),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
     }
 
-    /// N0090: launch 시점 init이 Fallback 분기였는지 표시. serve.rs가 init 결과를 전달.
-    /// 응답 vault_meta에 N0089 phrasing이 inject되는 조건.
-    pub fn with_init_fallback(mut self, value: bool) -> Self {
-        self.launch_init_fallback = value;
-        self
-    }
-
-    /// vault resolution → JSON 메타데이터 조각.
-    ///
-    /// 필드: `vault`, `vault_kind`, `vault_origin`, `fallback?` (FallbackGlobal일 때),
-    /// `messages?` (init_fallback이 launch path와 일치할 때 N0089 phrasing — N0091 messages[] format).
-    ///
-    /// instance method인 이유는 `launch_init_fallback` 사실에 접근해야 하기 때문 (N0090).
-    /// 호출의 resolved vault가 launch_resolution.path와 같을 때만 init_fallback warning
-    /// 부착 — explicit alias로 다른 vault를 본 응답엔 부착하지 않음.
-    fn vault_meta(&self, res: &VaultResolution) -> serde_json::Value {
+    /// vault resolution → JSON 메타데이터 조각 (vault, vault_kind, vault_origin, fallback?, warning?)
+    fn vault_meta(res: &VaultResolution) -> serde_json::Value {
         let normalized = crate::vault::normalize_vault_root(res.path.clone());
         let canonical = normalized.canonicalize().unwrap_or(normalized);
         let vault_kind = if crate::vault::is_home_vault_root(&canonical) {
@@ -104,23 +84,6 @@ impl ElfMcpServer {
         if matches!(res.origin, VaultOrigin::FallbackGlobal) {
             meta["fallback"] = serde_json::Value::Bool(true);
         }
-        // N0091: launch 시점 init_fallback 사실을 messages[]로 노출.
-        // 단 resolved vault가 launch path와 동일할 때만 — 다른 alias 응답에 오해 방지.
-        if self.launch_init_fallback {
-            let res_canon = res.path.canonicalize().unwrap_or_else(|_| res.path.clone());
-            let launch_canon = self
-                .launch_resolution
-                .path
-                .canonicalize()
-                .unwrap_or_else(|_| self.launch_resolution.path.clone());
-            if res_canon == launch_canon {
-                let msg = format!(
-                    "기존 vault가 있으니 내용 섞임에 유의: {}",
-                    self.launch_resolution.path.display()
-                );
-                push_message(&mut meta, Message::warning("init_context_fallback", msg));
-            }
-        }
         meta
     }
 
@@ -144,35 +107,29 @@ impl ElfMcpServer {
     }
 
     /// guarded origin(FallbackGlobal | CwdSearchHome) + confirm=true로 가드를 통과한 write 응답에
-    /// `escalated_write: true` + `messages[]`에 escalated_write kind warning을 inject한다.
-    ///
-    /// N0091: v0.5.4의 단일 `warning` (string) / N0090의 `warnings: Vec<String>` → N0091
-    /// `messages: Vec<Message>` 통합. 이모지/uppercase prefix 제거.
-    /// vault_meta가 이미 messages[]를 만들어두었을 수 있으므로 array에 append.
+    /// `escalated_write: true` + `warning` 필드를 inject한다. 후속 agent가 응답 본문만 봐도
+    /// silent 성공이 아닌 의도된 escalation임을 인지 가능하게 함.
     fn mark_escalated_if_needed(
         result: &mut serde_json::Value,
         res: &VaultResolution,
         confirm: bool,
     ) {
-        if !(confirm
+        if confirm
             && matches!(
                 res.origin,
                 VaultOrigin::FallbackGlobal | VaultOrigin::CwdSearchHome
-            ))
+            )
         {
-            return;
+            if let Some(map) = result.as_object_mut() {
+                map.insert("escalated_write".into(), serde_json::Value::Bool(true));
+                map.insert(
+                    "warning".into(),
+                    serde_json::Value::String(
+                        "🚨 GLOBAL_WRITE_EXECUTED — confirm=true 통과로 host-default global vault에 쓰기가 실행되었습니다.".into()
+                    ),
+                );
+            }
         }
-        let Some(map) = result.as_object_mut() else {
-            return;
-        };
-        map.insert("escalated_write".into(), serde_json::Value::Bool(true));
-        push_message(
-            result,
-            Message::warning(
-                "escalated_write",
-                "confirm=true 통과로 host-default global vault에 쓰기가 실행되었습니다.",
-            ),
-        );
     }
 
     fn ensure_vault_root(path: PathBuf, label: &str) -> Result<PathBuf, ErrorData> {
@@ -344,7 +301,7 @@ struct EntryNewParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -359,52 +316,7 @@ struct EntryStatusParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagAddParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "추가할 tag")]
-    tag: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagRemoveParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "제거할 tag")]
-    tag: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagSetParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "교체할 tag list (빈 array = 모든 tag 제거)")]
-    tags: Vec<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -421,7 +333,7 @@ struct RevisionAddParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -431,7 +343,7 @@ struct BundleParams {
     #[schemars(description = "entry ID (예: N0001)")]
     id: String,
     #[schemars(
-        description = "linked entry 탐색 깊이 (선택, 기본 0 — cost-aware). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만. 미지정 시 linked entry가 있으면 cost_hint 응답."
+        description = "linked entry 탐색 깊이 (선택, 기본 1). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만."
     )]
     depth: Option<u32>,
     #[schemars(
@@ -472,7 +384,7 @@ struct SyncRecordParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -483,7 +395,7 @@ struct ValidateParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -500,7 +412,7 @@ struct EntryAttachParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -515,7 +427,7 @@ struct EntryDetachParams {
     vault: Option<String>,
     #[serde(default)]
     #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
+        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + warning 필드 동봉."
     )]
     confirm: bool,
 }
@@ -542,7 +454,6 @@ struct SessionStartParams {
 #[tool_router]
 impl ElfMcpServer {
     #[tool(description = "vault의 전체 entry 목록 조회. tag/status 필터 지원. \
-        각 항목 메타: revisions(누적 r#### 수), links_out(이 entry가 거는 outbound link 수), linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), updated(최근 활동 시각) — 어느 entry가 활동적이고 hub인지 한눈에 파악. \
         세션 시작 시 작업 범위 파악에 사용. \
         개별 entry 내용은 entry_show 또는 bundle을 사용할 것 — 파일 직접 접근 금지.")]
     fn entry_list(
@@ -550,10 +461,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryListParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
-        let all_entries = ops::entry_list(&res.path);
-        // linked_by는 필터 전 전체 vault 기준 in-degree (필터로 인해 카운트가 줄지 않도록)
-        let linked_by_map = ops::compute_linked_by(&all_entries);
-        let mut entries = all_entries;
+        let mut entries = ops::entry_list(&res.path);
         if let Some(ref tag) = p.tag {
             entries.retain(|e| e.manifest.tags.contains(tag));
         }
@@ -563,22 +471,12 @@ impl ElfMcpServer {
         let out: Vec<_> = entries
             .iter()
             .map(|e| {
-                let rev_count = ops::revision_count(
-                    &res.path,
-                    &crate::vault::id::EntryId::from_str(&e.manifest.id).unwrap(),
-                );
-                let linked_by = linked_by_map.get(&e.manifest.id).copied().unwrap_or(0);
-                let links_out = ops::links_out_count(e);
                 serde_json::json!({
-                    "id":         e.manifest.id,
-                    "title":      e.manifest.title,
-                    "status":     e.manifest.status.to_string(),
-                    "tags":       e.manifest.tags,
-                    "created":    e.manifest.created,
-                    "updated":    e.manifest.updated,
-                    "revisions":  rev_count,
-                    "links_out":  links_out,
-                    "linked_by":  linked_by,
+                    "id":      e.manifest.id,
+                    "title":   e.manifest.title,
+                    "status":  e.manifest.status.to_string(),
+                    "tags":    e.manifest.tags,
+                    "created": e.manifest.created,
                 })
             })
             .collect();
@@ -586,7 +484,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -618,7 +516,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -643,7 +541,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -700,161 +598,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry에 tag 추가. \
-        중복 방지 — 이미 있으면 no-op. \
-        manifest mutability 정식 경로 (N0080). 직접 manifest 파일 편집 금지.")]
-    fn entry_tag_add(
-        &self,
-        Parameters(p): Parameters<EntryTagAddParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        let tag = p.tag.trim().to_string();
-        if tag.is_empty() {
-            return Err(ErrorData::invalid_params("tag가 비어 있습니다", None));
-        }
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let already = entry.manifest.tags.iter().any(|t| t == &tag);
-        if !already {
-            entry.manifest.tags.push(tag.clone());
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.added.{id}.{tag}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "tag":     tag,
-            "added":   !already,
-            "tags":    entry.manifest.tags,
-        });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry에서 tag 제거. \
-        없으면 no-op. manifest mutability 정식 경로 (N0080).")]
-    fn entry_tag_remove(
-        &self,
-        Parameters(p): Parameters<EntryTagRemoveParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        let tag = p.tag.trim().to_string();
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let before_len = entry.manifest.tags.len();
-        entry.manifest.tags.retain(|t| t != &tag);
-        let removed = entry.manifest.tags.len() < before_len;
-        if removed {
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.removed.{id}.{tag}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "tag":     tag,
-            "removed": removed,
-            "tags":    entry.manifest.tags,
-        });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry tag 전체 교체. \
-        빈 array = 모든 tag 제거. dedupe/trim 자동 적용. \
-        manifest mutability 정식 경로 (N0080).")]
-    fn entry_tag_set(
-        &self,
-        Parameters(p): Parameters<EntryTagSetParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        // dedupe (순서 유지) + trim + empty drop
-        let mut new_tags: Vec<String> = Vec::new();
-        for t in p.tags.iter() {
-            let t = t.trim().to_string();
-            if t.is_empty() {
-                continue;
-            }
-            if !new_tags.iter().any(|x| x == &t) {
-                new_tags.push(t);
-            }
-        }
-
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let changed = entry.manifest.tags != new_tags;
-        if changed {
-            entry.manifest.tags = new_tags.clone();
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.set.{id}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "changed": changed,
-            "tags":    new_tags,
-        });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -881,7 +625,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -890,8 +634,7 @@ impl ElfMcpServer {
         세션 시작 시 컨텍스트 복원의 핵심 도구. \
         짧게 기록된 delta도 entry 본문과 revision chain 옆에서 함께 읽히므로 맥락을 잃지 않습니다. \
         파일을 직접 읽지 말고 이 tool을 사용할 것. \
-        depth=0 (default): revisions만 (cost-aware), depth=1: 직접 linked 전문, depth=2+: 2홉 이상 manifest만. \
-        cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
+        depth=0: revisions만 (컨텍스트 절약), depth=1: 직접 linked 전문(기본), depth=2+: 2홉 이상 manifest만. \
         since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용).")]
     fn bundle(&self, Parameters(p): Parameters<BundleParams>) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
@@ -905,10 +648,8 @@ impl ElfMcpServer {
             })
             .transpose()?;
 
-        // N0091/N0086: default cost cap. depth 미지정 시 0 (revisions만). cost_hint로 escalate 유도.
-        let depth_was_default = p.depth.is_none();
         let opts = ops::BundleOptions {
-            depth: p.depth.unwrap_or(0),
+            depth: p.depth.unwrap_or(1),
             since,
         };
 
@@ -948,19 +689,6 @@ impl ElfMcpServer {
                 }
             })
             .collect();
-        // N0091/N0086: cost_hint — depth 미지정(=0 default) + linked link 있을 때 escalate 안내.
-        // bytes estimate는 각 link id의 manifest.toml + note.md file metadata로 cheap 추정.
-        let link_count = b.entry.manifest.links.len();
-        let cost_hint = if depth_was_default && link_count > 0 {
-            let est_bytes = ops::estimate_linked_entry_bytes(&res.path, &b.entry.manifest.links);
-            Some(format!(
-                "linked {} entry는 default(depth=0)에서 미수집 (~{} bytes 예상). bundle(id, depth=1)로 escalate.",
-                link_count, est_bytes
-            ))
-        } else {
-            None
-        };
-
         let mut result = serde_json::json!({
             "ok": true,
             "context_stats": {
@@ -982,16 +710,10 @@ impl ElfMcpServer {
             "revisions": revs,
             "linked":    linked,
         });
-        if let Some(hint) = cost_hint {
-            result
-                .as_object_mut()
-                .unwrap()
-                .insert("cost_hint".to_string(), serde_json::Value::String(hint));
-        }
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -1023,7 +745,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -1050,7 +772,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -1064,33 +786,14 @@ impl ElfMcpServer {
         let vresult = crate::schema::validate::run_all(&res.path)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let _ = crate::vault::index::rebuild(&res.path);
-        // N0091: 기존 `warnings: u32`는 `messages[]` array와 키 충돌 위험이라
-        // `warning_count`로 rename. 각 issue는 messages[]에 push.
         let mut out = serde_json::json!({
-            "ok":            vresult.error_count() == 0,
-            "error_count":   vresult.error_count(),
-            "warning_count": vresult.warning_count(),
+            "ok":       vresult.error_count() == 0,
+            "errors":   vresult.error_count(),
+            "warnings": vresult.warning_count(),
         });
         out.as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        // validate issues를 messages[]에 push (vault_meta가 init_fallback 부착했어도 append).
-        for issue in &vresult.issues {
-            let level = match issue.severity {
-                crate::schema::validate::Severity::Error => MessageLevel::Error,
-                crate::schema::validate::Severity::Warning => MessageLevel::Warning,
-            };
-            let kind = issue_kind_str(&issue.kind);
-            let message = format!("{}: {}", issue.path.display(), issue.message);
-            push_message(
-                &mut out,
-                Message {
-                    level,
-                    kind: kind.to_string(),
-                    message,
-                },
-            );
-        }
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut out, &res, p.confirm);
         Ok(Json(Out(out)))
     }
@@ -1107,22 +810,18 @@ impl ElfMcpServer {
         let file_path = std::path::Path::new(&p.file_path);
         let r = ops::entry_attach(&res.path, &p.id, file_path, p.name.as_deref())
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        // N0091: 기존 `warning: Option<String>` (collision warning) → messages[]에 push.
-        // warning 필드 자체는 제거하여 응답 contract messages[]로 통일.
         let mut result = serde_json::json!({
             "ok":          true,
             "asset_key":   r.asset_key,
             "source_path": r.source_path,
             "size":        r.size,
             "collision":   r.collision,
+            "warning":     r.warning,
         });
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        if let Some(w) = r.warning {
-            push_message(&mut result, Message::warning("attach_collision", w));
-        }
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -1146,7 +845,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -1178,7 +877,7 @@ impl ElfMcpServer {
         result
             .as_object_mut()
             .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+            .extend(Self::vault_meta(&res).as_object().unwrap().clone());
         Ok(Json(Out(result)))
     }
 
@@ -1209,7 +908,7 @@ impl ElfMcpServer {
 
         let recent_sessions = ops::sync_log(&res.path, Some(3), None).unwrap_or_default();
 
-        let meta = self.vault_meta(&res);
+        let meta = Self::vault_meta(&res);
         let is_global = meta["vault_kind"].as_str().unwrap_or("local") == "global";
 
         if entry_count == 0 {
@@ -1344,13 +1043,10 @@ impl ServerHandler for ElfMcpServer {
 // ─── 서버 진입점 ─────────────────────────
 
 /// stdio transport로 MCP 서버 구동 (blocking).
-///
-/// `launch_init_fallback`: serve.rs의 fallback-global auto-init이 기존 vault를
-/// 채택한 경우 true (N0090). vault_meta 응답에 N0089 phrasing inject 조건.
-pub fn run_stdio(resolution: VaultResolution, launch_init_fallback: bool) -> anyhow::Result<()> {
+pub fn run_stdio(resolution: VaultResolution) -> anyhow::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let server = ElfMcpServer::new(resolution).with_init_fallback(launch_init_fallback);
+        let server = ElfMcpServer::new(resolution);
         let transport = rmcp::transport::io::stdio();
         server.serve(transport).await?.waiting().await?;
         Ok(())
@@ -1360,7 +1056,6 @@ pub fn run_stdio(resolution: VaultResolution, launch_init_fallback: bool) -> any
 #[cfg(test)]
 mod tests {
     use super::{ElfMcpServer, FlexibleEntries, normalize_entry_ids};
-    use crate::output::message::{Message, MessageLevel};
     use crate::vault::{VaultOrigin, VaultResolution};
 
     fn temp_vault(name: &str) -> tempfile::TempDir {
@@ -1373,25 +1068,6 @@ mod tests {
 
     fn canonical(path: &std::path::Path) -> std::path::PathBuf {
         path.canonicalize().unwrap()
-    }
-
-    /// N0091 codex 권고: instance method화된 vault_meta를 테스트에서 호출하는 헬퍼.
-    /// launch_init_fallback 사실까지 컨트롤 가능.
-    fn vault_meta_for_test(res: VaultResolution, init_fallback: bool) -> serde_json::Value {
-        let server = ElfMcpServer::new(VaultResolution {
-            path: res.path.clone(),
-            origin: res.origin.clone(),
-        })
-        .with_init_fallback(init_fallback);
-        server.vault_meta(&res)
-    }
-
-    /// N0091: messages[] array를 Vec<Message>로 deserialize. spec 검증용.
-    fn parse_messages(value: &serde_json::Value) -> Vec<Message> {
-        value
-            .get("messages")
-            .and_then(|m| serde_json::from_value::<Vec<Message>>(m.clone()).ok())
-            .unwrap_or_default()
     }
 
     #[test]
@@ -1483,10 +1159,9 @@ mod tests {
         }
     }
 
-    /// N0091: guarded origin + confirm=true 응답은 `escalated_write:true` + messages[]에
-    /// (level=warning, kind=escalated_write) 메시지를 반드시 inject해야 한다.
+    /// guarded origin + confirm=true로 write 가드를 통과한 응답은
+    /// `escalated_write:true` + `warning` 필드를 반드시 inject해야 한다.
     /// 후속 agent가 silent 성공으로 오해하지 않게 하는 응답 contract.
-    /// (기존 `warning` 단일 string + 이모지 → 일반 텍스트 messages[] array로 통합 — N0090 r0004)
     #[test]
     fn escalated_write_field_present_when_guarded_and_confirmed() {
         let temp = tempfile::tempdir().unwrap();
@@ -1498,22 +1173,16 @@ mod tests {
             let mut result = serde_json::json!({ "ok": true });
             ElfMcpServer::mark_escalated_if_needed(&mut result, &res, true);
             assert_eq!(result["escalated_write"], serde_json::Value::Bool(true));
-            let messages = parse_messages(&result);
-            assert_eq!(messages.len(), 1, "messages should have one entry");
-            assert_eq!(messages[0].level, MessageLevel::Warning);
-            assert_eq!(messages[0].kind, "escalated_write");
-            assert!(
-                messages[0].message.contains("confirm=true 통과로"),
-                "message phrasing should retain prefix substring"
-            );
-            // N0090 r0004: 이모지/uppercase prefix 제거된 자연어 phrasing 보장
-            assert!(!messages[0].message.contains("🚨"));
-            assert!(!messages[0].message.contains("GLOBAL_WRITE_EXECUTED"));
+            let warning = result["warning"]
+                .as_str()
+                .expect("warning must be a string");
+            assert!(warning.contains("GLOBAL_WRITE_EXECUTED"));
+            assert!(warning.contains("🚨"));
         }
     }
 
     /// 정상 origin(ExplicitPath/ExplicitGlobal/Alias/EnvVar/CwdSearch)에서는
-    /// confirm=true여도 escalated_write/messages 필드가 inject되지 않아야 한다.
+    /// confirm=true여도 escalated_write/warning 필드가 inject되지 않아야 한다.
     /// 기존 클라이언트 호환 보장.
     #[test]
     fn escalated_write_absent_for_normal_origin() {
@@ -1536,8 +1205,8 @@ mod tests {
                 "escalated_write should not be set for normal origin"
             );
             assert!(
-                result.get("messages").is_none(),
-                "messages should not be set for normal origin"
+                result.get("warning").is_none(),
+                "warning should not be set for normal origin"
             );
         }
     }
@@ -1556,86 +1225,8 @@ mod tests {
             let mut result = serde_json::json!({ "ok": true });
             ElfMcpServer::mark_escalated_if_needed(&mut result, &res, false);
             assert!(result.get("escalated_write").is_none());
-            assert!(result.get("messages").is_none());
+            assert!(result.get("warning").is_none());
         }
-    }
-
-    /// N0091 M-2 회귀: vault_meta가 init_fallback messages[]를 먼저 부착한 응답에
-    /// mark_escalated가 escalated_write를 append하면 둘 다 공존해야 한다.
-    /// 실제 write tool 호출 흐름 모사 (vault_meta extend → mark_escalated append).
-    #[test]
-    fn messages_append_init_fallback_and_escalated_write_together() {
-        let home_str = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_default();
-        if home_str.is_empty() {
-            return; // CI 보호
-        }
-        let home = std::path::PathBuf::from(&home_str);
-        if !home.exists() {
-            return;
-        }
-        let res = VaultResolution {
-            path: home,
-            origin: VaultOrigin::FallbackGlobal,
-        };
-        // 실제 write tool은 vault_meta extend 후 mark_escalated 순서로 호출 → 모사
-        let mut result = serde_json::json!({ "ok": true });
-        let meta = vault_meta_for_test(res.clone(), true);
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(meta.as_object().unwrap().clone());
-        ElfMcpServer::mark_escalated_if_needed(&mut result, &res, true);
-
-        let messages = parse_messages(&result);
-        assert_eq!(
-            messages.len(),
-            2,
-            "init_fallback + escalated_write 둘 다 inject"
-        );
-        let kinds: Vec<&str> = messages.iter().map(|m| m.kind.as_str()).collect();
-        assert!(kinds.contains(&"init_context_fallback"));
-        assert!(kinds.contains(&"escalated_write"));
-        // 두 메시지 모두 level=warning
-        assert!(messages.iter().all(|m| m.level == MessageLevel::Warning));
-    }
-
-    /// N0091 C-2: launch_init_fallback=true이고 resolved path == launch path 일 때만 inject.
-    /// (다른 alias로 본 vault 응답엔 init_fallback warning 부착하지 않는다)
-    #[test]
-    fn vault_meta_inject_init_fallback_when_path_matches() {
-        let home_str = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_default();
-        if home_str.is_empty() {
-            return;
-        }
-        let home = std::path::PathBuf::from(&home_str);
-        if !home.exists() {
-            return;
-        }
-        let res = VaultResolution {
-            path: home,
-            origin: VaultOrigin::FallbackGlobal,
-        };
-        let meta = vault_meta_for_test(res, true);
-        let messages = parse_messages(&meta);
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].kind, "init_context_fallback");
-        assert!(messages[0].message.contains("기존 vault"));
-    }
-
-    /// N0091 C-2: init_fallback=false면 inject 안 함 (정상 launch 경로).
-    #[test]
-    fn vault_meta_skip_init_fallback_when_flag_false() {
-        let temp = tempfile::tempdir().unwrap();
-        let res = VaultResolution {
-            path: temp.path().to_path_buf(),
-            origin: VaultOrigin::ExplicitPath,
-        };
-        let meta = vault_meta_for_test(res, false);
-        assert!(meta.get("messages").is_none());
     }
 
     #[test]
@@ -1663,7 +1254,7 @@ mod tests {
             path: home,
             origin: VaultOrigin::CwdSearchHome,
         };
-        let meta = vault_meta_for_test(res, false);
+        let meta = ElfMcpServer::vault_meta(&res);
         assert_eq!(meta["vault_kind"].as_str().unwrap(), "global");
         assert_eq!(meta["vault_origin"].as_str().unwrap(), "cwd_search_home");
     }
@@ -1685,7 +1276,7 @@ mod tests {
                 path: temp.path().to_path_buf(),
                 origin,
             };
-            let meta = vault_meta_for_test(res, false);
+            let meta = ElfMcpServer::vault_meta(&res);
             assert_eq!(meta["vault_origin"].as_str().unwrap(), expected);
         }
     }

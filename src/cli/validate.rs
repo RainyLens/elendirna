@@ -75,6 +75,19 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 "ok": errors == 0,
                 "data": data,
             })
+        }).collect();
+
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "validate",
+                "ok": errors == 0,
+                "data": {
+                    "errors": errors,
+                    "warnings": warnings,
+                    "issues": issues_json,
+                }
+            })
         );
     } else {
         if result.issues.is_empty() {

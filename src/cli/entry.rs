@@ -29,51 +29,6 @@ pub enum EntryCommand {
     Detach(DetachArgs),
     /// entry에 등록된 첨부 파일 목록 조회
     Assets(AssetsArgs),
-    /// entry tag 관리 (add / remove / set) — N0080
-    Tag(TagArgs),
-}
-
-// ─── entry tag (N0080) ───────────────────────
-
-#[derive(Debug, Args)]
-pub struct TagArgs {
-    #[command(subcommand)]
-    pub command: TagCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum TagCommand {
-    /// 태그 추가 (중복 방지 — 이미 있으면 no-op)
-    Add(TagAddArgs),
-    /// 태그 제거 (없으면 no-op)
-    Remove(TagRemoveArgs),
-    /// 태그 전체 교체 (comma-separated, 빈 string = 모든 tag 제거)
-    Set(TagSetArgs),
-}
-
-#[derive(Debug, Args)]
-pub struct TagAddArgs {
-    pub id: String,
-    pub tag: String,
-    #[arg(long)]
-    pub json: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct TagRemoveArgs {
-    pub id: String,
-    pub tag: String,
-    #[arg(long)]
-    pub json: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct TagSetArgs {
-    pub id: String,
-    /// comma-separated tag list (빈 string = 모든 tag 제거)
-    pub tags: String,
-    #[arg(long)]
-    pub json: bool,
 }
 
 // ─── entry new ───────────────────────────
@@ -266,10 +221,7 @@ pub struct ListArgs {
 pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
 
-    let all_entries = crate::vault::ops::entry_list(&vault_root);
-    // linked_by는 필터 전 전체 vault 기준
-    let linked_by_map = crate::vault::ops::compute_linked_by(&all_entries);
-    let mut entries = all_entries;
+    let mut entries = crate::vault::ops::entry_list(&vault_root);
 
     // 필터 적용
     if !args.tags.is_empty() {
@@ -289,65 +241,41 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         });
     }
 
-    let rev_count_for = |e: &Entry| -> u32 {
-        EntryId::from_str(&e.manifest.id)
-            .map(|id| crate::vault::ops::revision_count(&vault_root, &id))
-            .unwrap_or(0)
-    };
-    let linked_by_for =
-        |e: &Entry| -> u32 { linked_by_map.get(&e.manifest.id).copied().unwrap_or(0) };
-
     if args.json {
         let out: Vec<_> = entries
             .iter()
             .map(|e| {
                 serde_json::json!({
-                    "id":         e.manifest.id,
-                    "title":      e.manifest.title,
-                    "status":     e.manifest.status.to_string(),
-                    "tags":       e.manifest.tags,
-                    "baseline":   e.manifest.baseline,
-                    "created":    e.manifest.created,
-                    "updated":    e.manifest.updated,
-                    "revisions":  rev_count_for(e),
-                    "links_out":  crate::vault::ops::links_out_count(e),
-                    "linked_by":  linked_by_for(e),
+                    "id":       e.manifest.id,
+                    "title":    e.manifest.title,
+                    "status":   e.manifest.status.to_string(),
+                    "tags":     e.manifest.tags,
+                    "baseline": e.manifest.baseline,
+                    "created":  e.manifest.created,
+                    "updated":  e.manifest.updated,
                 })
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
-    } else if entries.is_empty() {
-        println!("(entry 없음)");
     } else {
-        for e in &entries {
-            let tags = if e.manifest.tags.is_empty() {
-                String::new()
-            } else {
-                format!("  [{}]", e.manifest.tags.join(", "))
-            };
-            let rev = rev_count_for(e);
-            let lb = linked_by_for(e);
-            // r/l 컬럼: r<count> l<linked_by> — 0이면 점선으로 시각적 noise 감소
-            let rev_col = if rev == 0 {
-                "r—".to_string()
-            } else {
-                format!("r{rev}")
-            };
-            let lb_col = if lb == 0 {
-                "l—".to_string()
-            } else {
-                format!("l{lb}")
-            };
-            println!(
-                "{:<8} {:<40} [{}]  {}  {:>4} {:>4}{}",
-                e.manifest.id,
-                e.manifest.title,
-                e.manifest.status,
-                e.manifest.created.format("%Y-%m-%d"),
-                rev_col,
-                lb_col,
-                tags,
-            );
+        if entries.is_empty() {
+            println!("(entry 없음)");
+        } else {
+            for e in &entries {
+                let tags = if e.manifest.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("  [{}]", e.manifest.tags.join(", "))
+                };
+                println!(
+                    "{:<8} {:<40} [{}]  {}{}",
+                    e.manifest.id,
+                    e.manifest.title,
+                    e.manifest.status,
+                    e.manifest.created.format("%Y-%m-%d"),
+                    tags,
+                );
+            }
         }
     }
 
@@ -525,30 +453,23 @@ pub struct AttachArgs {
 }
 
 pub fn run_attach(args: AttachArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
-    use crate::output::message::{Message, push_message};
-
     let vault_root = vault::resolve_vault_root(&vault_args)?;
     let r =
         crate::vault::ops::entry_attach(&vault_root, &args.id, &args.file, args.name.as_deref())?;
 
     if args.json {
-        // N0091: CLI JSON contract도 messages[]로 통일 (MCP와 동일 contract).
-        // 기존 `warning` 필드 제거, collision warning은 messages[] kind=attach_collision.
-        let mut data = serde_json::json!({
-            "asset_key":   r.asset_key,
-            "source_path": r.source_path,
-            "size":        r.size,
-            "collision":   r.collision,
-        });
-        if let Some(ref w) = r.warning {
-            push_message(&mut data, Message::warning("attach_collision", w.clone()));
-        }
         println!(
             "{}",
             serde_json::json!({
                 "command": "entry.attach",
                 "ok": true,
-                "data": data,
+                "data": {
+                    "asset_key":   r.asset_key,
+                    "source_path": r.source_path,
+                    "size":        r.size,
+                    "collision":   r.collision,
+                    "warning":     r.warning,
+                }
             })
         );
     } else {
@@ -647,146 +568,5 @@ pub fn run_assets(args: AssetsArgs, vault_args: VaultArgs) -> Result<(), ElfErro
         }
     }
 
-    Ok(())
-}
-
-// ─── entry tag run impls (N0080) ─────────────
-
-pub fn run_tag_add(args: TagAddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
-    let vault_root = vault::resolve_vault_root(&vault_args)?;
-    let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
-        message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
-    })?;
-    let tag = args.tag.trim().to_string();
-    if tag.is_empty() {
-        return Err(ElfError::InvalidInput {
-            message: "tag가 비어 있습니다".to_string(),
-        });
-    }
-
-    let mut entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
-        id: args.id.clone(),
-    })?;
-
-    let already = entry.manifest.tags.iter().any(|t| t == &tag);
-    if !already {
-        entry.manifest.tags.push(tag.clone());
-        entry.manifest.touch_and_write(&entry.dir)?;
-        let event = format!("entry.tag.added.{id}.{tag}");
-        append_sync_event(&vault_root, &event, Some(&id.to_string()))?;
-    }
-
-    if args.json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "command": "entry.tag.add",
-                "ok": true,
-                "data": {
-                    "id":      id.to_string(),
-                    "tag":     tag,
-                    "added":   !already,
-                    "tags":    entry.manifest.tags,
-                }
-            })
-        );
-    } else if already {
-        println!("· {id} tag '{tag}' 이미 존재 (no-op)");
-    } else {
-        println!("✓ {id} tag 추가: '{tag}'");
-    }
-    Ok(())
-}
-
-pub fn run_tag_remove(args: TagRemoveArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
-    let vault_root = vault::resolve_vault_root(&vault_args)?;
-    let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
-        message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
-    })?;
-    let tag = args.tag.trim().to_string();
-
-    let mut entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
-        id: args.id.clone(),
-    })?;
-
-    let before_len = entry.manifest.tags.len();
-    entry.manifest.tags.retain(|t| t != &tag);
-    let removed = entry.manifest.tags.len() < before_len;
-    if removed {
-        entry.manifest.touch_and_write(&entry.dir)?;
-        let event = format!("entry.tag.removed.{id}.{tag}");
-        append_sync_event(&vault_root, &event, Some(&id.to_string()))?;
-    }
-
-    if args.json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "command": "entry.tag.remove",
-                "ok": true,
-                "data": {
-                    "id":      id.to_string(),
-                    "tag":     tag,
-                    "removed": removed,
-                    "tags":    entry.manifest.tags,
-                }
-            })
-        );
-    } else if removed {
-        println!("✓ {id} tag 제거: '{tag}'");
-    } else {
-        println!("· {id} tag '{tag}' 없음 (no-op)");
-    }
-    Ok(())
-}
-
-pub fn run_tag_set(args: TagSetArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
-    let vault_root = vault::resolve_vault_root(&vault_args)?;
-    let id = EntryId::from_str(&args.id).ok_or_else(|| ElfError::InvalidInput {
-        message: format!("'{}' 는 유효한 entry ID가 아닙니다 (예: N0001)", args.id),
-    })?;
-
-    // comma-separated parse — 공백 trim + 빈 토큰 drop + dedupe (순서 유지)
-    let mut new_tags: Vec<String> = Vec::new();
-    for piece in args.tags.split(',') {
-        let t = piece.trim().to_string();
-        if t.is_empty() {
-            continue;
-        }
-        if !new_tags.iter().any(|x| x == &t) {
-            new_tags.push(t);
-        }
-    }
-
-    let mut entry = Entry::find_by_id(&vault_root, &id).ok_or_else(|| ElfError::NotFound {
-        id: args.id.clone(),
-    })?;
-
-    let changed = entry.manifest.tags != new_tags;
-    if changed {
-        entry.manifest.tags = new_tags.clone();
-        entry.manifest.touch_and_write(&entry.dir)?;
-        let event = format!("entry.tag.set.{id}");
-        append_sync_event(&vault_root, &event, Some(&id.to_string()))?;
-    }
-
-    if args.json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "command": "entry.tag.set",
-                "ok": true,
-                "data": {
-                    "id":      id.to_string(),
-                    "changed": changed,
-                    "tags":    new_tags,
-                }
-            })
-        );
-    } else if changed {
-        println!("✓ {id} tag set: [{}]", new_tags.join(", "));
-    } else {
-        println!("· {id} tag 변경 없음 (no-op)");
-    }
     Ok(())
 }

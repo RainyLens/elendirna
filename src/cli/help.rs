@@ -99,7 +99,7 @@ fn command_surface() -> serde_json::Value {
                 "about": "entry + revision chain + linked entries 수집 (AI 컨텍스트 복원의 핵심)",
                 "args": [
                     { "name": "id",       "required": true,  "description": "entry ID" },
-                    { "name": "--depth",  "required": false, "description": "linked entry 탐색 깊이 (기본 0 — cost-aware). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만. 미지정 시 linked 있으면 cost_hint 출력." },
+                    { "name": "--depth",  "required": false, "description": "linked entry 탐색 깊이 (기본 1). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만" },
                     { "name": "--since",  "required": false, "description": "N####@r#### 또는 RFC 3339 — 이후 revision만 포함 (entry 본문은 항상 포함)" },
                 ],
                 "trigger": "세션 시작 시 컨텍스트 복원. 직접 파일을 읽지 말고 이 명령을 사용."

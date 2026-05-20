@@ -68,30 +68,9 @@ pub struct InitArgs {
     pub global: bool,
 }
 
-/// init 호출 의도 — `elf init` 명시 호출과 MCP fallback init을 분리한다.
-///
-/// - `Explicit`: 사용자가 `elf init` (CLI) 또는 향후 명시 MCP init을 호출. 기존 vault가
-///   이미 있으면 `AlreadyInitialized` 오류 반환 (의도된 실패).
-/// - `Fallback`: MCP `serve` auto-init 등 vault 확보 의도의 호출. 기존 vault가 이미
-///   있으면 그 vault를 채택하고 stderr warning 출력 후 `Ok(())`로 종료 (idempotent).
-///
-/// N0089/N0090 참조 — v0.5.4까지는 두 경로가 같은 `AlreadyInitialized` 에러로 합쳐져
-/// Desktop host에서 process suicide → re-spawn 무한 루프를 유발했다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InitContext {
-    Explicit,
-    Fallback,
-}
-
 /// `elf init` CLI 진입점. Explicit context로 위임한다. 외부 caller는 기존과 동일하게
 /// `cli::init::run(args)`를 호출하면 된다 (v0.5.4 이전 API 보존).
 pub fn run(args: InitArgs) -> Result<(), ElfError> {
-    run_with_context(args, InitContext::Explicit)
-}
-
-/// init 진입의 본체. context에 따라 기존 vault 발견 시 동작이 갈린다.
-/// MCP `serve` fallback이나 향후 다른 fallback caller는 이 함수를 `Fallback`으로 호출.
-pub(crate) fn run_with_context(args: InitArgs, ctx: InitContext) -> Result<(), ElfError> {
     let root = if args.global {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
@@ -164,13 +143,10 @@ fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)>
             "revision 디렉터리",
         ),
         (root.join(".elendirna").join("assets"), "asset 디렉터리"),
-    ];
-    for (name, desc) in AGENT_MD_FILES {
-        files.push((root.join(name), desc));
-    }
-    files.push((root.join("README.md"), "vault README"));
-    files.push((root.join(".gitignore"), ".gitignore"));
-    files
+        (root.join("CLAUDE.md"), "에이전트 안내"),
+        (root.join("README.md"), "vault README"),
+        (root.join(".gitignore"), ".gitignore"),
+    ]
 }
 
 fn create_vault(root: &Path, vault_name: &str) -> Result<(), ElfError> {
