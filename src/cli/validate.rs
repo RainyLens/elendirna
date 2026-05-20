@@ -1,5 +1,5 @@
 use crate::error::ElfError;
-use crate::output::message::{Message, MessageLevel, issue_kind_str, push_message};
+use crate::output::message::{Message, MessageLevel, MessageScope, issue_kind_str, push_message};
 use crate::schema::validate::{self, IssueKind, Severity};
 use crate::vault::{self, VaultArgs};
 use clap::Args;
@@ -65,6 +65,7 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                     level,
                     kind,
                     message,
+                    scope: MessageScope::Call,
                 },
             );
         }

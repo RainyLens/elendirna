@@ -1,12 +1,18 @@
-//! N0091: 응답 message level 시스템 (info / warning / error).
+//! N0091: 응답 message level + scope 시스템.
 //!
 //! CLI JSON + MCP tool response 양쪽이 공유하는 messages[] contract.
-//! `level`은 syslog/log crate idiom 정합, `kind`는 도메인 분류.
+//! `level`은 syslog/log crate idiom 정합, `kind`는 도메인 분류, `scope`는 시점 축.
 //!
+//! ## level
 //! - `Info`: 사실 보고 / 가이드 (향후 hint 통합 시 사용, 현재 미사용)
 //! - `Warning`: "작동에는 문제 없으나 사용에는 주의 필요" — escalated_write, init_context_fallback, validate warning, attach collision 등
 //! - `Error`: vault corruption/invariant violation 등 호출은 성공했으나 critical state 보고용 reserve.
 //!   protocol-level JSON-RPC error는 별 channel(`ErrorData`).
+//!
+//! ## scope (v0.6.1, N0091 r0006)
+//! - `Call`: 이 한 번의 tool call에만 유효 — escalated_write, validate issue, attach collision 등 호출-자기-자신에 묶인 사실
+//! - `Session`: 현재 MCP session(=session_start로 시작된 1 stream)에 걸쳐 유의미한 사실 (현재 emit site 없음, reserve)
+//! - `Instance`: MCP server process 전체에 한 번 결정된 사실 — init_context_fallback (launch 시점 결정사항)
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,35 +25,65 @@ pub enum MessageLevel {
     Error,
 }
 
+/// 응답 message의 시점 축. agent가 한 번 보고 잊어도 되는지 / 세션 동안 기억해야 하는지 /
+/// 프로세스 lifetime 사실인지 구분.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageScope {
+    /// 이 한 번의 호출에만 유효한 사실. 다음 호출 응답에 다시 부착될 수 있다.
+    Call,
+    /// 현재 MCP session(session_start ~ 종료) 동안 기억해 둘 사실. 현재 emit site 없음 (reserve).
+    Session,
+    /// MCP server process(=instance) lifetime 사실. 같은 instance가 살아 있는 한 동일.
+    Instance,
+}
+
 /// 응답에 inject되는 categorical message.
 /// `kind`는 도메인 분류 (escalated_write, init_context_fallback, validate:naming, attach_collision 등).
+/// `scope`는 사실의 시점 축 (Call / Session / Instance).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     pub level: MessageLevel,
     pub kind: String,
     pub message: String,
+    pub scope: MessageScope,
 }
 
 impl Message {
-    pub fn info(kind: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn info(
+        kind: impl Into<String>,
+        message: impl Into<String>,
+        scope: MessageScope,
+    ) -> Self {
         Self {
             level: MessageLevel::Info,
             kind: kind.into(),
             message: message.into(),
+            scope,
         }
     }
-    pub fn warning(kind: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn warning(
+        kind: impl Into<String>,
+        message: impl Into<String>,
+        scope: MessageScope,
+    ) -> Self {
         Self {
             level: MessageLevel::Warning,
             kind: kind.into(),
             message: message.into(),
+            scope,
         }
     }
-    pub fn error(kind: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn error(
+        kind: impl Into<String>,
+        message: impl Into<String>,
+        scope: MessageScope,
+    ) -> Self {
         Self {
             level: MessageLevel::Error,
             kind: kind.into(),
             message: message.into(),
+            scope,
         }
     }
 }
@@ -89,21 +125,22 @@ mod tests {
     #[test]
     fn push_message_creates_new_array_when_absent() {
         let mut v = serde_json::json!({ "ok": true });
-        push_message(&mut v, Message::warning("k1", "m1"));
+        push_message(&mut v, Message::warning("k1", "m1", MessageScope::Call));
         let arr = v["messages"].as_array().unwrap();
         assert_eq!(arr.len(), 1);
         let msg: Message = serde_json::from_value(arr[0].clone()).unwrap();
         assert_eq!(msg.level, MessageLevel::Warning);
         assert_eq!(msg.kind, "k1");
         assert_eq!(msg.message, "m1");
+        assert_eq!(msg.scope, MessageScope::Call);
     }
 
     #[test]
     fn push_message_appends_to_existing_array() {
         let mut v = serde_json::json!({ "ok": true });
-        push_message(&mut v, Message::warning("k1", "m1"));
-        push_message(&mut v, Message::error("k2", "m2"));
-        push_message(&mut v, Message::info("k3", "m3"));
+        push_message(&mut v, Message::warning("k1", "m1", MessageScope::Call));
+        push_message(&mut v, Message::error("k2", "m2", MessageScope::Instance));
+        push_message(&mut v, Message::info("k3", "m3", MessageScope::Session));
         let arr = v["messages"].as_array().unwrap();
         assert_eq!(arr.len(), 3);
         let msgs: Vec<Message> = arr
@@ -111,15 +148,32 @@ mod tests {
             .map(|v| serde_json::from_value(v.clone()).unwrap())
             .collect();
         assert_eq!(msgs[0].level, MessageLevel::Warning);
+        assert_eq!(msgs[0].scope, MessageScope::Call);
         assert_eq!(msgs[1].level, MessageLevel::Error);
+        assert_eq!(msgs[1].scope, MessageScope::Instance);
         assert_eq!(msgs[2].level, MessageLevel::Info);
+        assert_eq!(msgs[2].scope, MessageScope::Session);
     }
 
     #[test]
     fn message_level_serializes_as_lowercase() {
-        let m = Message::warning("k", "m");
+        let m = Message::warning("k", "m", MessageScope::Call);
         let s = serde_json::to_string(&m).unwrap();
         assert!(s.contains(r#""level":"warning""#));
+        assert!(s.contains(r#""scope":"call""#));
+    }
+
+    #[test]
+    fn message_scope_serializes_as_lowercase() {
+        for (scope, expected) in [
+            (MessageScope::Call, r#""scope":"call""#),
+            (MessageScope::Session, r#""scope":"session""#),
+            (MessageScope::Instance, r#""scope":"instance""#),
+        ] {
+            let m = Message::warning("k", "m", scope);
+            let s = serde_json::to_string(&m).unwrap();
+            assert!(s.contains(expected), "expected {expected} in {s}");
+        }
     }
 
     #[test]
@@ -140,7 +194,7 @@ mod tests {
     #[test]
     fn push_message_noop_on_non_object() {
         let mut v = serde_json::Value::Array(vec![]);
-        push_message(&mut v, Message::warning("k", "m"));
+        push_message(&mut v, Message::warning("k", "m", MessageScope::Call));
         // 배열에 push 안 됨, panic 안 됨
         assert!(v.is_array());
         assert_eq!(v.as_array().unwrap().len(), 0);
