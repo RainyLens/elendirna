@@ -4,13 +4,23 @@ use crate::vault::util::append_sync_event;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
-// fix-005: v0.1 전용 CLAUDE.md 내용
-const CLAUDE_MD_V0_1: &str = r#"# Elendirna vault
+// fix-005 / N0081 후속: agent 진입점 (CLAUDE.md / AGENTS.md / GEMINI.md) 공통 minimal 내용
+const AGENT_MD_TEMPLATE: &str = r#"# Elendirna vault
 
 이 저장소는 `elf` CLI로만 수정합니다. 직접 파일 편집 금지.
 사용 가능한 명령: entry new / edit / show, revision add, link, validate (--help 참고).
 스키마/규칙 위반은 `elf validate`가 보고합니다 — 에러의 `fix` 필드를 따르면 됩니다.
 "#;
+
+// init이 생성하는 agent 진입점 파일들 (generic AGENTS.md 포함)
+const AGENT_MD_FILES: &[(&str, &str)] = &[
+    ("CLAUDE.md", "에이전트 안내 (Claude Code)"),
+    (
+        "AGENTS.md",
+        "에이전트 안내 (Codex / Copilot / VSCode agent 등)",
+    ),
+    ("GEMINI.md", "에이전트 안내 (Gemini CLI)"),
+];
 
 // fix-010: → see 패턴 안내 포함한 README 템플릿
 const README_TEMPLATE: &str = r#"# {vault_name}
@@ -58,7 +68,30 @@ pub struct InitArgs {
     pub global: bool,
 }
 
+/// init 호출 의도 — `elf init` 명시 호출과 MCP fallback init을 분리한다.
+///
+/// - `Explicit`: 사용자가 `elf init` (CLI) 또는 향후 명시 MCP init을 호출. 기존 vault가
+///   이미 있으면 `AlreadyInitialized` 오류 반환 (의도된 실패).
+/// - `Fallback`: MCP `serve` auto-init 등 vault 확보 의도의 호출. 기존 vault가 이미
+///   있으면 그 vault를 채택하고 stderr warning 출력 후 `Ok(())`로 종료 (idempotent).
+///
+/// N0089/N0090 참조 — v0.5.4까지는 두 경로가 같은 `AlreadyInitialized` 에러로 합쳐져
+/// Desktop host에서 process suicide → re-spawn 무한 루프를 유발했다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitContext {
+    Explicit,
+    Fallback,
+}
+
+/// `elf init` CLI 진입점. Explicit context로 위임한다. 외부 caller는 기존과 동일하게
+/// `cli::init::run(args)`를 호출하면 된다 (v0.5.4 이전 API 보존).
 pub fn run(args: InitArgs) -> Result<(), ElfError> {
+    run_with_context(args, InitContext::Explicit)
+}
+
+/// init 진입의 본체. context에 따라 기존 vault 발견 시 동작이 갈린다.
+/// MCP `serve` fallback이나 향후 다른 fallback caller는 이 함수를 `Fallback`으로 호출.
+pub(crate) fn run_with_context(args: InitArgs, ctx: InitContext) -> Result<(), ElfError> {
     let root = if args.global {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
@@ -71,12 +104,24 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
         args.path.canonicalize().unwrap_or(args.path.clone())
     };
 
-    // 중복 초기화 검사
+    // 중복 초기화 검사 — context에 따라 동작이 갈린다 (N0090)
     let config_path = root.join(".elendirna").join("config.toml");
     if config_path.exists() {
-        return Err(ElfError::AlreadyInitialized {
-            path: root.display().to_string(),
-        });
+        return match ctx {
+            InitContext::Explicit => Err(ElfError::AlreadyInitialized {
+                path: root.display().to_string(),
+            }),
+            InitContext::Fallback => {
+                // MCP serve auto-init 등 vault 확보 의도의 호출.
+                // 기존 vault를 채택하고 stderr warning 후 정상 종료한다.
+                // N0089 r0002 사용자 확정 phrasing.
+                eprintln!(
+                    "[elf] 기존 vault가 있으니 내용 섞임에 유의: {}",
+                    root.display()
+                );
+                Ok(())
+            }
+        };
     }
 
     // vault 이름 결정
@@ -107,7 +152,7 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
 }
 
 fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)> {
-    vec![
+    let mut files = vec![
         (root.join(".elendirna").join("config.toml"), "vault 설정"),
         (
             root.join(".elendirna").join("sync.jsonl"),
@@ -119,10 +164,13 @@ fn planned_files(root: &Path, _vault_name: &str) -> Vec<(PathBuf, &'static str)>
             "revision 디렉터리",
         ),
         (root.join(".elendirna").join("assets"), "asset 디렉터리"),
-        (root.join("CLAUDE.md"), "에이전트 안내"),
-        (root.join("README.md"), "vault README"),
-        (root.join(".gitignore"), ".gitignore"),
-    ]
+    ];
+    for (name, desc) in AGENT_MD_FILES {
+        files.push((root.join(name), desc));
+    }
+    files.push((root.join("README.md"), "vault README"));
+    files.push((root.join(".gitignore"), ".gitignore"));
+    files
 }
 
 fn create_vault(root: &Path, vault_name: &str) -> Result<(), ElfError> {
@@ -145,10 +193,12 @@ fn create_vault(root: &Path, vault_name: &str) -> Result<(), ElfError> {
     let config = VaultConfig::new(vault_name);
     config.write(root)?;
 
-    // CLAUDE.md (fix-005)
-    let claude_md_path = root.join("CLAUDE.md");
-    if !claude_md_path.exists() {
-        atomic_write(&claude_md_path, CLAUDE_MD_V0_1.as_bytes())?;
+    // agent 진입점 md (fix-005 / N0081 후속): CLAUDE.md / AGENTS.md / GEMINI.md
+    for (name, _) in AGENT_MD_FILES {
+        let path = root.join(name);
+        if !path.exists() {
+            atomic_write(&path, AGENT_MD_TEMPLATE.as_bytes())?;
+        }
     }
 
     // README.md (fix-010)

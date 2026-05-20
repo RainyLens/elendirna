@@ -1,5 +1,7 @@
 use crate::error::ElfError;
-use crate::vault::ops::{BundleOptions, BundleSince, bundle_with_opts};
+use crate::vault::ops::{
+    BundleOptions, BundleSince, bundle_with_opts, estimate_linked_entry_bytes,
+};
 use crate::vault::{self, VaultArgs};
 use clap::Args;
 
@@ -8,9 +10,9 @@ pub struct BundleArgs {
     /// entry ID (예: N0001)
     pub id: String,
 
-    /// linked entry 탐색 깊이 (0=자신+revisions만, 1=직접 linked 전문(기본), 2+=2홉 이상 manifest만)
-    #[arg(long, default_value = "1")]
-    pub depth: u32,
+    /// linked entry 탐색 깊이 (N0086: 기본 0 — cost-aware. 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만). 미지정 시 linked 있으면 cost_hint 출력.
+    #[arg(long)]
+    pub depth: Option<u32>,
 
     /// revision 필터: N####@r#### 또는 RFC 3339 timestamp 이후만 포함
     #[arg(long, value_name = "SPEC")]
@@ -34,12 +36,24 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         })
         .transpose()?;
 
+    // N0091/N0086: depth 미지정 시 0 (cost-aware default). cost_hint inject 조건.
+    let depth_was_default = args.depth.is_none();
     let opts = BundleOptions {
-        depth: args.depth,
+        depth: args.depth.unwrap_or(0),
         since,
     };
     let b = bundle_with_opts(&vault_root, &args.id, opts)?;
     let stats = b.stats();
+
+    let link_count = b.entry.manifest.links.len();
+    let cost_hint: Option<String> = if depth_was_default && link_count > 0 {
+        let est_bytes = estimate_linked_entry_bytes(&vault_root, &b.entry.manifest.links);
+        Some(format!(
+            "linked {link_count} entry는 default(depth=0)에서 미수집 (~{est_bytes} bytes 예상). --depth 1로 escalate."
+        ))
+    } else {
+        None
+    };
 
     if args.json {
         let revs: Vec<_> = b
@@ -76,29 +90,36 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             })
             .collect();
 
+        let mut data = serde_json::json!({
+            "context_stats": {
+                "estimated_bytes": stats.estimated_bytes,
+                "entry_count": stats.entry_count,
+                "revision_count": stats.revision_count,
+            },
+            "manifest": {
+                "id":       b.entry.manifest.id,
+                "title":    b.entry.manifest.title,
+                "status":   b.entry.manifest.status.to_string(),
+                "tags":     b.entry.manifest.tags,
+                "baseline": b.entry.manifest.baseline,
+                "links":    b.entry.manifest.links,
+                "created":  b.entry.manifest.created,
+                "updated":  b.entry.manifest.updated,
+            },
+            "note":      b.note_body,
+            "revisions": revs,
+            "linked":    linked,
+        });
+        if let Some(ref hint) = cost_hint {
+            data.as_object_mut().unwrap().insert(
+                "cost_hint".to_string(),
+                serde_json::Value::String(hint.clone()),
+            );
+        }
         let out = serde_json::json!({
             "command": "bundle",
             "ok": true,
-            "data": {
-                "context_stats": {
-                    "estimated_bytes": stats.estimated_bytes,
-                    "entry_count": stats.entry_count,
-                    "revision_count": stats.revision_count,
-                },
-                "manifest": {
-                    "id":       b.entry.manifest.id,
-                    "title":    b.entry.manifest.title,
-                    "status":   b.entry.manifest.status.to_string(),
-                    "tags":     b.entry.manifest.tags,
-                    "baseline": b.entry.manifest.baseline,
-                    "links":    b.entry.manifest.links,
-                    "created":  b.entry.manifest.created,
-                    "updated":  b.entry.manifest.updated,
-                },
-                "note":      b.note_body,
-                "revisions": revs,
-                "linked":    linked,
-            }
+            "data": data,
         });
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
@@ -109,6 +130,9 @@ pub fn run(args: BundleArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             "context: ~{} bytes, {} entries, {} revisions",
             stats.estimated_bytes, stats.entry_count, stats.revision_count,
         );
+        if let Some(ref hint) = cost_hint {
+            println!("cost_hint: {hint}");
+        }
 
         println!("\n--- manifest ---");
         println!("id:       {}", m.id);

@@ -9,6 +9,7 @@ use std::path::PathBuf;
     name = "elf",
     about = "Elendirna vault CLI",
     version = env!("CARGO_PKG_VERSION"),
+    disable_help_subcommand = true,
 )]
 struct Cli {
     /// 모든 출력을 JSON으로 (fix-015: 에러는 --json 무관 항상 JSON/stderr)
@@ -62,8 +63,8 @@ enum Commands {
     /// v1 vault를 v2 compact layout으로 이관 (v0.3)
     Migrate(cli::migrate::MigrateArgs),
 
-    /// 전체 커맨드 표면 출력 (AI-readable)
-    #[command(name = "guide")]
+    /// 전체 커맨드 표면 출력 (AI-readable). `elf help`도 동일.
+    #[command(name = "guide", alias = "help")]
     Help(cli::help::HelpArgs),
 }
 
@@ -105,6 +106,15 @@ fn run_entry(args: cli::entry::EntryArgs, vault_args: VaultArgs) -> Result<(), E
         cli::entry::EntryCommand::Attach(a) => cli::entry::run_attach(a, vault_args),
         cli::entry::EntryCommand::Detach(a) => cli::entry::run_detach(a, vault_args),
         cli::entry::EntryCommand::Assets(a) => cli::entry::run_assets(a, vault_args),
+        cli::entry::EntryCommand::Tag(a) => run_entry_tag(a, vault_args),
+    }
+}
+
+fn run_entry_tag(args: cli::entry::TagArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    match args.command {
+        cli::entry::TagCommand::Add(a) => cli::entry::run_tag_add(a, vault_args),
+        cli::entry::TagCommand::Remove(a) => cli::entry::run_tag_remove(a, vault_args),
+        cli::entry::TagCommand::Set(a) => cli::entry::run_tag_set(a, vault_args),
     }
 }
 

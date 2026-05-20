@@ -1,0 +1,9 @@
+# Auto-detect text files and normalize line endings.
+* text=auto
+
+# Append-only JSONL logs (vault sync.jsonl, fixtures, etc.) — use union merge
+# to preserve both sides and prevent spurious conflicts on parallel appends.
+# Post-merge cleanup may still be needed to drop stale entries if branches
+# diverged over time; the policy is "latest wins, older lines can be pruned
+# manually after the auto-union."
+*.jsonl merge=union

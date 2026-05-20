@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "localvault": {
+      "type": "stdio",
+      "command": "elf.exe",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}

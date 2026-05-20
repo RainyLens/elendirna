@@ -239,3 +239,31 @@ fn criterion_idempotent_entry_new() {
     let entries = elendirna::vault::entry::Entry::find_all(dir.path());
     assert_eq!(entries.len(), 1, "중복 entry가 생성되면 안 됩니다");
 }
+
+// ─── N0091/N0086 — bundle cost-aware default ─────────────────
+
+/// N0086 Phase G: estimate_linked_entry_bytes는 각 link id의 manifest.toml + note.md size 합산.
+/// link id 해석 실패 또는 미발견 entry는 skip. depth=0 default cost_hint의 기반.
+#[test]
+fn estimate_linked_entry_bytes_sums_existing_entries_only() {
+    use elendirna::vault::ops::estimate_linked_entry_bytes;
+    let (dir, _guard) = setup_vault();
+    let _id1 = new_entry(&dir, "first");
+    let _id2 = new_entry(&dir, "second");
+
+    // 존재하는 두 id + 잘못된 id (skip) + 존재하지 않는 id (skip)
+    let link_ids = vec![
+        "N0001".to_string(),
+        "N0002".to_string(),
+        "not-a-valid-id".to_string(),
+        "N9999".to_string(),
+    ];
+    let bytes = estimate_linked_entry_bytes(dir.path(), &link_ids);
+
+    // 두 entry의 manifest.toml + note.md size > 0
+    assert!(bytes > 0);
+
+    // 빈 list는 0
+    let empty: Vec<String> = vec![];
+    assert_eq!(estimate_linked_entry_bytes(dir.path(), &empty), 0);
+}
