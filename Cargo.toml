@@ -1,6 +1,6 @@
 [package]
 name = "elendirna"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 description = "Agent-friendly knowledge base CLI. Manages personal knowledge as Base-Delta entries with AI-enforced conventions."
 license = "MIT"
@@ -44,6 +44,9 @@ rusqlite    = { version = "0.39", features = ["bundled"] }
 
 # v0.6.1: session_id (UUID v4)
 uuid        = { version = "1", features = ["v4"] }
+
+# v0.6.2: markdown-aware inline ref 스캔 (F2)
+pulldown-cmark = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 insta       = { version = "1", features = ["toml"] }

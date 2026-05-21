@@ -34,6 +34,27 @@ mod manifest {
         assert_eq!(m.id, m2.id);
         assert_eq!(m.title, m2.title);
     }
+
+    /// v0.6.2 F1+F3: title에 따옴표가 포함돼도 parse→serialize→parse 라운드트립이 보존돼야 한다.
+    /// 이전엔 trim_matches('"')가 양 끝의 모든 따옴표를 벗기고 to_string이 escape 없이 다시 감싸서
+    /// 두 번째 read에서 값이 변형됐다 (N0058 같은 release-note title).
+    #[test]
+    fn frontmatter_quote_roundtrip_preserves_inner_quotes() {
+        let original = NoteFrontmatter {
+            id: "N0058".to_string(),
+            title: r#"Release Summary: v0.5 "Multi-vault & Attachments""#.to_string(),
+            baseline: None,
+            tags: vec!["release-note".to_string(), r#"with"quote"#.to_string()],
+        };
+
+        let serialized = format!("---\n{}\n---\nbody", original.to_string());
+        let (parsed, _body) = NoteFrontmatter::parse(&serialized).unwrap();
+
+        assert_eq!(parsed.id, original.id);
+        assert_eq!(parsed.title, original.title);
+        assert_eq!(parsed.baseline, original.baseline);
+        assert_eq!(parsed.tags, original.tags);
+    }
 }
 
 // ─── schema::validate ────────────────────
@@ -141,5 +162,121 @@ mod validate {
             .filter(|i| i.kind == IssueKind::Orphan)
             .count();
         assert!(orphans > 0);
+    }
+
+    /// v0.6.2 F1: `--fix`가 한 번에 consistency 불일치를 실제로 해소해야 한다.
+    /// 이전엔 frontmatter 직렬화/역직렬화 quote escape 결함으로 라운드트립이 깨져
+    /// 두 번째 validate에서 같은 warning 재출현.
+    #[test]
+    fn apply_fixes_resolves_consistency_in_one_pass() {
+        use crate::schema::validate::apply_fixes;
+
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Alpha");
+
+        let entry_dir = dir.path().join(".elendirna/entries/N0001_alpha");
+        let mut m = Manifest::read(&entry_dir).unwrap();
+        m.title = r#"Release Summary: v0.5 "Multi-vault""#.to_string();
+        m.write(&entry_dir).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let consistency_issues: Vec<_> = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Consistency)
+            .cloned()
+            .collect();
+        assert!(
+            !consistency_issues.is_empty(),
+            "mismatch가 먼저 감지돼야 함"
+        );
+
+        let fixed = apply_fixes(&consistency_issues).unwrap();
+        assert_eq!(fixed, 1, "fix 카운트가 1이어야 함");
+
+        let result2 = run_all(dir.path()).unwrap();
+        let remaining = result2
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Consistency)
+            .count();
+        assert_eq!(
+            remaining, 0,
+            "두 번째 validate에서 같은 warning 재출현 — 라운드트립 깨짐"
+        );
+    }
+
+    /// v0.6.2 F2: fenced code block / inline code 안의 `→ see N####`는 dangling으로 잡지 말 것.
+    /// (cmd-validate 같은 문서화 entry의 illustrative 예제까지 false-positive로 잡혔던 문제)
+    #[test]
+    fn dangling_inline_ref_skips_fenced_code_block() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Docs");
+
+        let note_path = dir.path().join(".elendirna/entries/N0001_docs/note.md");
+        let original = std::fs::read_to_string(&note_path).unwrap();
+        let body = format!(
+            r#"{original}
+
+다음은 fenced code block 안 예제 — 잡히면 안 됨:
+```
+→ see N9999
+```
+
+다음은 inline code 예제 — 잡히면 안 됨: `→ see N9998`.
+
+이건 본문에 있는 진짜 dangling ref — 잡혀야 함:
+→ see N9997
+"#
+        );
+        std::fs::write(&note_path, body).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let dangling_refs: Vec<&str> = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Dangling)
+            .map(|i| i.message.as_str())
+            .collect();
+
+        assert!(
+            !dangling_refs.iter().any(|m| m.contains("N9999")),
+            "fenced code block 안의 N9999는 무시돼야 함: {dangling_refs:?}"
+        );
+        assert!(
+            !dangling_refs.iter().any(|m| m.contains("N9998")),
+            "inline code 안의 N9998은 무시돼야 함: {dangling_refs:?}"
+        );
+        assert!(
+            dangling_refs.iter().any(|m| m.contains("N9997")),
+            "본문의 N9997은 잡혀야 함: {dangling_refs:?}"
+        );
+    }
+
+    /// v0.6.2 F3: consistency diff 메시지가 escape 표현을 드러내야 한다.
+    /// 사용자 진단 가독성 — `"foo "bar""` vs `"foo \"bar\""`처럼 시각적으로 같아 보이는
+    /// 두 문자열의 진짜 차이를 메시지 안에서 구분 가능해야 함.
+    #[test]
+    fn consistency_diff_message_uses_debug_format() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Quoted");
+
+        let entry_dir = dir.path().join(".elendirna/entries/N0001_quoted");
+        let mut m = Manifest::read(&entry_dir).unwrap();
+        m.title = r#"with "inner" quote"#.to_string();
+        m.write(&entry_dir).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let msgs: Vec<&str> = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Consistency)
+            .map(|i| i.message.as_str())
+            .collect();
+
+        assert!(
+            msgs.iter().any(|m| m.contains(r#"\""#)),
+            "consistency 메시지에 \\\" 같은 escape 표현이 있어야 함: {msgs:?}"
+        );
     }
 }
