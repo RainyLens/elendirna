@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use elendirna::cli;
-use elendirna::error::ElfError;
-use elendirna::vault::VaultArgs;
+use eln_core::cli;
+use eln_core::error::ElfError;
+use eln_core::vault::VaultArgs;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]

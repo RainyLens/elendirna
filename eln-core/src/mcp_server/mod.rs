@@ -1499,7 +1499,7 @@ mod tests {
         let sid = "test-session-1".to_string();
         server.sessions.write().unwrap().insert(
             sid.clone(),
-            crate::mcp::SessionState {
+            crate::mcp_server::SessionState {
                 local_vault: Some(VaultResolution {
                     path: canonical(session.path()),
                     origin: VaultOrigin::CwdSearch,

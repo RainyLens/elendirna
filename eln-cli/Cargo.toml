@@ -1,0 +1,19 @@
+[package]
+name = "eln-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "elendirna CLI — human surface (elf binary)"
+
+[[bin]]
+name = "elf"
+path = "src/main.rs"
+
+[dependencies]
+clap        = { workspace = true }
+eln-core    = { path = "../eln-core" }
+
+[dev-dependencies]
+assert_cmd  = { workspace = true }
+tempfile    = { workspace = true }

@@ -93,7 +93,7 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     // v1 vault 자동 이관 (MCP stdio 보호: stderr만 사용)
     crate::cli::migrate::auto_migrate_silent(&resolution.path);
 
-    crate::mcp::run_stdio(resolution, launch_init_fallback).map_err(|e| {
+    crate::mcp_server::run_stdio(resolution, launch_init_fallback).map_err(|e| {
         ElfError::Io(std::io::Error::new(
             std::io::ErrorKind::Other,
             e.to_string(),

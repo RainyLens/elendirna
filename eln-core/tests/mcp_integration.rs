@@ -3,11 +3,11 @@
 /// ElfMcpServer가 의존하는 vault::ops 함수들을 직접 호출하여
 /// MCP tool surface의 핵심 경로를 검증한다.
 /// (바이너리 없이 cargo test로 실행 가능)
-use elendirna::cli::entry::{NewArgs, run_new};
-use elendirna::cli::init::{InitArgs, run as init_run};
-use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
-use elendirna::vault::VaultArgs;
-use elendirna::vault::ops;
+use eln_core::cli::entry::{NewArgs, run_new};
+use eln_core::cli::init::{InitArgs, run as init_run};
+use eln_core::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
+use eln_core::vault::VaultArgs;
+use eln_core::vault::ops;
 
 use tempfile::TempDir;
 
@@ -43,7 +43,7 @@ fn new_entry_direct(dir: &TempDir, title: &str) -> String {
         VaultArgs::default(),
     )
     .unwrap();
-    let entries = elendirna::vault::entry::Entry::find_all(dir.path());
+    let entries = eln_core::vault::entry::Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
 
@@ -107,8 +107,8 @@ fn mcp_bundle_includes_revisions_and_linked() {
     new_entry_direct(&dir, "링크된 항목");
 
     cd(&dir);
-    elendirna::cli::link::run(
-        elendirna::cli::link::LinkArgs {
+    eln_core::cli::link::run(
+        eln_core::cli::link::LinkArgs {
             from: "N0001".into(),
             to: "N0002".into(),
             dry_run: false,
@@ -229,11 +229,11 @@ fn mcp_validate_clean_vault_returns_zero_errors() {
     let (dir, _guard) = setup_vault();
     new_entry_direct(&dir, "검증 항목");
 
-    let result = elendirna::schema::validate::run_all(dir.path()).unwrap();
+    let result = eln_core::schema::validate::run_all(dir.path()).unwrap();
     assert_eq!(result.error_count(), 0);
 
     // index rebuild도 성공해야 함 (validate MCP tool이 내부적으로 호출)
-    let count = elendirna::vault::index::rebuild(dir.path()).unwrap();
+    let count = eln_core::vault::index::rebuild(dir.path()).unwrap();
     assert_eq!(count, 1);
 }
 
