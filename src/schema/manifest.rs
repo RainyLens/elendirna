@@ -88,6 +88,50 @@ impl Manifest {
 // NoteFrontmatter — fix-001: serde_yaml 없이 직접 파싱
 // ─────────────────────────────────────────
 
+/// YAML double-quoted scalar로 직렬화. 내부 `\`/`"`를 backslash-escape.
+fn yaml_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str(r"\\"),
+            '"' => out.push_str(r#"\""#),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// YAML scalar 값 디코드. `"…"` 형태일 때만 escape 디코드, 그 외엔 원본.
+/// trim_matches('"')와 달리 양 끝에서 *한 글자씩만* 벗긴다.
+fn yaml_unquote(s: &str) -> String {
+    let s = s.trim();
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        let inner = &s[1..s.len() - 1];
+        let mut out = String::with_capacity(inner.len());
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('\\') => out.push('\\'),
+                    Some('"') => out.push('"'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => out.push('\\'),
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    } else {
+        s.to_string()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NoteFrontmatter {
     pub id: String,
@@ -117,13 +161,13 @@ impl NoteFrontmatter {
 
         for line in fm_raw.lines() {
             if let Some(rest) = line.strip_prefix("id:") {
-                id = rest.trim().trim_matches('"').to_string();
+                id = yaml_unquote(rest);
             } else if let Some(rest) = line.strip_prefix("title:") {
-                title = rest.trim().trim_matches('"').to_string();
+                title = yaml_unquote(rest);
             } else if let Some(rest) = line.strip_prefix("baseline:") {
                 let v = rest.trim();
                 if v != "null" && !v.is_empty() {
-                    baseline = Some(v.trim_matches('"').to_string());
+                    baseline = Some(yaml_unquote(rest));
                 }
             } else if line.trim_start().starts_with("- ") && !tags.is_empty()
                 || line.starts_with("tags:")
@@ -136,19 +180,14 @@ impl NoteFrontmatter {
                         tags = inline
                             .trim_matches(|c| c == '[' || c == ']')
                             .split(',')
-                            .map(|s| s.trim().trim_matches('"').to_string())
+                            .map(|s| yaml_unquote(s))
                             .filter(|s| !s.is_empty())
                             .collect();
                     }
                     // block 형식은 아래 - 처리로 계속
                 } else {
                     // "  - tag" 형식
-                    tags.push(
-                        line.trim()
-                            .trim_start_matches("- ")
-                            .trim_matches('"')
-                            .to_string(),
-                    );
+                    tags.push(yaml_unquote(line.trim().trim_start_matches("- ")));
                 }
             }
         }
@@ -164,12 +203,7 @@ impl NoteFrontmatter {
                         // 무시
                     }
                 } else if in_tags && (line.starts_with("  - ") || line.starts_with("- ")) {
-                    tags.push(
-                        line.trim()
-                            .trim_start_matches("- ")
-                            .trim_matches('"')
-                            .to_string(),
-                    );
+                    tags.push(yaml_unquote(line.trim().trim_start_matches("- ")));
                 } else if in_tags && !line.starts_with(' ') && !line.is_empty() {
                     in_tags = false;
                 }
@@ -203,18 +237,23 @@ impl NoteFrontmatter {
     /// frontmatter를 직렬화
     pub fn to_string(&self) -> String {
         let baseline_str = match &self.baseline {
-            Some(b) => format!("baseline: \"{b}\""),
+            Some(b) => format!("baseline: {}", yaml_quote(b)),
             None => "baseline: null".to_string(),
         };
         let tags_str = if self.tags.is_empty() {
             "tags: []".to_string()
         } else {
-            let items: Vec<String> = self.tags.iter().map(|t| format!("  - \"{t}\"")).collect();
+            let items: Vec<String> = self
+                .tags
+                .iter()
+                .map(|t| format!("  - {}", yaml_quote(t)))
+                .collect();
             format!("tags:\n{}", items.join("\n"))
         };
         format!(
-            "id: \"{}\"\ntitle: \"{}\"\n{baseline_str}\n{tags_str}",
-            self.id, self.title
+            "id: {}\ntitle: {}\n{baseline_str}\n{tags_str}",
+            yaml_quote(&self.id),
+            yaml_quote(&self.title)
         )
     }
 

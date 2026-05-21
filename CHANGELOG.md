@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.6.2] — 2026-05-21
+
+### 운영 발견 fix (N0010 r0001 누적 3건)
+
+`elf validate` 가 실제 vault 운영 중 누적한 발견 3건을 한 묶음으로 처리. F1과 F3는 frontmatter quote escape 처리 결함이라는 같은 뿌리, F2는 독립된 markdown 스캐너 문제.
+
+#### F1 — `--fix` 라운드트립 결함
+
+증상: `elf validate --fix` 가 "N개 항목 자동 수정됨"을 보고하지만 두 번째 `validate` 에서 같은 consistency warning 재출현. N0058 같은 따옴표 포함 title 케이스에서 관찰.
+
+원인: `src/schema/manifest.rs` 의 `NoteFrontmatter::parse()` 가 `trim_matches('"')` 로 값 양 끝의 따옴표 *전부* 를 벗기고, `to_string()` 이 값 안의 `"` 를 escape 없이 다시 감쌌음. read→write→read 라운드트립 불일치.
+
+- `yaml_quote(&str)` / `yaml_unquote(&str)` 헬퍼 신설 ([src/schema/manifest.rs](src/schema/manifest.rs))
+- `parse()` 의 모든 `trim_matches('"')` 사이트를 `yaml_unquote` 로 교체
+- `to_string()` 의 id/title/baseline/tags 직렬화 모두 `yaml_quote` 경유
+
+#### F2 — dangling inline ref false-positive
+
+증상: cmd-validate 문서화 entry(N0010) 본문의 illustrative `→ see N0099` 가 dangling으로 잡힘 — 실제 broken link가 아닌 예제일 뿐.
+
+원인: `check_dangling` 의 regex 가 본문을 그대로 스캔, fenced code block / inline code / blockquote 인식 부재.
+
+- pulldown-cmark 0.10 (default-features 끔) dep 추가
+- `scan_inline_refs(content, &Regex) -> Vec<String>` 헬퍼 신설 ([src/schema/validate.rs](src/schema/validate.rs))
+- `check_dangling` 의 note.md / revision 파일 스캔 두 사이트 모두 헬퍼 경유로 교체. fenced code block / inline code / blockquote 안의 ref는 무시
+
+#### F3 — consistency diff 메시지 가독성
+
+증상: 값에 따옴표가 포함된 mismatch 케이스에서 diff 메시지가 escape 표현 차이를 시각적으로 같은 plain text로 출력 — 사용자 진단 어려움.
+
+- `check_consistency` diff 메시지를 `{val:?}` Debug 포맷으로 변경 ([src/schema/validate.rs](src/schema/validate.rs)). `\"`, `\\`, 비인쇄 문자가 escape 표현으로 드러남
+
+### 내부 변경
+
+- `pulldown-cmark = "0.10"` (default-features = false) 의존성 추가
+- `cargo test --all`: 119 tests passing (lib 86 + integration 6 + mcp_integration 19 + serve_process 1 + sqlite 7). 신규 unit test 4개:
+  - `frontmatter_quote_roundtrip_preserves_inner_quotes` (F1)
+  - `apply_fixes_resolves_consistency_in_one_pass` (F1 end-to-end)
+  - `dangling_inline_ref_skips_fenced_code_block` (F2)
+  - `consistency_diff_message_uses_debug_format` (F3)
+
+### Scope OUT (별 트랙)
+
+- `apply_fixes` silent-fail 추적 로깅 — Change 1로 원인 자체가 사라져 불필요
+- serde_yaml 기반 frontmatter 파서 전체 교체 — over-engineering
+- multi-line YAML / block scalar / 다른 escape 케이스 — 실측 발견 시 별 트랙
+
+---
+
 ## [0.6.1] — 2026-05-20
 
 ### 주요 변경 (breaking)
