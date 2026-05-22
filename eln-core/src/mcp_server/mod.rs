@@ -1,4 +1,4 @@
-use crate::output::message::{Message, MessageLevel, MessageScope, issue_kind_str, push_message};
+use crate::output::message::{Message, MessageLevel, MessageScope, push_message};
 use crate::vault::{VaultOrigin, VaultResolution, ops};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
@@ -189,39 +189,12 @@ impl ElfMcpServer {
         meta
     }
 
-    /// transport-level Permissions::WRITE 가드 — *transport caller capability axis*.
+    /// vault 위치 자체의 위험성 가드 — *vault origin axis*.
     ///
-    /// `default_permissions`에 WRITE가 없으면 SDK `PermissionDenied`로 거절.
-    /// 외부 caller가 vault 변경을 위임받을 capability가 있는가의 단일 비트.
-    /// JSON-RPC error는 `eln_plugin_sdk::ToolError::PermissionDenied`의 code/data 매핑을
-    /// 그대로 사용 — transport adapter가 `data.kind = "permission_denied"`로 식별 가능.
-    ///
-    /// vault 위치 자체의 위험성 가드는 `ensure_write_confirmed` (vault origin axis) — 별 차원.
-    /// RWX bitflag로 환원 불가하므로 미래 vault-scoped capability 모델도 본 가드와 별개로
-    /// 박힐 자리.
-    ///
-    /// S2: stdio = ADMIN(자동 통과), HTTP = READ(거절). S3: ApiKey → Permissions derive.
-    /// S3.2: `entry_list`/`entry_new` 어댑터는 본 가드 대신 handler `ctx.permissions.contains(WRITE)`
-    /// 로 흡수 (`crate::tools::*Handler::call` 안의 단일 capability gate). 잔여 호출자
-    /// (`entry_status` / `entry_tag_add` / `entry_tag_remove` / `entry_tag_set` / `revision_add`
-    /// / `sync_record` / `entry_attach` / `entry_detach` / `validate`)는 다음 PoC에서 같은
-    /// 식으로 마이그레이션 대기 — 그 시점에 본 함수와 호출자가 모두 사라질 수 있음.
-    fn ensure_write_permitted(&self) -> Result<(), ErrorData> {
-        use eln_plugin_sdk::{PermissionDenied, Permissions, ToolError};
-        if self.default_permissions.contains(Permissions::WRITE) {
-            return Ok(());
-        }
-        let err = ToolError::PermissionDenied(PermissionDenied {
-            required: Permissions::WRITE,
-            granted: self.default_permissions,
-        });
-        Err(ErrorData::new(
-            rmcp::model::ErrorCode(err.json_rpc_code()),
-            err.to_string(),
-            Some(err.json_rpc_data()),
-        ))
-    }
-
+    /// guarded origin(`FallbackGlobal` / `CwdSearchHome`)에서 쓰기는 `confirm=true`를 명시 요구.
+    /// transport caller capability 가드(handler-side `ctx.permissions.contains(WRITE)`)와 직교한
+    /// 별 차원 — RWX bitflag로 환원 불가하므로 미래 vault-scoped capability 모델도 본 가드와
+    /// 분리된 자리. handler 호출 *전* adapter에서 실행 (잘못된 vault 위치라면 handler 도달 X).
     fn ensure_write_confirmed(res: &VaultResolution, confirm: bool) -> Result<(), ErrorData> {
         if confirm {
             return Ok(());
@@ -767,57 +740,24 @@ impl ElfMcpServer {
     #[tool(description = "entry status 변경 (draft → stable → archived). \
         draft: 작업 중, stable: 확정, archived: 보관. \
         status 변경은 sync.jsonl에 이벤트로 기록됨.")]
-    fn entry_status(
+    async fn entry_status(
         &self,
         Parameters(p): Parameters<EntryStatusParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        use crate::schema::manifest::EntryStatus;
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        let new_status: EntryStatus = match p.status.as_str() {
-            "draft" => EntryStatus::Draft,
-            "stable" => EntryStatus::Stable,
-            "archived" => EntryStatus::Archived,
-            other => {
-                return Err(ErrorData::invalid_params(
-                    format!("알 수 없는 status: '{other}' (draft / stable / archived)"),
-                    None,
-                ));
-            }
-        };
-
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let old_status = entry.manifest.status.clone();
-        entry.manifest.status = new_status;
-        entry
-            .manifest
-            .touch_and_write(&entry.dir)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
-        let event = format!("status.changed.{}.{}", id, entry.manifest.status);
-        let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-
-        let mut result = serde_json::json!({
-            "ok":   true,
-            "id":   id.to_string(),
-            "from": old_status.to_string(),
-            "to":   entry.manifest.status.to_string(),
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "status":     p.status,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_status::EntryStatusHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -825,98 +765,48 @@ impl ElfMcpServer {
     #[tool(description = "entry에 tag 추가. \
         중복 방지 — 이미 있으면 no-op. \
         manifest mutability 정식 경로 (N0080). 직접 manifest 파일 편집 금지.")]
-    fn entry_tag_add(
+    async fn entry_tag_add(
         &self,
         Parameters(p): Parameters<EntryTagAddParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        let tag = p.tag.trim().to_string();
-        if tag.is_empty() {
-            return Err(ErrorData::invalid_params("tag가 비어 있습니다", None));
-        }
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let already = entry.manifest.tags.iter().any(|t| t == &tag);
-        if !already {
-            entry.manifest.tags.push(tag.clone());
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.added.{id}.{tag}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "tag":     tag,
-            "added":   !already,
-            "tags":    entry.manifest.tags,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "tag":        p.tag,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_tag_add::EntryTagAddHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
 
     #[tool(description = "entry에서 tag 제거. \
         없으면 no-op. manifest mutability 정식 경로 (N0080).")]
-    fn entry_tag_remove(
+    async fn entry_tag_remove(
         &self,
         Parameters(p): Parameters<EntryTagRemoveParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        let tag = p.tag.trim().to_string();
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let before_len = entry.manifest.tags.len();
-        entry.manifest.tags.retain(|t| t != &tag);
-        let removed = entry.manifest.tags.len() < before_len;
-        if removed {
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.removed.{id}.{tag}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "tag":     tag,
-            "removed": removed,
-            "tags":    entry.manifest.tags,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "tag":        p.tag,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_tag_remove::EntryTagRemoveHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -924,57 +814,24 @@ impl ElfMcpServer {
     #[tool(description = "entry tag 전체 교체. \
         빈 array = 모든 tag 제거. dedupe/trim 자동 적용. \
         manifest mutability 정식 경로 (N0080).")]
-    fn entry_tag_set(
+    async fn entry_tag_set(
         &self,
         Parameters(p): Parameters<EntryTagSetParams>,
     ) -> Result<Json<Out>, ErrorData> {
-        use crate::vault::entry::Entry;
-        use crate::vault::id::EntryId;
-        use crate::vault::util::append_sync_event;
-
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-
-        // dedupe (순서 유지) + trim + empty drop
-        let mut new_tags: Vec<String> = Vec::new();
-        for t in p.tags.iter() {
-            let t = t.trim().to_string();
-            if t.is_empty() {
-                continue;
-            }
-            if !new_tags.iter().any(|x| x == &t) {
-                new_tags.push(t);
-            }
-        }
-
-        let id = EntryId::from_str(&p.id).ok_or_else(|| {
-            ErrorData::invalid_params(format!("'{}' 는 유효한 entry ID가 아닙니다", p.id), None)
-        })?;
-        let mut entry = Entry::find_by_id(&res.path, &id)
-            .ok_or_else(|| ErrorData::internal_error(format!("entry not found: {}", p.id), None))?;
-
-        let changed = entry.manifest.tags != new_tags;
-        if changed {
-            entry.manifest.tags = new_tags.clone();
-            entry
-                .manifest
-                .touch_and_write(&entry.dir)
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-            let event = format!("entry.tag.set.{id}");
-            let _ = append_sync_event(&res.path, &event, Some(&id.to_string()));
-        }
-
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "id":      id.to_string(),
-            "changed": changed,
-            "tags":    new_tags,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "tags":       p.tags,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_tag_set::EntryTagSetHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -984,25 +841,24 @@ impl ElfMcpServer {
         note.md를 직접 편집하지 말고 이 tool로 delta를 기록할 것. \
         entry 본문과 revision chain은 나중에 bundle로 함께 복원되므로 전체 재작성 금지. \
         delta는 [Change] 실제로 바뀐 증분, [Impact] 이유나 영향처럼 짧은 diff-first 형식으로 작성.")]
-    fn revision_add(
+    async fn revision_add(
         &self,
         Parameters(p): Parameters<RevisionAddParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        let r = ops::revision_add(&res.path, &p.id, &p.delta)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let mut result = serde_json::json!({
-            "ok":       true,
-            "entry_id": r.revision.entry_id.to_string(),
-            "rev_id":   r.revision.rev_id.to_string(),
-            "baseline": r.revision.baseline.to_string(),
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "delta":      p.delta,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::revision_add::RevisionAddHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -1152,26 +1008,29 @@ impl ElfMcpServer {
         세션 종료 시 반드시 호출. \
         summary: 무엇을 했고 다음 맥락에서 무엇이 중요한지 한두 줄. entries: 작업한 entry ID 목록."
     )]
-    fn sync_record(
+    async fn sync_record(
         &self,
         Parameters(p): Parameters<SyncRecordParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        ops::sync_record(
-            &res.path,
-            &p.summary,
-            p.agent.as_deref(),
-            p.entries.map(|e| e.0).unwrap_or_default(),
-            p.session_id,
-        )
-        .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let mut result = serde_json::json!({ "ok": true });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        // FlexibleEntries는 transport-layer 한정 (JSON array / comma-separated / 단일 ID 다 허용).
+        // handler에는 정규화된 Vec<String>으로 전달.
+        let entries = p.entries.map(|e| e.0).unwrap_or_default();
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "summary":    p.summary,
+            "agent":      p.agent,
+            "entries":    entries,
+            "session_id": p.session_id,
+        });
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::sync_record::SyncRecordHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
@@ -1179,40 +1038,51 @@ impl ElfMcpServer {
     #[tool(description = "vault 무결성 검사 + index.sqlite 재생성. \
         dangling link, orphan revision, schema 오류를 모두 검사. \
         vault 상태가 의심스럽거나 query 결과가 부정확할 때 사용.")]
-    fn validate(&self, Parameters(p): Parameters<ValidateParams>) -> Result<Json<Out>, ErrorData> {
+    async fn validate(
+        &self,
+        Parameters(p): Parameters<ValidateParams>,
+    ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        let vresult = crate::schema::validate::run_all(&res.path)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let _ = crate::vault::index::rebuild(&res.path);
-        // N0091: 기존 `warnings: u32`는 `messages[]` array와 키 충돌 위험이라
-        // `warning_count`로 rename. 각 issue는 messages[]에 push.
-        let mut out = serde_json::json!({
-            "ok":            vresult.error_count() == 0,
-            "error_count":   vresult.error_count(),
-            "warning_count": vresult.warning_count(),
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
         });
-        out.as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        // validate issues를 messages[]에 push (vault_meta가 init_fallback 부착했어도 append).
-        for issue in &vresult.issues {
-            let level = match issue.severity {
-                crate::schema::validate::Severity::Error => MessageLevel::Error,
-                crate::schema::validate::Severity::Warning => MessageLevel::Warning,
-            };
-            let kind = issue_kind_str(&issue.kind);
-            let message = format!("{}: {}", issue.path.display(), issue.message);
-            push_message(
-                &mut out,
-                Message {
-                    level,
-                    kind: kind.to_string(),
-                    message,
-                    scope: MessageScope::Call,
-                },
-            );
+        let ctx = self.build_call_context();
+        let mut out = crate::tools::validate::ValidateHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut out, &res);
+        // N0091: validate handler가 raw `issues: [{severity, kind, path, message}]` 반환
+        // → adapter가 MessageLevel + messages[]로 변환. raw issues 키는 응답 contract에서 제거.
+        let issues = out
+            .as_object_mut()
+            .and_then(|m| m.remove("issues"))
+            .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+        if let Some(arr) = issues.as_array() {
+            for issue in arr {
+                let level = match issue.get("severity").and_then(|s| s.as_str()) {
+                    Some("error") => MessageLevel::Error,
+                    _ => MessageLevel::Warning,
+                };
+                let kind = issue
+                    .get("kind")
+                    .and_then(|k| k.as_str())
+                    .unwrap_or("issue")
+                    .to_string();
+                let path = issue.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                let body = issue.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                push_message(
+                    &mut out,
+                    Message {
+                        level,
+                        kind,
+                        message: format!("{path}: {body}"),
+                        scope: MessageScope::Call,
+                    },
+                );
+            }
         }
         Self::mark_escalated_if_needed(&mut out, &res, p.confirm);
         Ok(Json(Out(out)))
@@ -1221,30 +1091,32 @@ impl ElfMcpServer {
     #[tool(description = "파일을 entry에 첨부. \
         파일을 vault assets 디렉터리로 복사하고 manifest.sources에 등록. \
         file_path는 MCP 서버가 접근 가능한 절대 경로여야 함.")]
-    fn entry_attach(
+    async fn entry_attach(
         &self,
         Parameters(p): Parameters<EntryAttachParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        let file_path = std::path::Path::new(&p.file_path);
-        let r = ops::entry_attach(&res.path, &p.id, file_path, p.name.as_deref())
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        // N0091: 기존 `warning: Option<String>` (collision warning) → messages[]에 push.
-        // warning 필드 자체는 제거하여 응답 contract messages[]로 통일.
-        let mut result = serde_json::json!({
-            "ok":          true,
-            "asset_key":   r.asset_key,
-            "source_path": r.source_path,
-            "size":        r.size,
-            "collision":   r.collision,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "file_path":  p.file_path,
+            "name":       p.name,
         });
-        result
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_attach::EntryAttachHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
+        // N0091: handler가 raw `warning: Option<String>` 노출 → adapter가 attach_collision
+        // message로 변환. warning 키는 응답 contract에서 제거 (messages[]로 통일).
+        if let Some(w) = result
             .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
-        if let Some(w) = r.warning {
+            .and_then(|m| m.remove("warning"))
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+        {
             push_message(
                 &mut result,
                 Message::warning("attach_collision", w, MessageScope::Call),
@@ -1257,24 +1129,24 @@ impl ElfMcpServer {
     #[tool(description = "entry에서 첨부 파일 해제. \
         manifest.sources에서 asset key를 제거하고, \
         다른 entry가 참조하지 않는 경우 실제 파일도 삭제.")]
-    fn entry_detach(
+    async fn entry_detach(
         &self,
         Parameters(p): Parameters<EntryDetachParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        let removed = ops::entry_detach(&res.path, &p.id, &p.key)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let mut result = serde_json::json!({
-            "ok":      true,
-            "removed": removed,
-            "key":     p.key,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "key":        p.key,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_detach::EntryDetachHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }
