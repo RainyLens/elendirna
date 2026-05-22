@@ -680,31 +680,22 @@ impl ElfMcpServer {
         단일 entry 내용을 읽을 때 사용. \
         여러 entry + revision chain이 필요하면 bundle을 사용. \
         note.md 파일을 직접 읽지 말 것.")]
-    fn entry_show(
+    async fn entry_show(
         &self,
         Parameters(p): Parameters<EntryShowParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        let r = ops::entry_show(&res.path, &p.id)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let mut result = serde_json::json!({
-            "ok": true,
-            "manifest": {
-                "id":       r.entry.manifest.id,
-                "title":    r.entry.manifest.title,
-                "status":   r.entry.manifest.status.to_string(),
-                "tags":     r.entry.manifest.tags,
-                "baseline": r.entry.manifest.baseline,
-                "links":    r.entry.manifest.links,
-                "created":  r.entry.manifest.created,
-                "updated":  r.entry.manifest.updated,
-            },
-            "note": r.note_body,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_show::EntryShowHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Ok(Json(Out(result)))
     }
 
@@ -870,136 +861,45 @@ impl ElfMcpServer {
         depth=0 (default): revisions만 (cost-aware), depth=1: 직접 linked 전문, depth=2+: 2홉 이상 manifest만. \
         cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
         since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용).")]
-    fn bundle(&self, Parameters(p): Parameters<BundleParams>) -> Result<Json<Out>, ErrorData> {
+    async fn bundle(
+        &self,
+        Parameters(p): Parameters<BundleParams>,
+    ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        let since = p
-            .since
-            .as_deref()
-            .map(|s| {
-                ops::BundleSince::parse(s).ok_or_else(|| {
-                    ErrorData::invalid_params(format!("since 형식 오류: '{s}'"), None)
-                })
-            })
-            .transpose()?;
-
-        // N0091/N0086: default cost cap. depth 미지정 시 0 (revisions만). cost_hint로 escalate 유도.
-        let depth_was_default = p.depth.is_none();
-        let opts = ops::BundleOptions {
-            depth: p.depth.unwrap_or(0),
-            since,
-        };
-
-        let b = ops::bundle_with_opts(&res.path, &p.id, opts)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let stats = b.stats();
-
-        let revs: Vec<_> = b
-            .revisions
-            .iter()
-            .map(|r| {
-                serde_json::json!({
-                    "rev_id":   r.rev_id.to_string(),
-                    "baseline": r.baseline.to_string(),
-                    "created":  r.created.to_rfc3339(),
-                    "delta":    r.delta,
-                })
-            })
-            .collect();
-        let linked: Vec<_> = b
-            .linked
-            .iter()
-            .map(|le| {
-                if le.shallow {
-                    serde_json::json!({
-                        "id":      le.entry.manifest.id,
-                        "title":   le.entry.manifest.title,
-                        "status":  le.entry.manifest.status.to_string(),
-                        "shallow": true,
-                    })
-                } else {
-                    serde_json::json!({
-                        "id":    le.entry.manifest.id,
-                        "title": le.entry.manifest.title,
-                        "note":  le.note_body,
-                    })
-                }
-            })
-            .collect();
-        // N0091/N0086: cost_hint — depth 미지정(=0 default) + linked link 있을 때 escalate 안내.
-        // bytes estimate는 각 link id의 manifest.toml + note.md file metadata로 cheap 추정.
-        let link_count = b.entry.manifest.links.len();
-        let cost_hint = if depth_was_default && link_count > 0 {
-            let est_bytes = ops::estimate_linked_entry_bytes(&res.path, &b.entry.manifest.links);
-            Some(format!(
-                "linked {link_count} entry는 default(depth=0)에서 미수집 (~{est_bytes} bytes 예상). bundle(id, depth=1)로 escalate."
-            ))
-        } else {
-            None
-        };
-
-        let mut result = serde_json::json!({
-            "ok": true,
-            "context_stats": {
-                "estimated_bytes": stats.estimated_bytes,
-                "entry_count": stats.entry_count,
-                "revision_count": stats.revision_count,
-            },
-            "manifest": {
-                "id":       b.entry.manifest.id,
-                "title":    b.entry.manifest.title,
-                "status":   b.entry.manifest.status.to_string(),
-                "tags":     b.entry.manifest.tags,
-                "baseline": b.entry.manifest.baseline,
-                "links":    b.entry.manifest.links,
-                "created":  b.entry.manifest.created,
-                "updated":  b.entry.manifest.updated,
-            },
-            "note":      b.note_body,
-            "revisions": revs,
-            "linked":    linked,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
+            "depth":      p.depth,
+            "since":      p.since,
         });
-        if let Some(hint) = cost_hint {
-            result
-                .as_object_mut()
-                .unwrap()
-                .insert("cost_hint".to_string(), serde_json::Value::String(hint));
-        }
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::bundle::BundleHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Ok(Json(Out(result)))
     }
 
     #[tool(description = "sqlite 인덱스 기반 entry 검색. \
         전체 목록보다 빠름. \
         세션 시작 시 작업 범위 파악: query(tag='...')로 관련 entry를 먼저 탐색.")]
-    fn query(&self, Parameters(p): Parameters<QueryParams>) -> Result<Json<Out>, ErrorData> {
+    async fn query(&self, Parameters(p): Parameters<QueryParams>) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        let filter = crate::vault::index::QueryFilter {
-            tag: p.tag,
-            status: p.status,
-            baseline: None,
-            title_contains: p.title_contains,
-        };
-        let rows = crate::vault::index::query(&res.path, &filter)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let out: Vec<_> = rows
-            .iter()
-            .map(|r| {
-                serde_json::json!({
-                    "id":      r.id,
-                    "title":   r.title,
-                    "status":  r.status,
-                    "created": r.created,
-                })
-            })
-            .collect();
-        let mut result = serde_json::json!({ "ok": true, "entries": out });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let args = serde_json::json!({
+            "vault_root":     res.path.to_string_lossy(),
+            "tag":            p.tag,
+            "status":         p.status,
+            "title_contains": p.title_contains,
+        });
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::query::QueryHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Ok(Json(Out(result)))
     }
 
@@ -1153,32 +1053,22 @@ impl ElfMcpServer {
 
     #[tool(description = "entry에 등록된 첨부 파일 목록 조회. \
         각 자산의 key, 경로, 존재 여부, 파일 크기를 반환.")]
-    fn entry_assets(
+    async fn entry_assets(
         &self,
         Parameters(p): Parameters<EntryAssetsParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        let assets = ops::entry_assets(&res.path, &p.id)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let out: Vec<_> = assets
-            .iter()
-            .map(|a| {
-                serde_json::json!({
-                    "key":    a.key,
-                    "path":   a.path.display().to_string(),
-                    "exists": a.exists,
-                    "size":   a.size,
-                })
-            })
-            .collect();
-        let mut result = serde_json::json!({
-            "ok":     true,
-            "assets": out,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "id":         p.id,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_assets::EntryAssetsHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Ok(Json(Out(result)))
     }
 
