@@ -2,12 +2,12 @@
 ///
 /// index 생성 → query → validate → 재생성 일관성 확인.
 /// 바이너리 빌드 없이 라이브러리 함수를 직접 호출한다.
-use elendirna::cli::entry::{NewArgs, run_new};
-use elendirna::cli::init::{InitArgs, run as init_run};
-use elendirna::cli::link::{LinkArgs, run as link_run};
-use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
-use elendirna::vault::VaultArgs;
-use elendirna::vault::index::{self, QueryFilter};
+use eln_core::cli::entry::{NewArgs, run_new};
+use eln_core::cli::init::{InitArgs, run as init_run};
+use eln_core::cli::link::{LinkArgs, run as link_run};
+use eln_core::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
+use eln_core::vault::VaultArgs;
+use eln_core::vault::index::{self, QueryFilter};
 
 use tempfile::TempDir;
 
@@ -43,7 +43,7 @@ fn new_entry(dir: &TempDir, title: &str, tags: Vec<String>) -> String {
         VaultArgs::default(),
     )
     .unwrap();
-    let entries = elendirna::vault::entry::Entry::find_all(dir.path());
+    let entries = eln_core::vault::entry::Entry::find_all(dir.path());
     entries.last().unwrap().manifest.id.clone()
 }
 
@@ -201,7 +201,7 @@ fn validate_and_rebuild_consistent() {
     .unwrap();
 
     // validate → 0 errors
-    let result = elendirna::schema::validate::run_all(dir.path()).unwrap();
+    let result = eln_core::schema::validate::run_all(dir.path()).unwrap();
     assert_eq!(result.error_count(), 0);
 
     // rebuild 후 query로 revision 연결 entry 확인

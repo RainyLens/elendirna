@@ -73,6 +73,10 @@ pub struct ElfMcpServer {
     /// stdio 단일-session 모델의 현재 active session id. session_start가 새 UUID를 발급해 갱신.
     /// None이면 아직 session_start 미호출 상태 (default vault만 사용).
     current_session_id: std::sync::RwLock<Option<String>>,
+    /// transport-level default permissions ([[N0033]] r0006 S2.4 Step 4.6).
+    /// stdio = `ADMIN` (hard-code). HTTP = `READ` (외부 write 차단, S2 한정 가드).
+    /// transport-level grant derivation (ApiKey → Permissions)은 S3 scope.
+    default_permissions: eln_plugin_sdk::Permissions,
     #[allow(dead_code)]
     tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
     #[allow(dead_code)]
@@ -80,7 +84,21 @@ pub struct ElfMcpServer {
 }
 
 impl ElfMcpServer {
+    /// stdio transport용 server 인스턴스. `Permissions::ADMIN` 자동 부여.
     pub fn new(resolution: VaultResolution) -> Self {
+        Self::with_permissions(resolution, eln_plugin_sdk::Permissions::ADMIN)
+    }
+
+    /// HTTP transport용 server 인스턴스 ([[N0033]] r0006 Step 4.6).
+    /// `Permissions::READ`만 부여 — S3 ApiKey auth 도착 전까지 외부 write 차단.
+    pub fn new_http(resolution: VaultResolution) -> Self {
+        Self::with_permissions(resolution, eln_plugin_sdk::Permissions::READ)
+    }
+
+    fn with_permissions(
+        resolution: VaultResolution,
+        default_permissions: eln_plugin_sdk::Permissions,
+    ) -> Self {
         let path = crate::vault::normalize_vault_root(resolution.path);
         Self {
             launch_resolution: VaultResolution {
@@ -90,6 +108,7 @@ impl ElfMcpServer {
             launch_init_fallback: false,
             sessions: std::sync::RwLock::new(std::collections::HashMap::new()),
             current_session_id: std::sync::RwLock::new(None),
+            default_permissions,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -168,6 +187,29 @@ impl ElfMcpServer {
             );
         }
         meta
+    }
+
+    /// transport-level Permissions::WRITE 가드 ([[N0033]] r0006 Step 4.6).
+    ///
+    /// `default_permissions`에 WRITE가 없으면 SDK `PermissionDenied`로 거절.
+    /// JSON-RPC error는 `eln_plugin_sdk::ToolError::PermissionDenied`의 code/data 매핑을
+    /// 그대로 사용 — transport adapter가 `data.kind = "permission_denied"`로 식별 가능.
+    ///
+    /// S2: stdio = ADMIN(자동 통과), HTTP = READ(거절). S3: ApiKey → Permissions derive.
+    fn ensure_write_permitted(&self) -> Result<(), ErrorData> {
+        use eln_plugin_sdk::{PermissionDenied, Permissions, ToolError};
+        if self.default_permissions.contains(Permissions::WRITE) {
+            return Ok(());
+        }
+        let err = ToolError::PermissionDenied(PermissionDenied {
+            required: Permissions::WRITE,
+            granted: self.default_permissions,
+        });
+        Err(ErrorData::new(
+            rmcp::model::ErrorCode(err.json_rpc_code()),
+            err.to_string(),
+            Some(err.json_rpc_data()),
+        ))
     }
 
     fn ensure_write_confirmed(res: &VaultResolution, confirm: bool) -> Result<(), ErrorData> {
@@ -670,6 +712,7 @@ impl ElfMcpServer {
         기존 entry 내용 변경은 revision_add를 사용할 것.")]
     fn entry_new(&self, Parameters(p): Parameters<EntryNewParams>) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         let r = ops::entry_new(
             &res.path,
@@ -704,6 +747,7 @@ impl ElfMcpServer {
         use crate::vault::util::append_sync_event;
 
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
 
         let new_status: EntryStatus = match p.status.as_str() {
@@ -760,6 +804,7 @@ impl ElfMcpServer {
         use crate::vault::util::append_sync_event;
 
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
 
         let tag = p.tag.trim().to_string();
@@ -809,6 +854,7 @@ impl ElfMcpServer {
         use crate::vault::util::append_sync_event;
 
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
 
         let tag = p.tag.trim().to_string();
@@ -857,6 +903,7 @@ impl ElfMcpServer {
         use crate::vault::util::append_sync_event;
 
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
 
         // dedupe (순서 유지) + trim + empty drop
@@ -912,6 +959,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<RevisionAddParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         let r = ops::revision_add(&res.path, &p.id, &p.delta)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
@@ -1080,6 +1128,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<SyncRecordParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         ops::sync_record(
             &res.path,
@@ -1103,6 +1152,7 @@ impl ElfMcpServer {
         vault 상태가 의심스럽거나 query 결과가 부정확할 때 사용.")]
     fn validate(&self, Parameters(p): Parameters<ValidateParams>) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         let vresult = crate::schema::validate::run_all(&res.path)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
@@ -1147,6 +1197,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryAttachParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         let file_path = std::path::Path::new(&p.file_path);
         let r = ops::entry_attach(&res.path, &p.id, file_path, p.name.as_deref())
@@ -1182,6 +1233,7 @@ impl ElfMcpServer {
         Parameters(p): Parameters<EntryDetachParams>,
     ) -> Result<Json<Out>, ErrorData> {
         let res = self.resolve_tool_vault(p.vault)?;
+        self.ensure_write_permitted()?;
         Self::ensure_write_confirmed(&res, p.confirm)?;
         let removed = ops::entry_detach(&res.path, &p.id, &p.key)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
@@ -1239,11 +1291,33 @@ impl ElfMcpServer {
     fn session_start(
         &self,
         Parameters(p): Parameters<SessionStartParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<Json<Out>, ErrorData> {
-        // N0091 r0006 (B1): 매 session_start 호출은 새 UUID v4 session_id를 발급한다.
-        // 같은 stdio process여도 새 session 시작으로 간주 — local_vault override를
-        // 깨끗하게 reset할 수 있는 정식 경로.
-        let session_id = uuid::Uuid::new_v4().to_string();
+        // HTTP transport 식별 ([[N0033]] r0006 Step 4.4):
+        // rmcp StreamableHttpService는 요청의 `http::request::Parts`를
+        // `ctx.extensions`에 inject. stdio에선 없으므로 transport 식별 자연 신호.
+        // `Mcp-Session-Id` header가 transport-level source of truth — tool은
+        // 새 UUID를 발급하지 않고 transport 발급 id를 echo + SessionState만 갱신.
+        let http_session_id = ctx
+            .extensions
+            .get::<::http::request::Parts>()
+            .and_then(|parts| parts.headers.get("mcp-session-id"))
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        self.session_start_impl(p, http_session_id)
+    }
+
+    /// session_start 본문 — `#[tool]` wrapper에서 transport 식별 후 호출.
+    /// `http_session_id`가 `Some`이면 HTTP path (transport 발급 id 사용),
+    /// `None`이면 stdio path (UUID v4 새 발급).
+    fn session_start_impl(
+        &self,
+        p: SessionStartParams,
+        http_session_id: Option<String>,
+    ) -> Result<Json<Out>, ErrorData> {
+        // N0091 r0006 (B1): stdio 경로는 매 호출마다 새 UUID v4 발급.
+        // HTTP 경로는 `Mcp-Session-Id` header 값을 그대로 echo — 이중 권위 회피.
+        let session_id = http_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         // session vault override를 결정 — explicit alias 있으면 resolve, 없으면 None.
         let session_local = match p.vault.as_deref() {
@@ -1413,6 +1487,10 @@ impl ServerHandler for ElfMcpServer {
 
 // ─── 서버 진입점 ─────────────────────────
 
+pub mod http;
+
+pub use http::run_http;
+
 /// stdio transport로 MCP 서버 구동 (blocking).
 ///
 /// `launch_init_fallback`: serve.rs의 fallback-global auto-init이 기존 vault를
@@ -1499,7 +1577,7 @@ mod tests {
         let sid = "test-session-1".to_string();
         server.sessions.write().unwrap().insert(
             sid.clone(),
-            crate::mcp::SessionState {
+            crate::mcp_server::SessionState {
                 local_vault: Some(VaultResolution {
                     path: canonical(session.path()),
                     origin: VaultOrigin::CwdSearch,
@@ -1763,15 +1841,16 @@ mod tests {
     /// 같은 instance에서 두 번 호출하면 서로 다른 id가 나와야 한다.
     #[test]
     fn session_start_emits_distinct_uuid_v4_per_call() {
-        use rmcp::handler::server::wrapper::Parameters;
         let local = temp_vault("local");
         let server = ElfMcpServer::new(VaultResolution {
             path: local.path().to_path_buf(),
             origin: VaultOrigin::ExplicitPath,
         });
+        // unit test는 #[tool] wrapper(RequestContext 의존) 우회하고 helper 직접 호출.
+        // http_session_id=None → stdio path → 매 호출 새 UUID 발급 ([[N0033]] r0006 4.4).
         let call = || {
             server
-                .session_start(Parameters(super::SessionStartParams { vault: None }))
+                .session_start_impl(super::SessionStartParams { vault: None }, None)
                 .unwrap()
         };
         let r1 = call();

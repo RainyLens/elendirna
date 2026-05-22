@@ -1,8 +1,10 @@
 pub mod cli;
 pub mod error;
-pub mod mcp;
+pub mod http_backend;
+pub mod mcp_server;
 pub mod output;
 pub mod schema;
+pub mod tools;
 pub mod vault;
 
 /// set_current_dir은 프로세스 전역 상태이므로 테스트 전체에서 공유하는 직렬화 락.

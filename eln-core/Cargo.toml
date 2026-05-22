@@ -1,0 +1,39 @@
+[package]
+name = "eln-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "elendirna core — vault domain + MCP transport runtime"
+
+[lib]
+name = "eln_core"
+path = "src/lib.rs"
+
+[dependencies]
+clap            = { workspace = true }
+toml            = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+thiserror       = { workspace = true }
+anyhow          = { workspace = true }
+chrono          = { workspace = true }
+walkdir         = { workspace = true }
+regex           = { workspace = true }
+rmcp            = { workspace = true }
+tokio           = { workspace = true }
+axum            = { workspace = true }
+tower           = { workspace = true }
+http            = { workspace = true }
+schemars        = { workspace = true }
+rusqlite        = { workspace = true }
+uuid            = { workspace = true }
+pulldown-cmark  = { workspace = true }
+# S2.4 PoC: eln-plugin-sdk는 workbench 로컬 path dep. CI/외부 빌드 시 path 변동
+# 위험 인지 — publish 단계(S3 이후)에는 crates.io version으로 전환 필요.
+eln-plugin-sdk  = { path = "../../eln-plugins" }
+
+[dev-dependencies]
+insta       = { workspace = true }
+tempfile    = { workspace = true }
+assert_cmd  = { workspace = true }

@@ -1,29 +1,14 @@
-[package]
-name = "elendirna"
-version = "0.6.2"
+[workspace]
+resolver = "2"
+members = ["eln-core", "eln-cli"]
+
+[workspace.package]
+version = "0.7.0-dev"
 edition = "2024"
-description = "Agent-friendly knowledge base CLI. Manages personal knowledge as Base-Delta entries with AI-enforced conventions."
 license = "MIT"
 repository = "https://github.com/elen-labs/elendirna"
-readme = "README.md"
-keywords = ["knowledge-base", "cli", "ai", "notes", "markdown"]
-categories = ["command-line-utilities"]
-exclude = [
-    ".elendirna/**",
-    "elf_graph.html",
-    "elf_ui.py",
-    "graph_data.json",
-]
 
-[lib]
-name = "elendirna"
-path = "src/lib.rs"
-
-[[bin]]
-name = "elf"
-path = "src/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 clap        = { version = "4", features = ["derive"] }
 toml        = "0.8"
 serde       = { version = "1", features = ["derive"] }
@@ -33,22 +18,18 @@ anyhow      = "1"
 chrono      = { version = "0.4", features = ["serde"] }
 walkdir     = "2"
 regex       = "1"
-
-# v0.2: MCP 서버
-rmcp        = { version = "1", features = ["server", "macros", "schemars", "transport-io"] }
+rmcp        = { version = "1.5", features = ["server", "macros", "schemars", "transport-io", "transport-streamable-http-server"] }
 tokio       = { version = "1", features = ["full"] }
+axum        = "0.8"
+tower       = "0.5"
+http        = "1"
 schemars    = "1"
-
-# v0.2: sqlite 인덱스
 rusqlite    = { version = "0.39", features = ["bundled"] }
-
-# v0.6.1: session_id (UUID v4)
 uuid        = { version = "1", features = ["v4"] }
-
-# v0.6.2: markdown-aware inline ref 스캔 (F2)
 pulldown-cmark = { version = "0.10", default-features = false }
+bitflags    = "2"
+async-trait = "0.1"
 
-[dev-dependencies]
 insta       = { version = "1", features = ["toml"] }
 tempfile    = "3"
 assert_cmd  = "2"

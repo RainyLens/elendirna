@@ -2,15 +2,15 @@
 ///
 /// `elf` 바이너리를 assert_cmd로 호출하지 않고, 라이브러리 함수를 직접 호출합니다.
 /// (바이너리 빌드 없이도 `cargo test`로 실행 가능)
-use elendirna::cli::entry::{NewArgs, ShowArgs, run_new, run_show};
-use elendirna::cli::init::{InitArgs, run as init_run};
-use elendirna::cli::link::{LinkArgs, run as link_run};
-use elendirna::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
-use elendirna::schema::manifest::Manifest;
-use elendirna::schema::validate::run_all;
-use elendirna::vault::VaultArgs;
-use elendirna::vault::entry::Entry;
-use elendirna::vault::id::EntryId;
+use eln_core::cli::entry::{NewArgs, ShowArgs, run_new, run_show};
+use eln_core::cli::init::{InitArgs, run as init_run};
+use eln_core::cli::link::{LinkArgs, run as link_run};
+use eln_core::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
+use eln_core::schema::manifest::Manifest;
+use eln_core::schema::validate::run_all;
+use eln_core::vault::VaultArgs;
+use eln_core::vault::entry::Entry;
+use eln_core::vault::id::EntryId;
 
 use tempfile::TempDir;
 
@@ -153,7 +153,7 @@ fn scenario_3day_workflow() {
         result
             .issues
             .iter()
-            .filter(|i| i.severity == elendirna::schema::validate::Severity::Error)
+            .filter(|i| i.severity == eln_core::schema::validate::Severity::Error)
             .map(|i| &i.message)
             .collect::<Vec<_>>()
     );
@@ -236,7 +236,7 @@ fn criterion_idempotent_entry_new() {
     let err = result.unwrap_err();
     assert_eq!(err.exit_code(), 3);
     // slug 충돌 멱등성: 중복 entry가 생성되지 않았는지 확인
-    let entries = elendirna::vault::entry::Entry::find_all(dir.path());
+    let entries = eln_core::vault::entry::Entry::find_all(dir.path());
     assert_eq!(entries.len(), 1, "중복 entry가 생성되면 안 됩니다");
 }
 
@@ -246,7 +246,7 @@ fn criterion_idempotent_entry_new() {
 /// link id 해석 실패 또는 미발견 entry는 skip. depth=0 default cost_hint의 기반.
 #[test]
 fn estimate_linked_entry_bytes_sums_existing_entries_only() {
-    use elendirna::vault::ops::estimate_linked_entry_bytes;
+    use eln_core::vault::ops::estimate_linked_entry_bytes;
     let (dir, _guard) = setup_vault();
     let _id1 = new_entry(&dir, "first");
     let _id2 = new_entry(&dir, "second");
