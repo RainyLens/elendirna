@@ -85,7 +85,6 @@ impl ToolHandler for EntryListHandler {
     }
 }
 
-
 /// JSON schema for `entry_list` args. S3.2 adapter가 `ToolDescriptor::with_input_schema`에 전달.
 pub fn input_schema() -> Value {
     json!({

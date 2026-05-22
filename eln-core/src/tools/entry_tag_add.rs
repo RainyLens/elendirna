@@ -45,7 +45,9 @@ impl ToolHandler for EntryTagAddHandler {
 
         let tag = raw_tag.trim().to_string();
         if tag.is_empty() {
-            return Err(ToolError::InvalidArgument("tag가 비어 있습니다".to_string()));
+            return Err(ToolError::InvalidArgument(
+                "tag가 비어 있습니다".to_string(),
+            ));
         }
 
         let id = EntryId::from_str(id_str).ok_or_else(|| {

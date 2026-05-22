@@ -60,7 +60,10 @@ async fn entry_list_empty_vault() {
     let dir = setup_vault();
     let handler = EntryListHandler;
     let result = handler
-        .call(&ctx(Permissions::READ), json!({ "vault_root": vault_root_arg(&dir) }))
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir) }),
+        )
         .await
         .expect("entry_list should succeed on empty vault");
     assert_eq!(result["ok"], Value::Bool(true));
@@ -75,12 +78,25 @@ async fn entry_list_returns_meta_fields() {
 
     let handler = EntryListHandler;
     let result = handler
-        .call(&ctx(Permissions::READ), json!({ "vault_root": vault_root_arg(&dir) }))
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir) }),
+        )
         .await
         .unwrap();
     let entries = result["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 2);
-    for required in ["id", "title", "status", "tags", "created", "updated", "revisions", "links_out", "linked_by"] {
+    for required in [
+        "id",
+        "title",
+        "status",
+        "tags",
+        "created",
+        "updated",
+        "revisions",
+        "links_out",
+        "linked_by",
+    ] {
         assert!(
             entries[0].get(required).is_some(),
             "field `{required}` missing from projection: {}",
@@ -393,7 +409,13 @@ async fn entry_tag_add_empty_tag_returns_invalid_argument() {
 #[tokio::test]
 async fn entry_tag_remove_existing_and_missing() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec!["alpha".into(), "beta".into()]).unwrap();
+    ops::entry_new(
+        dir.path(),
+        "tag entry",
+        None,
+        vec!["alpha".into(), "beta".into()],
+    )
+    .unwrap();
     let removed = EntryTagRemoveHandler
         .call(
             &ctx(Permissions::WRITE),

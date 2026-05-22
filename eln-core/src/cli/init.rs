@@ -93,7 +93,6 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
 /// MCP `serve` fallback이나 향후 다른 fallback caller는 이 함수를 `Fallback`으로 호출.
 pub(crate) fn run_with_context(args: InitArgs, ctx: InitContext) -> Result<(), ElfError> {
     let root = if args.global {
-        
         std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
             .map(PathBuf::from)

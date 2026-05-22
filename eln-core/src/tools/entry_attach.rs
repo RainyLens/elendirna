@@ -56,10 +56,10 @@ impl ToolHandler for EntryAttachHandler {
         });
         // warning 필드는 raw로 노출 — adapter가 messages[]로 변환 (attach_collision).
         if let Some(w) = r.warning {
-            result.as_object_mut().unwrap().insert(
-                "warning".to_string(),
-                Value::String(w),
-            );
+            result
+                .as_object_mut()
+                .unwrap()
+                .insert("warning".to_string(), Value::String(w));
         }
         Ok(result)
     }

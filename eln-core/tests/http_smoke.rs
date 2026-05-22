@@ -146,13 +146,17 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     let (status, _, ct, body) = post_mcp(&app, tools_list, Some(&sid)).await;
     assert_eq!(status, StatusCode::OK);
     let payload = parse_rpc_payload(&body, &ct);
-    let tools = payload["result"]["tools"]
-        .as_array()
-        .expect("tools array");
+    let tools = payload["result"]["tools"].as_array().expect("tools array");
     let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(tool_names.contains(&"entry_list"), "entry_list registered");
-    assert!(tool_names.contains(&"revision_add"), "revision_add registered");
-    assert!(tool_names.contains(&"session_start"), "session_start registered");
+    assert!(
+        tool_names.contains(&"revision_add"),
+        "revision_add registered"
+    );
+    assert!(
+        tool_names.contains(&"session_start"),
+        "session_start registered"
+    );
 
     // 4) tools/call entry_list — READ는 통과
     let entry_list = json!({
@@ -164,7 +168,11 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     let (status, _, ct, body) = post_mcp(&app, entry_list, Some(&sid)).await;
     assert_eq!(status, StatusCode::OK);
     let payload = parse_rpc_payload(&body, &ct);
-    assert!(payload["error"].is_null(), "entry_list error={:?}", payload["error"]);
+    assert!(
+        payload["error"].is_null(),
+        "entry_list error={:?}",
+        payload["error"]
+    );
     assert!(payload["result"].is_object(), "entry_list result");
 
     // 5) tools/call revision_add — WRITE는 PermissionDenied(-32001) 거절 (S2 READ-only 가드).
@@ -183,7 +191,10 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     assert_eq!(status, StatusCode::OK, "JSON-RPC error → HTTP 200");
     let payload = parse_rpc_payload(&body, &ct);
     let err = &payload["error"];
-    assert!(err.is_object(), "revision_add은 JSON-RPC error로 거절: {payload}");
+    assert!(
+        err.is_object(),
+        "revision_add은 JSON-RPC error로 거절: {payload}"
+    );
     assert_eq!(
         err["code"].as_i64(),
         Some(-32001),
@@ -211,7 +222,10 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     assert_eq!(status, StatusCode::OK, "JSON-RPC error → HTTP 200");
     let payload = parse_rpc_payload(&body, &ct);
     let err = &payload["error"];
-    assert!(err.is_object(), "entry_new은 JSON-RPC error로 거절: {payload}");
+    assert!(
+        err.is_object(),
+        "entry_new은 JSON-RPC error로 거절: {payload}"
+    );
     assert_eq!(
         err["code"].as_i64(),
         Some(-32001),

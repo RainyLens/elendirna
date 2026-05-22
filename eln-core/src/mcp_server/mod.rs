@@ -1735,7 +1735,10 @@ mod tests {
             origin: VaultOrigin::Alias("global".to_string()),
         };
         let meta = server.vault_meta(&alias_res);
-        assert!(meta.get("messages").is_none(), "alias 응답도 inject X (M-2)");
+        assert!(
+            meta.get("messages").is_none(),
+            "alias 응답도 inject X (M-2)"
+        );
     }
 
     /// v0.6.1 B1: session_start는 매 호출마다 UUID v4 session_id를 응답에 노출한다.
@@ -1766,11 +1769,7 @@ mod tests {
         for sid in [sid1, sid2] {
             assert_eq!(sid.len(), 36, "UUID v4는 36 chars");
             // index 14 (0-based) = version nibble in canonical UUID string
-            assert_eq!(
-                sid.chars().nth(14),
-                Some('4'),
-                "version nibble은 4여야 함"
-            );
+            assert_eq!(sid.chars().nth(14), Some('4'), "version nibble은 4여야 함");
         }
     }
 

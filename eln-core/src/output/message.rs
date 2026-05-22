@@ -50,11 +50,7 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn info(
-        kind: impl Into<String>,
-        message: impl Into<String>,
-        scope: MessageScope,
-    ) -> Self {
+    pub fn info(kind: impl Into<String>, message: impl Into<String>, scope: MessageScope) -> Self {
         Self {
             level: MessageLevel::Info,
             kind: kind.into(),
@@ -74,11 +70,7 @@ impl Message {
             scope,
         }
     }
-    pub fn error(
-        kind: impl Into<String>,
-        message: impl Into<String>,
-        scope: MessageScope,
-    ) -> Self {
+    pub fn error(kind: impl Into<String>, message: impl Into<String>, scope: MessageScope) -> Self {
         Self {
             level: MessageLevel::Error,
             kind: kind.into(),

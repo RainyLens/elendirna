@@ -384,9 +384,10 @@ pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         .status()?;
 
     if !status.success() {
-        return Err(ElfError::Io(std::io::Error::other(
-            format!("편집기가 비정상 종료됨: exit={:?}", status.code()),
-        )));
+        return Err(ElfError::Io(std::io::Error::other(format!(
+            "편집기가 비정상 종료됨: exit={:?}",
+            status.code()
+        ))));
     }
 
     // fix-007 B: frontmatter → manifest 역반영

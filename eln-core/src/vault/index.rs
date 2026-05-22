@@ -46,11 +46,8 @@ fn index_path(vault_root: &Path) -> std::path::PathBuf {
 
 fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     let path = index_path(vault_root);
-    let conn = Connection::open(&path).map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    let conn =
+        Connection::open(&path).map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
     // v0.3.1: 동시성 강화 — WAL 모드 및 busy_timeout(5초) 설정
     conn.execute_batch(
@@ -59,17 +56,10 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
         PRAGMA busy_timeout = 5000;
     ",
     )
-    .map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
-    conn.execute_batch(SCHEMA).map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    conn.execute_batch(SCHEMA)
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
     Ok(conn)
 }
 
@@ -85,11 +75,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
         DELETE FROM entries;
     ",
     )
-    .map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
     let entries = Entry::find_all(vault_root);
     let count = entries.len();
@@ -110,22 +96,14 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 m.baseline,
             ],
         )
-        .map_err(|e| {
-            ElfError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
         for tag in &m.tags {
             conn.execute(
                 "INSERT OR IGNORE INTO tags (entry_id, tag) VALUES (?1, ?2)",
                 params![m.id, tag],
             )
-            .map_err(|e| {
-                ElfError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
         }
 
         if let Some(entry_id) = crate::vault::id::EntryId::from_str(&m.id) {
@@ -140,11 +118,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                         rev.created.to_rfc3339(),
                     ],
                 )
-                .map_err(|e| {
-                    ElfError::Io(std::io::Error::other(
-                        e.to_string(),
-                    ))
-                })?;
+                .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
             }
         }
     }
@@ -157,11 +131,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 "INSERT OR IGNORE INTO links (from_id, to_id) VALUES (?1, ?2)",
                 params![m.id, link],
             )
-            .map_err(|e| {
-                ElfError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
         }
     }
 
@@ -219,11 +189,9 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
     }
     sql.push_str(" ORDER BY e.id");
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })?;
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
     let rows = stmt
         .query_map([], |row| {
@@ -236,15 +204,8 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
                 baseline: row.get(5)?,
             })
         })
-        .map_err(|e| {
-            ElfError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
-        ElfError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))
 }

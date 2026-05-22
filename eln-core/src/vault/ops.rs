@@ -822,10 +822,9 @@ pub fn entry_detach(vault_root: &Path, id_str: &str, asset_key: &str) -> Result<
     let still_referenced = Entry::find_all(vault_root).into_iter().any(|e| {
         e.manifest.id != id_str && e.manifest.sources.iter().any(|source| source == asset_key)
     });
-    if !still_referenced
-        && asset_path.is_file() {
-            std::fs::remove_file(asset_path)?;
-        }
+    if !still_referenced && asset_path.is_file() {
+        std::fs::remove_file(asset_path)?;
+    }
 
     let event = format!("entry.detach.{id_str}");
     let _ = append_sync_event(vault_root, &event, Some(asset_key));

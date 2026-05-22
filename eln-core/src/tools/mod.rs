@@ -52,7 +52,10 @@ pub(crate) fn require_string<'a>(args: &'a Value, key: &str) -> Result<&'a str, 
 }
 
 /// 옵셔널 string 인자 파싱. 누락/null은 None, 타입 mismatch는 `InvalidArgument`.
-pub(crate) fn optional_string<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, ToolError> {
+pub(crate) fn optional_string<'a>(
+    args: &'a Value,
+    key: &str,
+) -> Result<Option<&'a str>, ToolError> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.as_str())),

@@ -507,14 +507,20 @@ fn mcp_revision_add_appends_and_touches_manifest() {
     .unwrap()
     .dir
     .join("manifest.toml");
-    let before = std::fs::metadata(&manifest_path).unwrap().modified().unwrap();
+    let before = std::fs::metadata(&manifest_path)
+        .unwrap()
+        .modified()
+        .unwrap();
 
     // sleep을 피해 manifest 시간이 동일해도 통과하도록 단조 비교만
     let r = ops::revision_add(dir.path(), "N0001", "[Change] gap fill test").unwrap();
     assert_eq!(r.revision.entry_id.to_string(), "N0001");
     assert_eq!(r.revision.rev_id.to_string(), "r0001");
 
-    let after = std::fs::metadata(&manifest_path).unwrap().modified().unwrap();
+    let after = std::fs::metadata(&manifest_path)
+        .unwrap()
+        .modified()
+        .unwrap();
     assert!(after >= before, "manifest mtime should not regress");
 
     let rev_file = dir

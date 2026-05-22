@@ -45,8 +45,7 @@ impl ToolHandler for SyncRecordHandler {
         let entries = optional_string_array(&args, "entries")?;
         let session_id = optional_string(&args, "session_id")?.map(|s| s.to_string());
 
-        ops::sync_record(vault_root, summary, agent, entries, session_id)
-            .map_err(map_ops_error)?;
+        ops::sync_record(vault_root, summary, agent, entries, session_id).map_err(map_ops_error)?;
 
         Ok(json!({ "ok": true }))
     }

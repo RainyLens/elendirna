@@ -153,30 +153,21 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     crate::cli::migrate::auto_migrate_silent(&resolution.path);
 
     match transport {
-        TransportKind::Stdio => {
-            crate::mcp_server::run_stdio(resolution, launch_init_fallback).map_err(|e| {
-                ElfError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })
-        }
+        TransportKind::Stdio => crate::mcp_server::run_stdio(resolution, launch_init_fallback)
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string()))),
         TransportKind::Http => {
             // HTTP transport는 cwd intent signal 비활성 (N0033 r0004) — vault 결정은
             // 위에서 이미 끝났고, READ-only 가드는 ElfMcpServer::new_http가 부여.
-            let bind: std::net::SocketAddr = addr_resolved.parse().map_err(
-                |e: std::net::AddrParseError| ElfError::InvalidInput {
-                    message: format!("--addr 형식 오류 '{addr_resolved}': {e}"),
-                },
-            )?;
-            let rt = tokio::runtime::Runtime::new().map_err(|e| {
-                ElfError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            let bind: std::net::SocketAddr =
+                addr_resolved
+                    .parse()
+                    .map_err(|e: std::net::AddrParseError| ElfError::InvalidInput {
+                        message: format!("--addr 형식 오류 '{addr_resolved}': {e}"),
+                    })?;
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
             rt.block_on(crate::mcp_server::run_http(resolution, bind))
-                .map_err(|e| {
-                    ElfError::Io(std::io::Error::other(
-                        e.to_string(),
-                    ))
-                })
+                .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))
         }
     }
 }
@@ -213,9 +204,7 @@ fn print_mcp_snippet_http(vault_path: Option<&std::path::Path>, addr: &str) {
     println!("# Elendirna MCP 서버 설정 snippet (Streamable HTTP transport)");
     println!("# S2 한정: HTTP transport는 READ-only — 외부 write는 S3 ApiKey auth 도착 후.\n");
     println!("# 1) 서버 기동:");
-    println!(
-        "#    {elf_bin} serve --mcp --transport http --addr {addr} --vault {vault_str}\n"
-    );
+    println!("#    {elf_bin} serve --mcp --transport http --addr {addr} --vault {vault_str}\n");
     println!("# 2) curl smoke — initialize:");
     println!("#    curl -i -X POST http://{addr}/mcp \\");
     println!("#      -H 'Content-Type: application/json' \\");

@@ -41,8 +41,7 @@ impl ToolHandler for ValidateHandler {
         }
 
         let vault_root = Path::new(require_string(&args, "vault_root")?);
-        let vresult =
-            crate::schema::validate::run_all(vault_root).map_err(map_ops_error)?;
+        let vresult = crate::schema::validate::run_all(vault_root).map_err(map_ops_error)?;
         let _ = crate::vault::index::rebuild(vault_root);
 
         let issues: Vec<Value> = vresult
