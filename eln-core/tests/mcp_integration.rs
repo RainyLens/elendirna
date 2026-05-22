@@ -531,3 +531,97 @@ fn mcp_revision_add_appends_and_touches_manifest() {
         .join("r0001.md");
     assert!(rev_file.exists(), "revision file should be created");
 }
+
+// ─── S5.3: read-side gap fill (query / bundle cross-layer) ──────────────
+//
+// read-side 4 tool 중 `query`는 pre-S5 mcp_integration coverage 0건이었음 (sqlite_integration
+// 에서 index 직접 검증만). bundle은 happy path test 있었지만 cost_hint 분기 + invalid since
+// 분기는 mcp_integration scope에서 미검증. 본 3 test가 S5.2의 handler 이동 결정(BundleSince
+// parse + cost_hint 산출 → handler) cross-layer 회귀 catch.
+
+use eln_core::tools::bundle::BundleHandler;
+use eln_core::tools::query::QueryHandler;
+
+#[tokio::test]
+async fn mcp_query_filters_by_tag() {
+    let (dir, _guard) = setup_vault();
+    // 두 entry 생성 — alpha tag 하나, beta tag 하나
+    ops::entry_new(dir.path(), "알파 항목", None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "베타 항목", None, vec!["beta".into()]).unwrap();
+    // query는 sqlite index 기반 — rebuild 한 번
+    eln_core::vault::index::rebuild(dir.path()).unwrap();
+
+    let result = QueryHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "tag":        "alpha",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result["ok"], Value::Bool(true));
+    let entries = result["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["title"], "알파 항목");
+}
+
+#[tokio::test]
+async fn mcp_bundle_cost_hint_emitted_when_default_depth_and_links() {
+    use eln_core::schema::manifest::Manifest;
+
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "타겟 entry", None, vec![]).unwrap();
+    let linker = ops::entry_new(dir.path(), "링커 entry", None, vec![]).unwrap();
+    // manifest.links에 직접 link 박음 — test fixture (vault 규칙은 production 한정).
+    let mut m = Manifest::read(&linker.entry.dir).unwrap();
+    m.links.push("N0001".into());
+    m.write(&linker.entry.dir).unwrap();
+
+    let result = BundleHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         linker.entry.manifest.id,
+                // depth 미지정 → default-0 path → cost_hint 후보
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(
+        result["cost_hint"].is_string(),
+        "cost_hint should be emitted at default depth with manifest.links: {result}"
+    );
+    // linked는 depth=0이라 비어 있어야 함 — cost_hint가 escalate 안내 역할.
+    assert!(
+        result["linked"].as_array().unwrap().is_empty(),
+        "linked must be empty at default depth=0: {result}"
+    );
+}
+
+#[tokio::test]
+async fn mcp_bundle_invalid_since_returns_invalid_argument() {
+    use eln_plugin_sdk::ToolError;
+
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "since cross-layer", None, vec![]).unwrap();
+    let err = BundleHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "since":      "garbage-since-string",
+            }),
+        )
+        .await
+        .expect_err("invalid since must surface as InvalidArgument (cross-layer)");
+    match err {
+        ToolError::InvalidArgument(msg) => {
+            assert!(msg.contains("since"), "message should mention since: {msg}");
+        }
+        other => panic!("expected InvalidArgument, got {other:?}"),
+    }
+}
