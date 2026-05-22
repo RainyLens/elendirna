@@ -486,6 +486,30 @@ async fn entry_tag_set_dedupes_and_trims_preserving_order() {
     assert_eq!(result["changed"], Value::Bool(true));
 }
 
+#[tokio::test]
+async fn entry_tag_set_missing_tags_returns_invalid_argument() {
+    // codex S4 closure review h1 [Medium] mitigation: schema는 required인데 handler가
+    // optional_string_array로 받으면 null/missing tags가 빈 array가 되어 모든 tag를
+    // silently 삭제하는 사고가 발생할 수 있음. require_string_array helper로 가드.
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "tag entry", None, vec!["alpha".into()]).unwrap();
+    let err = EntryTagSetHandler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id":         "N0001",
+                // tags 키 누락
+            }),
+        )
+        .await
+        .expect_err("missing tags must surface as InvalidArgument (not silently empty)");
+    match err {
+        ToolError::InvalidArgument(msg) => assert!(msg.contains("tags")),
+        other => panic!("expected InvalidArgument, got {other:?}"),
+    }
+}
+
 // ─── revision_add ────────────────────────
 
 #[tokio::test]

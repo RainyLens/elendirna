@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use eln_plugin_sdk::{CallContext, PermissionDenied, Permissions, ToolError, ToolHandler};
 use serde_json::{Value, json};
 
-use super::{optional_string_array, require_string};
+use super::{require_string, require_string_array};
 use crate::vault::entry::Entry;
 use crate::vault::id::EntryId;
 use crate::vault::util::append_sync_event;
@@ -42,7 +42,7 @@ impl ToolHandler for EntryTagSetHandler {
 
         let vault_root = Path::new(require_string(&args, "vault_root")?);
         let id_str = require_string(&args, "id")?;
-        let raw_tags = optional_string_array(&args, "tags")?;
+        let raw_tags = require_string_array(&args, "tags")?;
 
         // dedupe (순서 유지) + trim + empty drop — mcp_server inline 로직 verbatim
         let mut new_tags: Vec<String> = Vec::new();

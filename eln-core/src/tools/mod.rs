@@ -66,6 +66,19 @@ pub(crate) fn optional_string<'a>(
     }
 }
 
+/// 필수 string-array 인자 파싱. 누락/null도 `InvalidArgument` (`optional_string_array`와 달리 빈 Vec X).
+///
+/// `entry_tag_set` 처럼 schema는 required이지만 빈 array는 의도된 동작(전 tag 삭제)인 경우에 사용 —
+/// 직접 호출자가 `tags` 키 누락 시 모든 tag를 silently 지우는 사고를 막는다.
+pub(crate) fn require_string_array(args: &Value, key: &str) -> Result<Vec<String>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Err(ToolError::InvalidArgument(format!(
+            "missing `{key}` (array of strings)"
+        ))),
+        Some(_) => optional_string_array(args, key),
+    }
+}
+
 /// 옵셔널 string-array 인자 파싱. 누락/null은 빈 Vec, 배열 안 원소가 string이 아니면 `InvalidArgument`.
 pub(crate) fn optional_string_array(args: &Value, key: &str) -> Result<Vec<String>, ToolError> {
     match args.get(key) {
