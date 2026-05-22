@@ -39,8 +39,19 @@ pub struct ServeArgs {
 
 pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     if !args.mcp {
-        // --mcp 없이 호출 시: MCP config snippet 출력
-        print_mcp_snippet(args.vault.as_deref());
+        // --mcp 없이 호출 시: 선택된 transport용 snippet 출력.
+        // (N0033 r0009 Step 6.1) stdio/HTTP 둘로 분기 — stdio는 Claude Desktop
+        // mcpServers config, HTTP는 curl smoke + remote MCP client 안내.
+        // 사용자 명시한 --addr가 있으면 HTTP snippet에서 그대로 반영.
+        let addr = args
+            .http
+            .clone()
+            .or_else(|| args.addr.clone())
+            .unwrap_or_else(|| "127.0.0.1:7878".to_string());
+        match args.transport {
+            TransportKind::Stdio => print_mcp_snippet_stdio(args.vault.as_deref()),
+            TransportKind::Http => print_mcp_snippet_http(args.vault.as_deref(), &addr),
+        }
         return Ok(());
     }
 
@@ -172,25 +183,13 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     }
 }
 
-/// `elf serve` (--mcp 없이) 호출 시 MCP config snippet을 stdout에 출력.
-fn print_mcp_snippet(vault_path: Option<&std::path::Path>) {
-    // `elf` 바이너리 경로
-    let elf_bin = std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "elf".to_string());
+/// `elf serve` (--mcp 없이) 호출 시 stdio MCP config snippet을 stdout에 출력.
+/// Claude Desktop / `.claude/mcp.json` 등 stdio-spawn MCP client용.
+fn print_mcp_snippet_stdio(vault_path: Option<&std::path::Path>) {
+    let elf_bin = resolve_elf_bin();
+    let vault_str = resolve_vault_display(vault_path);
 
-    // vault 경로 결정
-    let vault_str = vault_path
-        .map(|p| p.display().to_string())
-        .or_else(|| {
-            let cwd = std::env::current_dir().ok()?;
-            vault::find_vault_root(&cwd)
-                .ok()
-                .map(|p| p.display().to_string())
-        })
-        .unwrap_or_else(|| "/path/to/your/vault".to_string());
-
-    println!("# Elendirna MCP 서버 설정 snippet");
+    println!("# Elendirna MCP 서버 설정 snippet (stdio transport)");
     println!(
         "# Claude Desktop / claude_desktop_config.json 또는 .claude/mcp.json 에 추가하세요:\n"
     );
@@ -198,8 +197,65 @@ fn print_mcp_snippet(vault_path: Option<&std::path::Path>) {
     println!("  \"mcpServers\": {{");
     println!("    \"elendirna\": {{");
     println!("      \"command\": \"{elf_bin}\",");
-    println!("      \"args\": [\"serve\", \"--mcp\", \"--vault\", \"{vault_str}\"]");
+    println!(
+        "      \"args\": [\"serve\", \"--mcp\", \"--transport\", \"stdio\", \"--vault\", \"{vault_str}\"]"
+    );
     println!("    }}");
     println!("  }}");
     println!("}}");
+}
+
+/// `elf serve --transport http` (--mcp 없이) 호출 시 HTTP transport용 안내 snippet.
+/// Streamable HTTP MCP endpoint (`/mcp`) + 휴먼 백엔드 (`/api/health`) 위치 안내,
+/// curl smoke 예제, S2 한정 READ-only 가드 명시.
+fn print_mcp_snippet_http(vault_path: Option<&std::path::Path>, addr: &str) {
+    let elf_bin = resolve_elf_bin();
+    let vault_str = resolve_vault_display(vault_path);
+
+    println!("# Elendirna MCP 서버 설정 snippet (Streamable HTTP transport)");
+    println!("# S2 한정: HTTP transport는 READ-only — 외부 write는 S3 ApiKey auth 도착 후.\n");
+    println!("# 1) 서버 기동:");
+    println!(
+        "#    {elf_bin} serve --mcp --transport http --addr {addr} --vault {vault_str}\n"
+    );
+    println!("# 2) curl smoke — initialize:");
+    println!("#    curl -i -X POST http://{addr}/mcp \\");
+    println!("#      -H 'Content-Type: application/json' \\");
+    println!("#      -H 'Accept: application/json, text/event-stream' \\");
+    println!(
+        "#      -d '{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"curl\",\"version\":\"0\"}}}}}}'"
+    );
+    println!("#    → 응답 헤더 `Mcp-Session-Id: <uuid>` 받음. 이후 호출에 동봉.\n");
+    println!("# 3) 휴먼 백엔드 health:");
+    println!("#    curl -s http://{addr}/api/health   # → \"ok\"\n");
+    println!("# 4) Streamable HTTP 직접 지원 MCP client (예: 일부 IDE plugin):");
+    println!("{{");
+    println!("  \"mcpServers\": {{");
+    println!("    \"elendirna\": {{");
+    println!("      \"transport\": \"http\",");
+    println!("      \"url\": \"http://{addr}/mcp\"");
+    println!("    }}");
+    println!("  }}");
+    println!("}}");
+    println!();
+    println!("# stdio-spawn MCP client(Claude Desktop)에서 원격 HTTP MCP에 붙으려면");
+    println!("# `mcp-remote` 같은 proxy bridge가 별도 필요.");
+}
+
+fn resolve_elf_bin() -> String {
+    std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "elf".to_string())
+}
+
+fn resolve_vault_display(vault_path: Option<&std::path::Path>) -> String {
+    vault_path
+        .map(|p| p.display().to_string())
+        .or_else(|| {
+            let cwd = std::env::current_dir().ok()?;
+            vault::find_vault_root(&cwd)
+                .ok()
+                .map(|p| p.display().to_string())
+        })
+        .unwrap_or_else(|| "/path/to/your/vault".to_string())
 }
