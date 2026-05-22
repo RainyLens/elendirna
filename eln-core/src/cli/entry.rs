@@ -384,8 +384,7 @@ pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         .status()?;
 
     if !status.success() {
-        return Err(ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(ElfError::Io(std::io::Error::other(
             format!("편집기가 비정상 종료됨: exit={:?}", status.code()),
         )));
     }
@@ -433,7 +432,7 @@ pub fn run_edit(args: EditArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     }
 
     append_sync_event(&vault_root, "entry.edit", Some(&id.to_string()))?;
-    println!("✓ entry 편집 완료: {}", id);
+    println!("✓ entry 편집 완료: {id}");
 
     Ok(())
 }

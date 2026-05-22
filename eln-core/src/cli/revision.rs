@@ -81,7 +81,7 @@ pub fn run_add(args: AddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         let rev_dir = Revision::rev_dir(&vault_root, &entry_id);
         let next_id = crate::vault::id::RevisionId::next(&rev_dir)?;
         println!("-- dry-run: 실제로 생성되지 않습니다 --");
-        println!("  [create] revisions/{}/{next_id}.md", entry_id);
+        println!("  [create] revisions/{entry_id}/{next_id}.md");
         println!("  [update] entries/…/manifest.toml  (updated 갱신)");
         println!("  [append] .elendirna/sync.jsonl");
         return Ok(());
@@ -148,28 +148,26 @@ pub fn run_list(args: ListArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else if revisions.is_empty() {
+        println!("(revision 없음)");
     } else {
-        if revisions.is_empty() {
-            println!("(revision 없음)");
-        } else {
-            for r in &revisions {
-                println!(
-                    "{}  baseline: {}  {}",
-                    r.rev_id,
-                    r.baseline,
-                    r.created.format("%Y-%m-%d %H:%M"),
-                );
-                println!(
-                    "  {}",
-                    r.delta
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .chars()
-                        .take(72)
-                        .collect::<String>()
-                );
-            }
+        for r in &revisions {
+            println!(
+                "{}  baseline: {}  {}",
+                r.rev_id,
+                r.baseline,
+                r.created.format("%Y-%m-%d %H:%M"),
+            );
+            println!(
+                "  {}",
+                r.delta
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .take(72)
+                    .collect::<String>()
+            );
         }
     }
 

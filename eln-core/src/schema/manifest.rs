@@ -173,14 +173,14 @@ impl NoteFrontmatter {
                 || line.starts_with("tags:")
             {
                 // tags 블록 — 인라인 [a, b] 또는 block - item 형식
-                if line.starts_with("tags:") {
-                    let inline = line["tags:".len()..].trim();
+                if let Some(rest) = line.strip_prefix("tags:") {
+                    let inline = rest.trim();
                     if inline.starts_with('[') {
                         // 인라인 배열
                         tags = inline
                             .trim_matches(|c| c == '[' || c == ']')
                             .split(',')
-                            .map(|s| yaml_unquote(s))
+                            .map(yaml_unquote)
                             .filter(|s| !s.is_empty())
                             .collect();
                     }
@@ -196,9 +196,9 @@ impl NoteFrontmatter {
         if tags.is_empty() {
             let mut in_tags = false;
             for line in fm_raw.lines() {
-                if line.starts_with("tags:") {
+                if let Some(rest) = line.strip_prefix("tags:") {
                     in_tags = true;
-                    let inline = line["tags:".len()..].trim();
+                    let inline = rest.trim();
                     if !inline.is_empty() && !inline.starts_with('[') {
                         // 무시
                     }
@@ -230,7 +230,7 @@ impl NoteFrontmatter {
         Self::parse(&content)
             .map(|(fm, body)| (fm, body.to_string()))
             .ok_or_else(|| ElfError::ParseError {
-                message: format!("note.md frontmatter 파싱 실패: {:?}", note_path),
+                message: format!("note.md frontmatter 파싱 실패: {note_path:?}"),
             })
     }
 

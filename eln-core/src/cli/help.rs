@@ -26,7 +26,7 @@ pub fn run(args: HelpArgs) -> Result<(), ElfError> {
         for cmd in surface["commands"].as_array().unwrap_or(&vec![]) {
             let name = cmd["name"].as_str().unwrap_or("");
             let about = cmd["about"].as_str().unwrap_or("");
-            println!("  {:<20} {}", name, about);
+            println!("  {name:<20} {about}");
         }
         println!();
         println!("AI 워크플로 가이드:");

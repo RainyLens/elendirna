@@ -155,8 +155,7 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     match transport {
         TransportKind::Stdio => {
             crate::mcp_server::run_stdio(resolution, launch_init_fallback).map_err(|e| {
-                ElfError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                ElfError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })
@@ -170,12 +169,11 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                 },
             )?;
             let rt = tokio::runtime::Runtime::new().map_err(|e| {
-                ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                ElfError::Io(std::io::Error::other(e.to_string()))
             })?;
             rt.block_on(crate::mcp_server::run_http(resolution, bind))
                 .map_err(|e| {
-                    ElfError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    ElfError::Io(std::io::Error::other(
                         e.to_string(),
                     ))
                 })

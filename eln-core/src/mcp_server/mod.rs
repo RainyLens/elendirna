@@ -1075,8 +1075,7 @@ impl ElfMcpServer {
         let cost_hint = if depth_was_default && link_count > 0 {
             let est_bytes = ops::estimate_linked_entry_bytes(&res.path, &b.entry.manifest.links);
             Some(format!(
-                "linked {} entry는 default(depth=0)에서 미수집 (~{} bytes 예상). bundle(id, depth=1)로 escalate.",
-                link_count, est_bytes
+                "linked {link_count} entry는 default(depth=0)에서 미수집 (~{est_bytes} bytes 예상). bundle(id, depth=1)로 escalate."
             ))
         } else {
             None

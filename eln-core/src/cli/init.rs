@@ -93,13 +93,13 @@ pub fn run(args: InitArgs) -> Result<(), ElfError> {
 /// MCP `serve` fallback이나 향후 다른 fallback caller는 이 함수를 `Fallback`으로 호출.
 pub(crate) fn run_with_context(args: InitArgs, ctx: InitContext) -> Result<(), ElfError> {
     let root = if args.global {
-        let home = std::env::var("USERPROFILE")
+        
+        std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
             .map(PathBuf::from)
             .map_err(|_| ElfError::InvalidInput {
                 message: "홈 디렉터리를 결정할 수 없습니다".to_string(),
-            })?;
-        home
+            })?
     } else {
         args.path.canonicalize().unwrap_or(args.path.clone())
     };

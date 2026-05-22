@@ -77,34 +77,32 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 "data": data,
             })
         );
+    } else if result.issues.is_empty() {
+        println!("✓ All checks passed");
     } else {
-        if result.issues.is_empty() {
-            println!("✓ All checks passed");
-        } else {
-            for issue in &result.issues {
-                let prefix = match issue.severity {
-                    Severity::Error => "ERROR  ",
-                    Severity::Warning => "WARN   ",
-                };
-                let kind = match issue.kind {
-                    IssueKind::Naming => "naming",
-                    IssueKind::Schema => "schema",
-                    IssueKind::Consistency => "consistency",
-                    IssueKind::Dangling => "dangling",
-                    IssueKind::Cycle => "cycle",
-                    IssueKind::Orphan => "orphan",
-                    IssueKind::Asset => "asset",
-                };
-                let fixable = if issue.fix.is_some() {
-                    " [--fix로 자동 수정 가능]"
-                } else {
-                    ""
-                };
-                println!("{prefix}[{kind}] {}{fixable}", issue.message);
-            }
-            println!();
-            println!("  {} error(s), {} warning(s)", errors, warnings);
+        for issue in &result.issues {
+            let prefix = match issue.severity {
+                Severity::Error => "ERROR  ",
+                Severity::Warning => "WARN   ",
+            };
+            let kind = match issue.kind {
+                IssueKind::Naming => "naming",
+                IssueKind::Schema => "schema",
+                IssueKind::Consistency => "consistency",
+                IssueKind::Dangling => "dangling",
+                IssueKind::Cycle => "cycle",
+                IssueKind::Orphan => "orphan",
+                IssueKind::Asset => "asset",
+            };
+            let fixable = if issue.fix.is_some() {
+                " [--fix로 자동 수정 가능]"
+            } else {
+                ""
+            };
+            println!("{prefix}[{kind}] {}{fixable}", issue.message);
         }
+        println!();
+        println!("  {errors} error(s), {warnings} warning(s)");
     }
 
     if errors > 0 {

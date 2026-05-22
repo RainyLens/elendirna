@@ -50,8 +50,7 @@ pub async fn run_http(resolution: VaultResolution, addr: SocketAddr) -> anyhow::
     let app = build_app(resolution);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!(
-        "[elf] HTTP transport listening on {} (MCP: /mcp, API: /api) — Permissions::READ only (S2)",
-        addr
+        "[elf] HTTP transport listening on {addr} (MCP: /mcp, API: /api) — Permissions::READ only (S2)"
     );
     axum::serve(listener, app).await?;
     Ok(())

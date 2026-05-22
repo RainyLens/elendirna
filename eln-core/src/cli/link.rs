@@ -63,7 +63,7 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 })
             );
         } else {
-            println!("(no-op) 링크가 이미 존재합니다: {} → {}", from_str, to_str);
+            println!("(no-op) 링크가 이미 존재합니다: {from_str} → {to_str}");
         }
         return Ok(());
     }
@@ -99,7 +99,7 @@ pub fn run(args: LinkArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             })
         );
     } else {
-        println!("✓ 링크 생성: {} ↔ {}", from_str, to_str);
+        println!("✓ 링크 생성: {from_str} ↔ {to_str}");
     }
 
     Ok(())

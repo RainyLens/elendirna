@@ -74,7 +74,7 @@ pub fn run(args: MigrateArgs) -> Result<(), ElfError> {
             continue;
         }
         // dst 상위 디렉터리(.elendirna/)는 이미 존재하므로 rename 가능
-        std::fs::rename(src, dst).map_err(|e| ElfError::Io(e))?;
+        std::fs::rename(src, dst).map_err(ElfError::Io)?;
         println!("  [moved] {name}/  →  {}", dst.display());
     }
 

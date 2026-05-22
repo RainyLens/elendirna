@@ -35,7 +35,7 @@ pub fn append_sync_event(
         Some(i) => serde_json::json!({"ts": ts, "agent": agent, "action": action, "id": i}),
         None => serde_json::json!({"ts": ts, "agent": agent, "action": action}),
     };
-    let line = format!("{}\n", event);
+    let line = format!("{event}\n");
 
     let path = crate::vault::metadata_root(vault_root).join("sync.jsonl");
     use std::io::Write;

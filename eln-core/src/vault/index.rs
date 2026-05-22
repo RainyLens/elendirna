@@ -47,8 +47,7 @@ fn index_path(vault_root: &Path) -> std::path::PathBuf {
 fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     let path = index_path(vault_root);
     let conn = Connection::open(&path).map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
@@ -61,15 +60,13 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     ",
     )
     .map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
 
     conn.execute_batch(SCHEMA).map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
@@ -89,8 +86,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     ",
     )
     .map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
@@ -115,8 +111,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
             ],
         )
         .map_err(|e| {
-            ElfError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            ElfError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -127,8 +122,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 params![m.id, tag],
             )
             .map_err(|e| {
-                ElfError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                ElfError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -147,8 +141,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                     ],
                 )
                 .map_err(|e| {
-                    ElfError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    ElfError::Io(std::io::Error::other(
                         e.to_string(),
                     ))
                 })?;
@@ -165,8 +158,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 params![m.id, link],
             )
             .map_err(|e| {
-                ElfError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                ElfError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -228,8 +220,7 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
     sql.push_str(" ORDER BY e.id");
 
     let mut stmt = conn.prepare(&sql).map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })?;
@@ -246,15 +237,13 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
             })
         })
         .map_err(|e| {
-            ElfError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            ElfError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
-        ElfError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        ElfError::Io(std::io::Error::other(
             e.to_string(),
         ))
     })

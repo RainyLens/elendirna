@@ -52,19 +52,17 @@ pub fn run(args: QueryArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else if rows.is_empty() {
+        println!("(결과 없음)");
     } else {
-        if rows.is_empty() {
-            println!("(결과 없음)");
-        } else {
-            for r in &rows {
-                println!(
-                    "{:<8} {:<40} [{}]  {}",
-                    r.id,
-                    r.title,
-                    r.status,
-                    &r.created[..10],
-                );
-            }
+        for r in &rows {
+            println!(
+                "{:<8} {:<40} [{}]  {}",
+                r.id,
+                r.title,
+                r.status,
+                &r.created[..10],
+            );
         }
     }
 

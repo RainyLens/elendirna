@@ -555,7 +555,7 @@ pub fn sync_record(
         "entries":    entries,
         "session_id": session_id,
     });
-    let line = format!("{}\n", event);
+    let line = format!("{event}\n");
     let path = vault_root.join(".elendirna").join("sync.jsonl");
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
@@ -688,9 +688,9 @@ fn affixed_asset_key(base_key: &str, affix: usize) -> String {
         .unwrap_or(base_key);
     let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext.is_empty() {
-        format!("{}_{}", stem, affix)
+        format!("{stem}_{affix}")
     } else {
-        format!("{}_{}.{}", stem, affix, ext)
+        format!("{stem}_{affix}.{ext}")
     }
 }
 
@@ -731,13 +731,13 @@ pub fn entry_attach(
     if !file_path.exists() {
         return Err(ElfError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("첨부할 파일이 존재하지 않음: {:?}", file_path),
+            format!("첨부할 파일이 존재하지 않음: {file_path:?}"),
         )));
     }
 
     if !file_path.is_file() {
         return Err(ElfError::InvalidInput {
-            message: format!("attachment path is not a regular file: {:?}", file_path),
+            message: format!("attachment path is not a regular file: {file_path:?}"),
         });
     }
 
@@ -749,7 +749,7 @@ pub fn entry_attach(
     });
     let filename = sanitize_asset_filename(raw_filename)?;
 
-    let base_key = format!("{}_{}", id_str, filename);
+    let base_key = format!("{id_str}_{filename}");
     let mut asset_key = base_key.clone();
     let mut collision = false;
     let assets_dir = crate::vault::data_root(vault_root).join("assets");
@@ -781,14 +781,13 @@ pub fn entry_attach(
 
     let warning = if collision {
         Some(format!(
-            "파일명 충돌로 인해 '{}'로 저장되었습니다.",
-            asset_key
+            "파일명 충돌로 인해 '{asset_key}'로 저장되었습니다."
         ))
     } else {
         None
     };
 
-    let event = format!("entry.attach.{}", id_str);
+    let event = format!("entry.attach.{id_str}");
     let _ = append_sync_event(vault_root, &event, Some(&asset_key));
 
     Ok(AttachmentResult {
@@ -823,13 +822,12 @@ pub fn entry_detach(vault_root: &Path, id_str: &str, asset_key: &str) -> Result<
     let still_referenced = Entry::find_all(vault_root).into_iter().any(|e| {
         e.manifest.id != id_str && e.manifest.sources.iter().any(|source| source == asset_key)
     });
-    if !still_referenced {
-        if asset_path.is_file() {
+    if !still_referenced
+        && asset_path.is_file() {
             std::fs::remove_file(asset_path)?;
         }
-    }
 
-    let event = format!("entry.detach.{}", id_str);
+    let event = format!("entry.detach.{id_str}");
     let _ = append_sync_event(vault_root, &event, Some(asset_key));
 
     Ok(true)

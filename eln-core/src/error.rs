@@ -137,6 +137,6 @@ impl ElfError {
             "hint": self.hint(),
             "fix": null,
         });
-        eprintln!("{}", obj);
+        eprintln!("{obj}");
     }
 }

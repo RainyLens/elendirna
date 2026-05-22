@@ -423,7 +423,7 @@ fn check_cycle(entries: &[Entry], issues: &mut Vec<Issue>) {
                     severity: Severity::Error,
                     kind: IssueKind::Cycle,
                     path,
-                    message: format!("baseline 순환 참조 감지: {} → {chain}", start),
+                    message: format!("baseline 순환 참조 감지: {start} → {chain}"),
                     fix: None,
                 });
                 break;
