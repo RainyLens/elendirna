@@ -10,8 +10,7 @@ use async_trait::async_trait;
 use eln_plugin_sdk::{CallContext, PermissionDenied, Permissions, ToolError, ToolHandler};
 use serde_json::{Value, json};
 
-use super::{optional_string, optional_string_array, require_string};
-use crate::error::ElfError;
+use super::{map_ops_error, optional_string, optional_string_array, require_string};
 use crate::vault::ops;
 
 pub const NAME: &str = "entry_new";
@@ -54,15 +53,6 @@ impl ToolHandler for EntryNewHandler {
             "id":    result.entry.manifest.id,
             "title": result.entry.manifest.title,
         }))
-    }
-}
-
-fn map_ops_error(err: ElfError) -> ToolError {
-    match err {
-        ElfError::NotFound { .. }
-        | ElfError::AlreadyExists { .. }
-        | ElfError::InvalidInput { .. } => ToolError::InvalidArgument(err.to_string()),
-        other => ToolError::Internal(other.to_string()),
     }
 }
 

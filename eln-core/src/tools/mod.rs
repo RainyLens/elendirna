@@ -1,18 +1,41 @@
 //! Vault tool dispatch — transport-agnostic ToolHandler implementations.
 //!
-//! S3.1: SDK ToolHandler trait의 core 자기-소비 표면 첫 두 개(entry_list READ,
-//! entry_new WRITE). 두 handler 모두 pre-resolved `vault_root` 절대경로를
-//! args로 받음 — vault alias 해석은 mcp_server adapter의 책임. mcp_server
-//! `#[tool]` 바디는 S3.1에선 그대로이며, S3.2에서 이 handler에 위임된다.
+//! S3.1~S3.2: PoC-1 (entry_list READ, entry_new WRITE) + adapter delegation 패턴.
+//! S4.1: PoC-2 = 잔여 9 WRITE tool handler split. 모두 pre-resolved `vault_root`
+//! 절대경로를 args로 받음 — vault alias 해석은 mcp_server adapter의 책임.
+//! `messages[]` / `vault_meta` / `escalated_write` 응답 키는 adapter에서 부착.
 
+pub mod entry_attach;
+pub mod entry_detach;
 pub mod entry_list;
 pub mod entry_new;
+pub mod entry_status;
+pub mod entry_tag_add;
+pub mod entry_tag_remove;
+pub mod entry_tag_set;
+pub mod revision_add;
+pub mod sync_record;
+pub mod validate;
 
 #[cfg(test)]
 mod tests;
 
 use eln_plugin_sdk::ToolError;
 use serde_json::Value;
+
+use crate::error::ElfError;
+
+/// `vault::ops::*` 등 core 호출에서 돌아오는 `ElfError`를 `ToolError`로 매핑.
+/// NotFound / AlreadyExists / InvalidInput는 caller-side 정보로 `InvalidArgument`,
+/// 그 외는 system fault로 `Internal`로 surface. PoC-1/PoC-2의 6 handler가 공유.
+pub(crate) fn map_ops_error(err: ElfError) -> ToolError {
+    match err {
+        ElfError::NotFound { .. }
+        | ElfError::AlreadyExists { .. }
+        | ElfError::InvalidInput { .. } => ToolError::InvalidArgument(err.to_string()),
+        other => ToolError::Internal(other.to_string()),
+    }
+}
 
 /// 필수 string 인자 파싱. 누락/타입 mismatch는 모두 `InvalidArgument`.
 pub(crate) fn require_string<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolError> {
