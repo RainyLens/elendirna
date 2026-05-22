@@ -1,4 +1,15 @@
-//! 휴먼용 HTTP 백엔드 — S2.1에선 module 자리만, axum integration은 Phase S2.4.
+//! 휴먼용 HTTP 백엔드.
 //!
-//! Phase S2.4에서 `pub fn router() -> axum::Router`로 채워짐.
-//! 현재는 자리 표시.
+//! S2: skeleton + `GET /health`. 실 vault tool noun endpoint는 다음 phase 묵힘.
+//! `mcp_server::http::run_http`에서 `/api` 아래 nest.
+
+use axum::Router;
+use axum::routing::get;
+
+pub fn router() -> Router {
+    Router::new().route("/health", get(health))
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
