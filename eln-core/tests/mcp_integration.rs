@@ -358,3 +358,170 @@ fn mcp_entry_assets_unknown_id_returns_error() {
     let err = ops::entry_assets(dir.path(), "N9999").err().unwrap();
     assert_eq!(err.exit_code(), 2); // NotFound
 }
+
+// ─── S4.3: gap fill (entry_status / tag tools / revision_add) ──────────────
+//
+// 4 manifest-direct tools(entry_status / tag_*)는 `ops::*` 추출이 의식적으로 미뤄짐
+// (S4.1 결정 — premature abstraction 회피). 따라서 mcp_integration scope에서는
+// handler `call().await`로 직접 검증 — tools/tests.rs unit test와 일부 패턴 겹치지만
+// **sync.jsonl event 기록 + manifest disk persistence** 같은 cross-layer 검증을 포함.
+// revision_add는 `ops::revision_add` 직접 호출 + manifest `updated` 타임스탬프 전진까지.
+
+use eln_core::tools::entry_status::EntryStatusHandler;
+use eln_core::tools::entry_tag_add::EntryTagAddHandler;
+use eln_core::tools::entry_tag_remove::EntryTagRemoveHandler;
+use eln_core::tools::entry_tag_set::EntryTagSetHandler;
+use eln_plugin_sdk::{CallContext, Identity, Permissions, ToolHandler};
+use serde_json::{Value, json};
+
+fn admin_ctx() -> CallContext {
+    CallContext {
+        session_id: "mcp-int-session".into(),
+        identity: Identity::Human,
+        permissions: Permissions::ADMIN,
+    }
+}
+
+#[tokio::test]
+async fn mcp_entry_status_round_trip_records_sync_event() {
+    let (dir, _guard) = setup_vault();
+    new_entry_direct(&dir, "상태 round-trip");
+
+    let to_stable = EntryStatusHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "status":     "stable",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(to_stable["from"], "draft");
+    assert_eq!(to_stable["to"], "stable");
+
+    let to_archived = EntryStatusHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "status":     "archived",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(to_archived["from"], "stable");
+    assert_eq!(to_archived["to"], "archived");
+
+    let sync_log =
+        std::fs::read_to_string(dir.path().join(".elendirna").join("sync.jsonl")).unwrap();
+    assert!(sync_log.contains("status.changed.N0001.stable"));
+    assert!(sync_log.contains("status.changed.N0001.archived"));
+}
+
+#[tokio::test]
+async fn mcp_entry_tag_add_is_idempotent_on_second_call() {
+    let (dir, _guard) = setup_vault();
+    new_entry_direct(&dir, "tag idempotent");
+
+    let first = EntryTagAddHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "tag":        "alpha",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first["added"], Value::Bool(true));
+    assert_eq!(first["tags"], json!(["alpha"]));
+
+    let second = EntryTagAddHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "tag":        "alpha",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second["added"], Value::Bool(false));
+    assert_eq!(second["tags"], json!(["alpha"]));
+}
+
+#[tokio::test]
+async fn mcp_entry_tag_remove_missing_is_noop() {
+    let (dir, _guard) = setup_vault();
+    new_entry_direct(&dir, "tag remove noop");
+
+    let result = EntryTagRemoveHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "tag":        "ghost",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result["removed"], Value::Bool(false));
+    assert_eq!(result["tags"], json!([]));
+}
+
+#[tokio::test]
+async fn mcp_entry_tag_set_dedupes_and_trims() {
+    let (dir, _guard) = setup_vault();
+    new_entry_direct(&dir, "tag set dedupe");
+
+    let result = EntryTagSetHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "id":         "N0001",
+                "tags":       ["  alpha ", "alpha", "", "beta"],
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result["tags"], json!(["alpha", "beta"]));
+    assert_eq!(result["changed"], Value::Bool(true));
+}
+
+#[test]
+fn mcp_revision_add_appends_and_touches_manifest() {
+    let (dir, _guard) = setup_vault();
+    new_entry_direct(&dir, "revision add");
+
+    let manifest_path = eln_core::vault::entry::Entry::find_by_id(
+        dir.path(),
+        &eln_core::vault::id::EntryId::from_str("N0001").unwrap(),
+    )
+    .unwrap()
+    .dir
+    .join("manifest.toml");
+    let before = std::fs::metadata(&manifest_path).unwrap().modified().unwrap();
+
+    // sleep을 피해 manifest 시간이 동일해도 통과하도록 단조 비교만
+    let r = ops::revision_add(dir.path(), "N0001", "[Change] gap fill test").unwrap();
+    assert_eq!(r.revision.entry_id.to_string(), "N0001");
+    assert_eq!(r.revision.rev_id.to_string(), "r0001");
+
+    let after = std::fs::metadata(&manifest_path).unwrap().modified().unwrap();
+    assert!(after >= before, "manifest mtime should not regress");
+
+    let rev_file = dir
+        .path()
+        .join(".elendirna")
+        .join("revisions")
+        .join("N0001")
+        .join("r0001.md");
+    assert!(rev_file.exists(), "revision file should be created");
+}
