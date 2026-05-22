@@ -22,9 +22,10 @@ pub struct ServeArgs {
     #[arg(long, value_enum, default_value_t = TransportKind::Stdio)]
     pub transport: TransportKind,
 
-    /// HTTP transport 바인드 주소 (`--transport http`일 때만 의미).
-    #[arg(long, default_value = "127.0.0.1:7878", value_name = "ADDR")]
-    pub addr: String,
+    /// HTTP transport 바인드 주소 (`--transport http`일 때만 의미. default `127.0.0.1:7878`).
+    /// stdio에서 명시하면 codex review 2 권고대로 silent ignore 대신 warning 발신.
+    #[arg(long, value_name = "ADDR")]
+    pub addr: Option<String>,
 
     /// **DEPRECATED** ([[N0033]] r0006 Step 4.5): `--http <ADDR>` alias.
     /// v0.7.0에서 제거 예정 — 대신 `--transport http --addr <ADDR>` 사용.
@@ -52,10 +53,21 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
                 다음부터는 `--transport http --addr {legacy_addr}` 사용. \
                 alias는 v0.7.0에서 제거 예정."
             );
-            (TransportKind::Http, legacy_addr.to_string())
+            (TransportKind::Http, Some(legacy_addr.to_string()))
         }
         None => (args.transport, args.addr.clone()),
     };
+
+    // codex review 2: stdio + explicit --addr는 silent ignore가 사용성 함정. warning emit.
+    if transport == TransportKind::Stdio && addr.is_some() {
+        eprintln!(
+            "[elf] WARNING: `--addr`는 `--transport http`에만 의미. \
+            stdio transport에서는 무시됩니다."
+        );
+    }
+
+    // HTTP transport용 default 적용 (사용자 명시값 우선).
+    let addr_resolved = addr.unwrap_or_else(|| "127.0.0.1:7878".to_string());
 
     // N0090: launch_init_fallback은 Fallback init이 기존 vault를 채택한 경우만 true.
     // (resolution, launch_init_fallback) 동시 반환.
@@ -141,11 +153,11 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
         TransportKind::Http => {
             // HTTP transport는 cwd intent signal 비활성 (N0033 r0004) — vault 결정은
             // 위에서 이미 끝났고, READ-only 가드는 ElfMcpServer::new_http가 부여.
-            let bind: std::net::SocketAddr = addr.parse().map_err(|e: std::net::AddrParseError| {
-                ElfError::InvalidInput {
-                    message: format!("--addr 형식 오류 '{addr}': {e}"),
-                }
-            })?;
+            let bind: std::net::SocketAddr = addr_resolved.parse().map_err(
+                |e: std::net::AddrParseError| ElfError::InvalidInput {
+                    message: format!("--addr 형식 오류 '{addr_resolved}': {e}"),
+                },
+            )?;
             let rt = tokio::runtime::Runtime::new().map_err(|e| {
                 ElfError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
             })?;

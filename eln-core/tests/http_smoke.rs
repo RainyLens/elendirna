@@ -165,7 +165,9 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     assert!(payload["error"].is_null(), "entry_list error={:?}", payload["error"]);
     assert!(payload["result"].is_object(), "entry_list result");
 
-    // 5) tools/call revision_add — WRITE는 PermissionDenied(-32001) 거절 (S2 READ-only 가드)
+    // 5) tools/call revision_add — WRITE는 PermissionDenied(-32001) 거절 (S2 READ-only 가드).
+    //    codex review 2 권고: rmcp 1.5.0은 `Err(ErrorData)`를 JSON-RPC `error`로 envelope
+    //    하므로 fallback path 허용 없이 직접 assert.
     let revision_add = json!({
         "jsonrpc": "2.0",
         "id": 4,
@@ -178,28 +180,17 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     let (status, _, ct, body) = post_mcp(&app, revision_add, Some(&sid)).await;
     assert_eq!(status, StatusCode::OK, "JSON-RPC error → HTTP 200");
     let payload = parse_rpc_payload(&body, &ct);
-    // ErrorData가 tool error로 반환되는 두 경로 모두 허용:
-    // (a) JSON-RPC error field 직접 (rmcp가 ToolError를 envelope에 직접 던지는 경우)
-    // (b) tools/call result.isError = true + content[*].text = error description (MCP spec)
-    let direct_err = &payload["error"];
-    let is_error_path = payload["result"]["isError"].as_bool().unwrap_or(false);
-    let is_error_content = payload["result"]["content"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|c| c["text"].as_str())
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .unwrap_or_default();
-    let saw_permission_denied = (direct_err.is_object()
-        && (direct_err["code"].as_i64() == Some(-32001)
-            || direct_err["data"]["kind"].as_str() == Some("permission_denied")))
-        || (is_error_path && is_error_content.to_lowercase().contains("permission"))
-        || is_error_content.to_lowercase().contains("permission");
-    assert!(
-        saw_permission_denied,
-        "revision_add은 HTTP READ-only 가드로 PermissionDenied 떨어져야 함. payload={payload}"
+    let err = &payload["error"];
+    assert!(err.is_object(), "revision_add은 JSON-RPC error로 거절: {payload}");
+    assert_eq!(
+        err["code"].as_i64(),
+        Some(-32001),
+        "ERROR_CODE_PERMISSION_DENIED 정합: {err}"
+    );
+    assert_eq!(
+        err["data"]["kind"].as_str(),
+        Some("permission_denied"),
+        "ToolError::json_rpc_data().kind 식별자 정합: {err}"
     );
 
     // 6) tools/call session_start — HTTP path: transport 발급 session_id를 echo
@@ -241,4 +232,68 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
     assert_eq!(response.status(), StatusCode::OK);
     let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
     assert_eq!(&bytes[..], b"ok");
+}
+
+/// codex review 2 권고: `DELETE /mcp` 후 같은 sid 재사용이 실패해야
+/// `LocalSessionManager.close_session` 회귀를 catch할 수 있다.
+#[tokio::test]
+async fn http_smoke_delete_session_invalidates_sid() {
+    let dir = setup_vault();
+    let resolution = VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: VaultOrigin::ExplicitPath,
+    };
+    let app = build_app(resolution);
+
+    // initialize → sid 발급
+    let initialize = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": { "name": "http-smoke-delete", "version": "0.0.0" }
+        }
+    });
+    let (status, sid, _, _) = post_mcp(&app, initialize, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let sid = sid.expect("Mcp-Session-Id on initialize");
+
+    let initialized = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    });
+    let _ = post_mcp(&app, initialized, Some(&sid)).await;
+
+    // DELETE /mcp with sid → session close
+    let delete = Request::builder()
+        .method(Method::DELETE)
+        .uri("/mcp")
+        .header("host", "localhost")
+        .header("mcp-session-id", &sid)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(delete).await.unwrap();
+    assert!(
+        response.status().is_success() || response.status() == StatusCode::NO_CONTENT,
+        "DELETE /mcp should succeed, got {}",
+        response.status()
+    );
+
+    // 같은 sid로 tools/list → 실패해야 함 (LocalSessionManager invalidated sid)
+    let tools_list = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+    });
+    let (status, _, _, body) = post_mcp(&app, tools_list, Some(&sid)).await;
+    // rmcp 1.5.0: invalid session은 HTTP 404 또는 4xx로 응답. JSON-RPC envelope error는 보통 200 + error
+    // 어느 쪽이든 success(2xx)로 정상 처리되어선 안 됨.
+    assert!(
+        status.is_client_error()
+            || (status == StatusCode::OK && body.to_lowercase().contains("session")),
+        "stale sid는 거절되어야 함, status={status} body={body}"
+    );
 }
