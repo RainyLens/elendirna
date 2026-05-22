@@ -189,13 +189,23 @@ impl ElfMcpServer {
         meta
     }
 
-    /// transport-level Permissions::WRITE 가드 ([[N0033]] r0006 Step 4.6).
+    /// transport-level Permissions::WRITE 가드 — *transport caller capability axis*.
     ///
     /// `default_permissions`에 WRITE가 없으면 SDK `PermissionDenied`로 거절.
+    /// 외부 caller가 vault 변경을 위임받을 capability가 있는가의 단일 비트.
     /// JSON-RPC error는 `eln_plugin_sdk::ToolError::PermissionDenied`의 code/data 매핑을
     /// 그대로 사용 — transport adapter가 `data.kind = "permission_denied"`로 식별 가능.
     ///
+    /// vault 위치 자체의 위험성 가드는 `ensure_write_confirmed` (vault origin axis) — 별 차원.
+    /// RWX bitflag로 환원 불가하므로 미래 vault-scoped capability 모델도 본 가드와 별개로
+    /// 박힐 자리.
+    ///
     /// S2: stdio = ADMIN(자동 통과), HTTP = READ(거절). S3: ApiKey → Permissions derive.
+    /// S3.2: `entry_list`/`entry_new` 어댑터는 본 가드 대신 handler `ctx.permissions.contains(WRITE)`
+    /// 로 흡수 (`crate::tools::*Handler::call` 안의 단일 capability gate). 잔여 호출자
+    /// (`entry_status` / `entry_tag_add` / `entry_tag_remove` / `entry_tag_set` / `revision_add`
+    /// / `sync_record` / `entry_attach` / `entry_detach` / `validate`)는 다음 PoC에서 같은
+    /// 식으로 마이그레이션 대기 — 그 시점에 본 함수와 호출자가 모두 사라질 수 있음.
     fn ensure_write_permitted(&self) -> Result<(), ErrorData> {
         use eln_plugin_sdk::{PermissionDenied, Permissions, ToolError};
         if self.default_permissions.contains(Permissions::WRITE) {
@@ -229,6 +239,49 @@ impl ElfMcpServer {
             return Err(ErrorData::invalid_params(message, None));
         }
         Ok(())
+    }
+
+    /// Tool handler 위임용 `CallContext` 빌드 (S3.2).
+    ///
+    /// `session_id`: `current_session_id`가 있으면 그 값, 없으면 빈 문자열. `entry_list`/
+    /// `entry_new` 어댑터는 `#[tool]` 시그니처에 `RequestContext`를 받지 않으므로 transport
+    /// 단에서 직접 session id를 가져올 수 없다 — HTTP smoke 경로처럼 `session_start` 전에
+    /// tool이 호출되는 경우도 있어 `unwrap_or_default()` fallback이 필요. 현재 두 handler 모두
+    /// `ctx.session_id`를 사용하지 않으며, audit hook 도입 시점에 어댑터 시그니처가 갱신될 자리.
+    ///
+    /// `identity`: `Identity::Human` 고정. ApiKey-derived identity는 별 phase.
+    /// `permissions`: `default_permissions` 그대로 — *transport caller capability axis*.
+    fn build_call_context(&self) -> eln_plugin_sdk::CallContext {
+        let session_id = self
+            .current_session_id
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .unwrap_or_default();
+        eln_plugin_sdk::CallContext {
+            session_id,
+            identity: eln_plugin_sdk::Identity::Human,
+            permissions: self.default_permissions,
+        }
+    }
+
+    /// Handler 응답에 `vault_meta` 키 그룹을 merge한다 (어댑터 공통 책임).
+    fn merge_vault_meta(&self, result: &mut serde_json::Value, res: &VaultResolution) {
+        if let Some(map) = result.as_object_mut() {
+            map.extend(self.vault_meta(res).as_object().unwrap().clone());
+        }
+    }
+
+    /// `ToolError` → JSON-RPC `ErrorData` 단일 매핑.
+    ///
+    /// SDK helper(`json_rpc_code()` / `json_rpc_data()`)를 그대로 사용. variant 추가 시 SDK
+    /// side에서 helper만 갱신되면 어댑터는 그대로 — `data.kind`도 보존.
+    fn map_tool_error(err: eln_plugin_sdk::ToolError) -> ErrorData {
+        ErrorData::new(
+            rmcp::model::ErrorCode(err.json_rpc_code()),
+            err.to_string(),
+            Some(err.json_rpc_data()),
+        )
     }
 
     /// guarded origin(FallbackGlobal | CwdSearchHome) + confirm=true로 가드를 통과한 write 응답에
@@ -630,48 +683,23 @@ impl ElfMcpServer {
         각 항목 메타: revisions(누적 r#### 수), links_out(이 entry가 거는 outbound link 수), linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), updated(최근 활동 시각) — 어느 entry가 활동적이고 hub인지 한눈에 파악. \
         세션 시작 시 작업 범위 파악에 사용. \
         개별 entry 내용은 entry_show 또는 bundle을 사용할 것 — 파일 직접 접근 금지.")]
-    fn entry_list(
+    async fn entry_list(
         &self,
         Parameters(p): Parameters<EntryListParams>,
     ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        let all_entries = ops::entry_list(&res.path);
-        // linked_by는 필터 전 전체 vault 기준 in-degree (필터로 인해 카운트가 줄지 않도록)
-        let linked_by_map = ops::compute_linked_by(&all_entries);
-        let mut entries = all_entries;
-        if let Some(ref tag) = p.tag {
-            entries.retain(|e| e.manifest.tags.contains(tag));
-        }
-        if let Some(ref status) = p.status {
-            entries.retain(|e| e.manifest.status.to_string() == *status);
-        }
-        let out: Vec<_> = entries
-            .iter()
-            .map(|e| {
-                let rev_count = ops::revision_count(
-                    &res.path,
-                    &crate::vault::id::EntryId::from_str(&e.manifest.id).unwrap(),
-                );
-                let linked_by = linked_by_map.get(&e.manifest.id).copied().unwrap_or(0);
-                let links_out = ops::links_out_count(e);
-                serde_json::json!({
-                    "id":         e.manifest.id,
-                    "title":      e.manifest.title,
-                    "status":     e.manifest.status.to_string(),
-                    "tags":       e.manifest.tags,
-                    "created":    e.manifest.created,
-                    "updated":    e.manifest.updated,
-                    "revisions":  rev_count,
-                    "links_out":  links_out,
-                    "linked_by":  linked_by,
-                })
-            })
-            .collect();
-        let mut result = serde_json::json!({ "ok": true, "entries": out });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "tag":        p.tag,
+            "status":     p.status,
+        });
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_list::EntryListHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Ok(Json(Out(result)))
     }
 
@@ -710,26 +738,28 @@ impl ElfMcpServer {
     #[tool(description = "새 entry 생성. \
         새로운 아이디어, 결정, 기록을 남길 때 사용. \
         기존 entry 내용 변경은 revision_add를 사용할 것.")]
-    fn entry_new(&self, Parameters(p): Parameters<EntryNewParams>) -> Result<Json<Out>, ErrorData> {
+    async fn entry_new(
+        &self,
+        Parameters(p): Parameters<EntryNewParams>,
+    ) -> Result<Json<Out>, ErrorData> {
+        use eln_plugin_sdk::ToolHandler;
         let res = self.resolve_tool_vault(p.vault)?;
-        self.ensure_write_permitted()?;
+        // S3.2: transport caller capability gate(`ensure_write_permitted`)는 handler 안의
+        // `ctx.permissions.contains(WRITE)`로 흡수. vault origin axis인 `ensure_write_confirmed`는
+        // handler 호출 *전* 그대로 유지 — guarded origin이면 handler 도달 전에 거절.
         Self::ensure_write_confirmed(&res, p.confirm)?;
-        let r = ops::entry_new(
-            &res.path,
-            &p.title,
-            p.baseline.as_deref(),
-            p.tags.unwrap_or_default(),
-        )
-        .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        let mut result = serde_json::json!({
-            "ok": true,
-            "id":    r.entry.manifest.id,
-            "title": r.entry.manifest.title,
+        let args = serde_json::json!({
+            "vault_root": res.path.to_string_lossy(),
+            "title":      p.title,
+            "baseline":   p.baseline,
+            "tags":       p.tags,
         });
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(self.vault_meta(&res).as_object().unwrap().clone());
+        let ctx = self.build_call_context();
+        let mut result = crate::tools::entry_new::EntryNewHandler
+            .call(&ctx, args)
+            .await
+            .map_err(Self::map_tool_error)?;
+        self.merge_vault_meta(&mut result, &res);
         Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
         Ok(Json(Out(result)))
     }

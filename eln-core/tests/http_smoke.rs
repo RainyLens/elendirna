@@ -193,10 +193,38 @@ async fn http_smoke_initialize_session_tools_and_readonly_guard() {
         "ToolError::json_rpc_data().kind 식별자 정합: {err}"
     );
 
+    // 5b) tools/call entry_new — S3.2 어댑터 위임 후, transport caller capability gate가
+    //     mcp_server의 `ensure_write_permitted`가 아니라 handler 내부 `ctx.permissions.contains(WRITE)`
+    //     로 흡수됐는지 회귀-안전 가드. PermissionDenied 응답 code/data.kind는 동일.
+    let entry_new = json!({
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "entry_new",
+            "arguments": { "title": "blocked-on-http-read-only" }
+        }
+    });
+    let (status, _, ct, body) = post_mcp(&app, entry_new, Some(&sid)).await;
+    assert_eq!(status, StatusCode::OK, "JSON-RPC error → HTTP 200");
+    let payload = parse_rpc_payload(&body, &ct);
+    let err = &payload["error"];
+    assert!(err.is_object(), "entry_new은 JSON-RPC error로 거절: {payload}");
+    assert_eq!(
+        err["code"].as_i64(),
+        Some(-32001),
+        "ERROR_CODE_PERMISSION_DENIED 정합 (handler ctx.permissions gate): {err}"
+    );
+    assert_eq!(
+        err["data"]["kind"].as_str(),
+        Some("permission_denied"),
+        "ToolError::json_rpc_data().kind 식별자 정합: {err}"
+    );
+
     // 6) tools/call session_start — HTTP path: transport 발급 session_id를 echo
     let session_start = json!({
         "jsonrpc": "2.0",
-        "id": 5,
+        "id": 6,
         "method": "tools/call",
         "params": { "name": "session_start", "arguments": {} }
     });
