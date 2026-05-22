@@ -5,8 +5,8 @@
 //!
 //! `setup_vault` helper는 `tests/mcp_integration.rs:16-27` 패턴 mirror — 같은
 //! `cli::init::run` 호출. CWD-derived state 보호용으로 `crate::CWD_LOCK` 공유.
-
-use std::sync::MutexGuard;
+//! handler가 vault_root를 args로 받으므로 init_run 끝나면 guard drop 안전 —
+//! await point 사이에 MutexGuard를 들고 있지 않음.
 
 use eln_plugin_sdk::{
     CallContext, Identity, PermissionDenied, Permissions, ToolError, ToolHandler,
@@ -27,8 +27,8 @@ fn ctx(perms: Permissions) -> CallContext {
     }
 }
 
-fn setup_vault() -> (TempDir, MutexGuard<'static, ()>) {
-    let guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+fn setup_vault() -> TempDir {
+    let _guard = crate::CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().unwrap();
     init_run(InitArgs {
         path: dir.path().to_path_buf(),
@@ -37,7 +37,7 @@ fn setup_vault() -> (TempDir, MutexGuard<'static, ()>) {
         global: false,
     })
     .unwrap();
-    (dir, guard)
+    dir
 }
 
 fn vault_root_arg(dir: &TempDir) -> Value {
@@ -48,7 +48,7 @@ fn vault_root_arg(dir: &TempDir) -> Value {
 
 #[tokio::test]
 async fn entry_list_empty_vault() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryListHandler;
     let result = handler
         .call(&ctx(Permissions::READ), json!({ "vault_root": vault_root_arg(&dir) }))
@@ -60,7 +60,7 @@ async fn entry_list_empty_vault() {
 
 #[tokio::test]
 async fn entry_list_returns_meta_fields() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "첫 항목", None, vec!["alpha".into()]).unwrap();
     ops::entry_new(dir.path(), "두번째 항목", None, vec!["beta".into()]).unwrap();
 
@@ -85,7 +85,7 @@ async fn entry_list_returns_meta_fields() {
 
 #[tokio::test]
 async fn entry_list_filters_by_tag() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "알파 항목", None, vec!["alpha".into()]).unwrap();
     ops::entry_new(dir.path(), "베타 항목", None, vec!["beta".into()]).unwrap();
 
@@ -104,7 +104,7 @@ async fn entry_list_filters_by_tag() {
 
 #[tokio::test]
 async fn entry_list_rejects_without_read_perm() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryListHandler;
     let err = handler
         .call(
@@ -124,7 +124,7 @@ async fn entry_list_rejects_without_read_perm() {
 
 #[tokio::test]
 async fn entry_list_bad_tag_type_returns_invalid_argument() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryListHandler;
     let err = handler
         .call(
@@ -145,7 +145,7 @@ async fn entry_list_bad_tag_type_returns_invalid_argument() {
 
 #[tokio::test]
 async fn entry_new_rejects_without_write_perm() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryNewHandler;
     let err = handler
         .call(
@@ -165,7 +165,7 @@ async fn entry_new_rejects_without_write_perm() {
 
 #[tokio::test]
 async fn entry_new_creates_with_write_perm() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryNewHandler;
     let result = handler
         .call(
@@ -185,7 +185,7 @@ async fn entry_new_creates_with_write_perm() {
 
 #[tokio::test]
 async fn entry_new_missing_baseline_returns_invalid_argument() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let handler = EntryNewHandler;
     let err = handler
         .call(
@@ -208,7 +208,7 @@ async fn entry_new_missing_baseline_returns_invalid_argument() {
 
 #[tokio::test]
 async fn entry_new_with_baseline_and_tags_creates() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let parent = ops::entry_new(dir.path(), "부모 항목", None, vec![]).unwrap();
     let parent_id = parent.entry.manifest.id;
 
@@ -234,7 +234,7 @@ async fn entry_new_with_baseline_and_tags_creates() {
 
 #[tokio::test]
 async fn entry_new_slug_collision_returns_invalid_argument() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "충돌 항목", None, vec![]).unwrap();
 
     let handler = EntryNewHandler;
