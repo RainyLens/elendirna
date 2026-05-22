@@ -1,18 +1,24 @@
 //! Vault tool dispatch — transport-agnostic ToolHandler implementations.
 //!
 //! S3.1~S3.2: PoC-1 (entry_list READ, entry_new WRITE) + adapter delegation 패턴.
-//! S4.1: PoC-2 = 잔여 9 WRITE tool handler split. 모두 pre-resolved `vault_root`
-//! 절대경로를 args로 받음 — vault alias 해석은 mcp_server adapter의 책임.
-//! `messages[]` / `vault_meta` / `escalated_write` 응답 키는 adapter에서 부착.
+//! S4.1: PoC-2 = 잔여 9 WRITE tool handler split.
+//! S5.1: read-side 4 tool (entry_show / bundle / query / entry_assets) split.
+//! 모두 pre-resolved `vault_root` 절대경로를 args로 받음 — vault alias 해석은
+//! mcp_server adapter의 책임. `messages[]` / `vault_meta` / `escalated_write`
+//! 응답 키는 adapter에서 부착.
 
+pub mod bundle;
+pub mod entry_assets;
 pub mod entry_attach;
 pub mod entry_detach;
 pub mod entry_list;
 pub mod entry_new;
+pub mod entry_show;
 pub mod entry_status;
 pub mod entry_tag_add;
 pub mod entry_tag_remove;
 pub mod entry_tag_set;
+pub mod query;
 pub mod revision_add;
 pub mod sync_record;
 pub mod validate;
@@ -100,6 +106,31 @@ pub(crate) fn optional_string_array(args: &Value, key: &str) -> Result<Vec<Strin
         }
         Some(other) => Err(ToolError::InvalidArgument(format!(
             "`{key}` must be an array of strings, got {}",
+            value_kind(other)
+        ))),
+    }
+}
+
+/// 옵셔널 u32 인자 파싱. 누락/null은 None, range out / 음수 / 비숫자는 `InvalidArgument`.
+///
+/// S5.1: `bundle` handler가 `depth: Option<u32>`를 받는 유일한 사용자. number 헬퍼
+/// 첫 도입이라 단일 사용처지만 future-proof로 추출.
+pub(crate) fn optional_u32(args: &Value, key: &str) -> Result<Option<u32>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(n)) => {
+            let raw = n.as_u64().ok_or_else(|| {
+                ToolError::InvalidArgument(format!("`{key}` must be a non-negative integer"))
+            })?;
+            if raw > u32::MAX as u64 {
+                return Err(ToolError::InvalidArgument(format!(
+                    "`{key}` exceeds u32::MAX"
+                )));
+            }
+            Ok(Some(raw as u32))
+        }
+        Some(other) => Err(ToolError::InvalidArgument(format!(
+            "`{key}` must be a non-negative integer, got {}",
             value_kind(other)
         ))),
     }

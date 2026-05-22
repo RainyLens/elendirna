@@ -15,14 +15,18 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 use crate::cli::init::{InitArgs, run as init_run};
+use crate::tools::bundle::BundleHandler;
+use crate::tools::entry_assets::EntryAssetsHandler;
 use crate::tools::entry_attach::EntryAttachHandler;
 use crate::tools::entry_detach::EntryDetachHandler;
 use crate::tools::entry_list::EntryListHandler;
 use crate::tools::entry_new::EntryNewHandler;
+use crate::tools::entry_show::EntryShowHandler;
 use crate::tools::entry_status::EntryStatusHandler;
 use crate::tools::entry_tag_add::EntryTagAddHandler;
 use crate::tools::entry_tag_remove::EntryTagRemoveHandler;
 use crate::tools::entry_tag_set::EntryTagSetHandler;
+use crate::tools::query::QueryHandler;
 use crate::tools::revision_add::RevisionAddHandler;
 use crate::tools::sync_record::SyncRecordHandler;
 use crate::tools::validate::ValidateHandler;
@@ -634,4 +638,230 @@ async fn validate_clean_vault_returns_ok() {
     assert_eq!(result["ok"], Value::Bool(true));
     assert_eq!(result["error_count"], 0);
     assert_eq!(result["issues"], json!([]));
+}
+
+// ─── entry_show (S5.1) ───────────────────
+
+#[tokio::test]
+async fn entry_show_rejects_without_read_perm() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "show entry", None, vec![]).unwrap();
+    let err = EntryShowHandler
+        .call(
+            &ctx(Permissions::empty()),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect_err("empty perms must be denied for entry_show");
+    match err {
+        ToolError::PermissionDenied(PermissionDenied { required, granted }) => {
+            assert_eq!(required, Permissions::READ);
+            assert_eq!(granted, Permissions::empty());
+        }
+        other => panic!("expected PermissionDenied, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn entry_show_returns_manifest_and_note() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "show entry", None, vec!["alpha".into()]).unwrap();
+    let result = EntryShowHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("entry_show should succeed");
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["manifest"]["id"], "N0001");
+    assert_eq!(result["manifest"]["title"], "show entry");
+    assert_eq!(result["manifest"]["tags"], json!(["alpha"]));
+    assert!(result["note"].is_string());
+}
+
+#[tokio::test]
+async fn entry_show_unknown_id_returns_invalid_argument() {
+    let dir = setup_vault();
+    let err = EntryShowHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N9999" }),
+        )
+        .await
+        .expect_err("missing entry must surface as InvalidArgument");
+    match err {
+        ToolError::InvalidArgument(msg) => {
+            assert!(msg.contains("N9999"), "message should mention N9999: {msg}");
+        }
+        other => panic!("expected InvalidArgument, got {other:?}"),
+    }
+}
+
+// ─── bundle (S5.1) ───────────────────────
+
+#[tokio::test]
+async fn bundle_returns_entry_with_revisions() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "bundle entry", None, vec![]).unwrap();
+    ops::revision_add(dir.path(), "N0001", "[Change] r1\n[Impact] test").unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["manifest"]["id"], "N0001");
+    let revs = result["revisions"].as_array().expect("revisions array");
+    assert_eq!(revs.len(), 1);
+    assert_eq!(revs[0]["rev_id"], "r0001");
+    // links 없으니 cost_hint 없어야 함 (default depth라도 link_count=0).
+    assert!(result.get("cost_hint").is_none() || result["cost_hint"].is_null());
+}
+
+/// test helper — entry manifest에 link를 직접 박아 cost_hint 분기 유도.
+/// 코드 본문은 vault 규칙상 manifest 파일 직접 편집 금지지만 test 환경에서는
+/// fixture 구성 위해 허용 (validate test가 아닌, bundle 분기 검증 목적).
+fn push_link_to_manifest(entry_dir: &std::path::Path, link_id: &str) {
+    use crate::schema::manifest::Manifest;
+    let mut m = Manifest::read(entry_dir).unwrap();
+    m.links.push(link_id.to_string());
+    m.write(entry_dir).unwrap();
+}
+
+#[tokio::test]
+async fn bundle_emits_cost_hint_when_default_depth_and_links() {
+    let dir = setup_vault();
+    let parent = ops::entry_new(dir.path(), "parent entry", None, vec![]).unwrap();
+    let parent_id = parent.entry.manifest.id.clone();
+    let linker = ops::entry_new(dir.path(), "linker entry", None, vec![]).unwrap();
+    push_link_to_manifest(&linker.entry.dir, &parent_id);
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": linker.entry.manifest.id }),
+        )
+        .await
+        .expect("bundle should succeed");
+    let manifest_links = result["manifest"]["links"].as_array().expect("links array");
+    assert_eq!(manifest_links.len(), 1, "link should be in manifest");
+    assert!(
+        result["cost_hint"].is_string(),
+        "cost_hint should be set when default depth + links: {result}"
+    );
+    // depth=0 default라 linked 본체는 비어 있음.
+    assert!(
+        result["linked"].as_array().unwrap().is_empty(),
+        "linked must be empty at depth=0: {result}"
+    );
+}
+
+#[tokio::test]
+async fn bundle_no_cost_hint_when_depth_explicit() {
+    let dir = setup_vault();
+    let parent = ops::entry_new(dir.path(), "parent", None, vec![]).unwrap();
+    let parent_id = parent.entry.manifest.id.clone();
+    let linker = ops::entry_new(dir.path(), "linker", None, vec![]).unwrap();
+    push_link_to_manifest(&linker.entry.dir, &parent_id);
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id":         linker.entry.manifest.id,
+                "depth":      0,
+            }),
+        )
+        .await
+        .expect("bundle with explicit depth=0 should succeed");
+    // depth=0 명시는 사용자 의도 — cost_hint 안 띄움.
+    assert!(
+        result.get("cost_hint").is_none() || result["cost_hint"].is_null(),
+        "cost_hint must not appear when depth is explicit: {result}"
+    );
+}
+
+#[tokio::test]
+async fn bundle_invalid_since_returns_invalid_argument() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "since entry", None, vec![]).unwrap();
+    let err = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id":         "N0001",
+                "since":      "not-a-valid-since",
+            }),
+        )
+        .await
+        .expect_err("invalid since string must surface as InvalidArgument");
+    match err {
+        ToolError::InvalidArgument(msg) => {
+            assert!(msg.contains("since"), "message should mention since: {msg}");
+        }
+        other => panic!("expected InvalidArgument, got {other:?}"),
+    }
+}
+
+// ─── query (S5.1) ────────────────────────
+
+#[tokio::test]
+async fn query_filters_by_tag() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "alpha entry", None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "beta entry", None, vec!["beta".into()]).unwrap();
+    // query는 sqlite index 기반 — rebuild 한 번 필요.
+    crate::vault::index::rebuild(dir.path()).unwrap();
+
+    let result = QueryHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "tag": "alpha" }),
+        )
+        .await
+        .expect("query ok");
+    assert_eq!(result["ok"], Value::Bool(true));
+    let entries = result["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["title"], "alpha entry");
+}
+
+// ─── entry_assets (S5.1) ─────────────────
+
+#[tokio::test]
+async fn entry_assets_lists_attached_files() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "asset entry", None, vec![]).unwrap();
+    let asset_src = dir.path().join("asset.txt");
+    std::fs::write(&asset_src, b"hello").unwrap();
+    EntryAttachHandler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id":         "N0001",
+                "file_path":  asset_src.to_string_lossy(),
+            }),
+        )
+        .await
+        .expect("attach ok");
+
+    let result = EntryAssetsHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("entry_assets ok");
+    assert_eq!(result["ok"], Value::Bool(true));
+    let assets = result["assets"].as_array().expect("assets array");
+    assert_eq!(assets.len(), 1);
+    assert_eq!(assets[0]["exists"], Value::Bool(true));
+    assert_eq!(assets[0]["size"], 5);
 }
