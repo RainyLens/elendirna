@@ -12,6 +12,8 @@
 //! 5. POST /mcp `tools/call revision_add` (WRITE) → `PermissionDenied` (-32001 + `data.kind=permission_denied`)
 //! 6. POST /mcp `tools/call session_start` (HTTP path) → `session_id`가 transport id와 일치
 //! 7. GET /api/health → 200 "ok"
+//! 8. (S3.3 / [[N0033]] r0012 M1) `VaultOrigin::FallbackGlobal` injection → handler 응답의
+//!    `vault_meta` 직렬화 회귀(`vault_origin="fallback_global"` + `fallback=true`).
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode};
@@ -323,5 +325,108 @@ async fn http_smoke_delete_session_invalidates_sid() {
         status.is_client_error()
             || (status == StatusCode::OK && body.to_lowercase().contains("session")),
         "stale sid는 거절되어야 함, status={status} body={body}"
+    );
+}
+
+/// S3.3 — HTTP global fallback resolution smoke ([[N0033]] r0012 M1).
+///
+/// HTTP transport가 `VaultOrigin::FallbackGlobal`로 들어온 호출에서 응답까지 origin이
+/// 정확히 흘러가는지 회귀 catch. `serve.rs:139-141`의 실 fallback resolution은 transport
+/// 분기 *전*에 공유되므로 별도 process spawn 없이 in-process injection 한 표면만 검증한다.
+/// 회귀 hot zone은 `mcp_server/mod.rs:164` (origin → string) + `mcp_server/mod.rs:171-173`
+/// (FallbackGlobal-only `fallback:true` 표식).
+///
+/// 옵션 (b) process-level (`USERPROFILE`/`HOME` swap + non-vault cwd)는 Windows에서 env가
+/// process-global이라 fragile + serve.rs 분기 자체 변경 시점에 별 phase로 분가.
+#[tokio::test]
+async fn http_smoke_global_fallback_initialize_health_and_entry_list() {
+    let dir = setup_vault();
+    let resolution = VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: VaultOrigin::FallbackGlobal,
+    };
+    let app = build_app(resolution);
+
+    // 1) initialize → Mcp-Session-Id
+    let initialize = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": { "name": "http-smoke-fallback", "version": "0.0.0" }
+        }
+    });
+    let (status, sid, _, body) = post_mcp(&app, initialize, None).await;
+    assert_eq!(status, StatusCode::OK, "initialize status (body={body})");
+    let sid = sid.expect("Mcp-Session-Id on initialize");
+    assert!(!sid.is_empty(), "session id non-empty");
+
+    // 2) initialized notification — protocol 활성화
+    let initialized = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    });
+    let (status, _, _, _) = post_mcp(&app, initialized, Some(&sid)).await;
+    assert!(
+        status.is_success() || status == StatusCode::ACCEPTED,
+        "initialized accepted, got {status}"
+    );
+
+    // 3) GET /api/health → 200 "ok" — 휴먼 BE는 vault origin과 직교
+    let health = Request::builder()
+        .method(Method::GET)
+        .uri("/api/health")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(health).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
+    assert_eq!(&bytes[..], b"ok");
+
+    // 4) tools/call entry_list — handler 응답 path에 vault_meta가 FallbackGlobal로 직렬화되는지.
+    //    `mcp_server/mod.rs:702 merge_vault_meta`가 handler result에 vault_meta 키를 top-level로
+    //    extend → tools/call 응답의 result.structuredContent (또는 result.content[0].text JSON)에
+    //    `vault_origin="fallback_global"` + `fallback=true`로 도달해야 함.
+    let entry_list = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": { "name": "entry_list", "arguments": {} }
+    });
+    let (status, _, ct, body) = post_mcp(&app, entry_list, Some(&sid)).await;
+    assert_eq!(status, StatusCode::OK);
+    let payload = parse_rpc_payload(&body, &ct);
+    assert!(
+        payload["error"].is_null(),
+        "entry_list error={:?}",
+        payload["error"]
+    );
+
+    // structuredContent 우선, fallback으로 content[0].text의 JSON parse (session_start 추출 패턴과 동일).
+    let structured = &payload["result"]["structuredContent"];
+    let inner: Value = if structured.is_object() {
+        structured.clone()
+    } else if let Some(text) = payload["result"]["content"][0]["text"].as_str() {
+        serde_json::from_str(text).expect("entry_list content json")
+    } else {
+        panic!("no entry_list payload extractable: {payload}");
+    };
+
+    assert_eq!(
+        inner["vault_origin"].as_str(),
+        Some("fallback_global"),
+        "vault_origin 직렬화 (mcp_server/mod.rs:164) — origin이 응답까지 흘러가야 함: {inner}"
+    );
+    assert_eq!(
+        inner["fallback"].as_bool(),
+        Some(true),
+        "FallbackGlobal-only `fallback:true` 표식 (mcp_server/mod.rs:171-173): {inner}"
+    );
+    assert_eq!(
+        inner["ok"].as_bool(),
+        Some(true),
+        "entry_list ok=true (READ 통과): {inner}"
     );
 }
