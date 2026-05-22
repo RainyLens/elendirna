@@ -376,6 +376,7 @@ version = "0.7.0-dev"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "async-trait",
  "axum",
  "chrono",
  "clap",

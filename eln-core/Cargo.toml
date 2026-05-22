@@ -32,6 +32,7 @@ pulldown-cmark  = { workspace = true }
 # S2.4 PoC: eln-plugin-sdk는 workbench 로컬 path dep. CI/외부 빌드 시 path 변동
 # 위험 인지 — publish 단계(S3 이후)에는 crates.io version으로 전환 필요.
 eln-plugin-sdk  = { path = "../../eln-plugins" }
+async-trait     = "0.1"
 
 [dev-dependencies]
 insta       = { workspace = true }
