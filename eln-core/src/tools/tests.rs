@@ -33,11 +33,7 @@ use crate::tools::validate::ValidateHandler;
 use crate::vault::ops;
 
 fn ctx(perms: Permissions) -> CallContext {
-    CallContext {
-        session_id: "tools-test-session".into(),
-        identity: Identity::Human,
-        permissions: perms,
-    }
+    CallContext::new("tools-test-session".into(), Identity::Human, perms)
 }
 
 fn setup_vault() -> TempDir {
@@ -143,7 +139,7 @@ async fn entry_list_rejects_without_read_perm() {
         .await
         .expect_err("empty perms must be denied for entry_list");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted }) => {
+        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
             assert_eq!(required, Permissions::READ);
             assert_eq!(granted, Permissions::empty());
         }
@@ -184,7 +180,7 @@ async fn entry_new_rejects_without_write_perm() {
         .await
         .expect_err("READ ctx must be denied for entry_new");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted }) => {
+        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
             assert_eq!(required, Permissions::WRITE);
             assert_eq!(granted, Permissions::READ);
         }
@@ -303,7 +299,7 @@ async fn entry_status_rejects_without_write_perm() {
         .await
         .expect_err("READ ctx must be denied for entry_status");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted }) => {
+        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
             assert_eq!(required, Permissions::WRITE);
             assert_eq!(granted, Permissions::READ);
         }
@@ -654,7 +650,7 @@ async fn entry_show_rejects_without_read_perm() {
         .await
         .expect_err("empty perms must be denied for entry_show");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted }) => {
+        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
             assert_eq!(required, Permissions::READ);
             assert_eq!(granted, Permissions::empty());
         }

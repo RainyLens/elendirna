@@ -31,11 +31,7 @@ impl ToolHandler for EntryDetachHandler {
 
     async fn call(&self, ctx: &CallContext, args: Value) -> Result<Value, ToolError> {
         if !ctx.permissions.contains(Permissions::WRITE) {
-            return Err(PermissionDenied {
-                required: Permissions::WRITE,
-                granted: ctx.permissions,
-            }
-            .into());
+            return Err(PermissionDenied::new(Permissions::WRITE, ctx.permissions).into());
         }
 
         let vault_root = Path::new(require_string(&args, "vault_root")?);

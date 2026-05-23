@@ -231,11 +231,11 @@ impl ElfMcpServer {
             .ok()
             .and_then(|guard| guard.clone())
             .unwrap_or_default();
-        eln_plugin_sdk::CallContext {
+        eln_plugin_sdk::CallContext::new(
             session_id,
-            identity: eln_plugin_sdk::Identity::Human,
-            permissions: self.default_permissions,
-        }
+            eln_plugin_sdk::Identity::Human,
+            self.default_permissions,
+        )
     }
 
     /// Handler 응답에 `vault_meta` 키 그룹을 merge한다 (어댑터 공통 책임).

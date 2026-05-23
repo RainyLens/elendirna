@@ -375,11 +375,11 @@ use eln_plugin_sdk::{CallContext, Identity, Permissions, ToolHandler};
 use serde_json::{Value, json};
 
 fn admin_ctx() -> CallContext {
-    CallContext {
-        session_id: "mcp-int-session".into(),
-        identity: Identity::Human,
-        permissions: Permissions::ADMIN,
-    }
+    CallContext::new(
+        "mcp-int-session".into(),
+        Identity::Human,
+        Permissions::ADMIN,
+    )
 }
 
 #[tokio::test]
