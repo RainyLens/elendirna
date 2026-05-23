@@ -77,12 +77,13 @@ fn issue_kind_str(kind: &IssueKind) -> &'static str {
     }
 }
 
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" }
-        },
-        "required": ["vault_root"]
+            "vault":   { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" },
+            "confirm": { "type": "boolean", "description": "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉." }
+        }
     })
 }

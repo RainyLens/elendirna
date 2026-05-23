@@ -52,16 +52,17 @@ impl ToolHandler for EntryNewHandler {
     }
 }
 
-/// JSON schema for `entry_new` args. S3.2 adapter가 `ToolDescriptor::with_input_schema`에 전달.
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "title":      { "type": "string" },
-            "baseline":   { "type": "string", "description": "부모 entry ID 또는 N####@r####" },
-            "tags":       { "type": "array", "items": { "type": "string" } }
+            "title":    { "type": "string", "description": "entry 제목" },
+            "baseline": { "type": "string", "description": "baseline entry ID (선택, 예: N0001)" },
+            "tags":     { "type": "array", "items": { "type": "string" }, "description": "태그 목록 (선택)" },
+            "vault":    { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" },
+            "confirm":  { "type": "boolean", "description": "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉." }
         },
-        "required": ["vault_root", "title"]
+        "required": ["title"]
     })
 }

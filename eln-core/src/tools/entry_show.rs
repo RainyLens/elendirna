@@ -58,14 +58,14 @@ impl ToolHandler for EntryShowHandler {
     }
 }
 
-/// JSON schema for `entry_show` args. S5.2 adapter가 input_schema 소비 시 사용.
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "id":         { "type": "string", "description": "entry ID (예: N0001)" }
+            "id":    { "type": "string", "description": "entry ID (예: N0001)" },
+            "vault": { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" }
         },
-        "required": ["vault_root", "id"]
+        "required": ["id"]
     })
 }

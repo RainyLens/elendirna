@@ -139,16 +139,16 @@ impl ToolHandler for BundleHandler {
     }
 }
 
-/// JSON schema for `bundle` args.
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "id":         { "type": "string", "description": "entry ID (예: N0001)" },
-            "depth":      { "type": "integer", "minimum": 0, "description": "linked 수집 depth (선택, 기본 0)" },
-            "since":      { "type": "string",  "description": "N####@r#### 또는 RFC3339 timestamp (선택)" }
+            "id":    { "type": "string", "description": "entry ID (예: N0001)" },
+            "depth": { "type": "integer", "minimum": 0, "description": "linked entry 탐색 깊이 (선택, 기본 0 — cost-aware). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만. 미지정 시 linked entry가 있으면 cost_hint 응답." },
+            "since": { "type": "string",  "description": "revision 필터 (선택). N####@r#### 또는 RFC 3339 timestamp 이후 revision만 포함. entry 본문은 항상 포함." },
+            "vault": { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" }
         },
-        "required": ["vault_root", "id"]
+        "required": ["id"]
     })
 }

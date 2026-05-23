@@ -65,16 +65,15 @@ impl ToolHandler for QueryHandler {
     }
 }
 
-/// JSON schema for `query` args.
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root":     { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "tag":            { "type": "string" },
-            "status":         { "type": "string" },
-            "title_contains": { "type": "string" }
-        },
-        "required": ["vault_root"]
+            "tag":            { "type": "string", "description": "태그 필터 (선택)" },
+            "status":         { "type": "string", "description": "상태 필터 (선택)" },
+            "title_contains": { "type": "string", "description": "제목 키워드 검색 (선택)" },
+            "vault":          { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" }
+        }
     })
 }

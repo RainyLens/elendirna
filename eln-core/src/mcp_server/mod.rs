@@ -2,39 +2,19 @@ use crate::output::message::{Message, MessageLevel, MessageScope, push_message};
 use crate::vault::{VaultOrigin, VaultResolution, ops};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
-    handler::server::wrapper::{Json, Parameters},
     model::{
-        GetPromptRequestParams, GetPromptResult, Implementation, ListPromptsResult,
-        PaginatedRequestParams, PromptMessage, PromptMessageRole, ServerCapabilities, ServerInfo,
+        CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult,
+        Implementation, ListPromptsResult, ListToolsResult, PaginatedRequestParams,
+        PromptMessage, PromptMessageRole, ServerCapabilities, ServerInfo, Tool,
     },
     prompt, prompt_router,
     service::RequestContext,
-    tool, tool_router,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 /// ElfMcpServer — MCP tool surface.
 /// CLI와 동일한 vault::ops 코어를 공유한다.
 use std::path::PathBuf;
-
-/// MCP tool 출력 타입.
-/// `serde_json::Value`를 그대로 직렬화하되, outputSchema는 항상
-/// `{"type":"object"}`로 보고 — MCP spec 준수용.
-#[derive(Serialize)]
-#[serde(transparent)]
-struct Out(serde_json::Value);
-
-impl JsonSchema for Out {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Out".into()
-    }
-    fn schema_id() -> std::borrow::Cow<'static, str> {
-        "Out".into()
-    }
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({"type": "object"})
-    }
-}
 
 /// 두 VaultResolution이 "같은 경로 + 같은 origin"으로 도달했는지 검사한다 (v0.6.1 M-2).
 ///
@@ -77,8 +57,9 @@ pub struct ElfMcpServer {
     /// stdio = `ADMIN` (hard-code). HTTP = `READ` (외부 write 차단, S2 한정 가드).
     /// transport-level grant derivation (ApiKey → Permissions)은 S3 scope.
     default_permissions: eln_plugin_sdk::Permissions,
-    #[allow(dead_code)]
-    tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
+    /// 14 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
+    /// session_start은 별도 dispatch path (transport-special, RequestContext 필요).
+    descriptors: Vec<eln_plugin_sdk::ToolDescriptor>,
     #[allow(dead_code)]
     prompt_router: rmcp::handler::server::router::prompt::PromptRouter<Self>,
 }
@@ -109,9 +90,63 @@ impl ElfMcpServer {
             sessions: std::sync::RwLock::new(std::collections::HashMap::new()),
             current_session_id: std::sync::RwLock::new(None),
             default_permissions,
-            tool_router: Self::tool_router(),
+            descriptors: Self::build_descriptors(),
             prompt_router: Self::prompt_router(),
         }
+    }
+
+    /// 14 tool ToolDescriptor 빌드 — server 생성 시 1회 호출되어 cache.
+    /// session_start은 본 list에 X — call_tool 안에서 별도 dispatch.
+    fn build_descriptors() -> Vec<eln_plugin_sdk::ToolDescriptor> {
+        use crate::tools;
+        use eln_plugin_sdk::{Permissions, ToolDescriptor};
+        vec![
+            ToolDescriptor::new(tools::entry_list::EntryListHandler)
+                .with_input_schema(tools::entry_list::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::entry_show::EntryShowHandler)
+                .with_input_schema(tools::entry_show::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::entry_new::EntryNewHandler)
+                .with_input_schema(tools::entry_new::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_status::EntryStatusHandler)
+                .with_input_schema(tools::entry_status::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_tag_add::EntryTagAddHandler)
+                .with_input_schema(tools::entry_tag_add::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_tag_remove::EntryTagRemoveHandler)
+                .with_input_schema(tools::entry_tag_remove::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_tag_set::EntryTagSetHandler)
+                .with_input_schema(tools::entry_tag_set::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::revision_add::RevisionAddHandler)
+                .with_input_schema(tools::revision_add::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::bundle::BundleHandler)
+                .with_input_schema(tools::bundle::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::query::QueryHandler)
+                .with_input_schema(tools::query::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::sync_record::SyncRecordHandler)
+                .with_input_schema(tools::sync_record::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::validate::ValidateHandler)
+                .with_input_schema(tools::validate::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_attach::EntryAttachHandler)
+                .with_input_schema(tools::entry_attach::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_detach::EntryDetachHandler)
+                .with_input_schema(tools::entry_detach::input_schema())
+                .with_required_permissions(Permissions::WRITE),
+            ToolDescriptor::new(tools::entry_assets::EntryAssetsHandler)
+                .with_input_schema(tools::entry_assets::input_schema())
+                .with_required_permissions(Permissions::READ),
+        ]
     }
 
     /// 현재 active session의 local_vault override를 읽는다.
@@ -389,6 +424,10 @@ fn normalize_entry_ids(v: serde_json::Value) -> Vec<String> {
     raw.into_iter().filter(|s| seen.insert(s.clone())).collect()
 }
 
+/// `sync_record` transport-level `entries` 폼 — JSON array / comma-separated / 단일 ID /
+/// stringified JSON array 모두 수용. 본 P1 dispatch는 `normalize_entry_ids` 함수만 직접 호출하므로
+/// struct 자체 사용처는 deserialize test에 한정 (회귀 baseline 보존). P3에서 정리 후보.
+#[allow(dead_code)]
 struct FlexibleEntries(Vec<String>);
 
 impl<'de> serde::de::Deserialize<'de> for FlexibleEntries {
@@ -424,222 +463,6 @@ impl schemars::JsonSchema for FlexibleEntries {
 // ─── 파라미터 타입 ────────────────────────
 
 #[derive(Deserialize, JsonSchema)]
-struct EntryListParams {
-    #[schemars(description = "태그 필터 (선택)")]
-    tag: Option<String>,
-    #[schemars(description = "상태 필터: draft / stable / archived (선택)")]
-    status: Option<String>,
-    #[schemars(
-        description = "대상 vault: 'local', 'global', 또는 alias (선택, 기본: 세션/서버 기본값)"
-    )]
-    vault: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryShowParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryNewParams {
-    #[schemars(description = "entry 제목")]
-    title: String,
-    #[schemars(description = "baseline entry ID (선택, 예: N0001)")]
-    baseline: Option<String>,
-    #[schemars(description = "태그 목록 (선택)")]
-    tags: Option<Vec<String>>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryStatusParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "새 status: draft | stable | archived")]
-    status: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagAddParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "추가할 tag")]
-    tag: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagRemoveParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "제거할 tag")]
-    tag: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryTagSetParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "교체할 tag list (빈 array = 모든 tag 제거)")]
-    tags: Vec<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct RevisionAddParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(
-        description = "변화 내용 (delta). entry 본문과 revision chain은 bundle로 함께 복원되므로 전체 재작성 금지. [Change] 실제로 바뀐 증분, [Impact] 이유나 영향만 짧게 기록."
-    )]
-    delta: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct BundleParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(
-        description = "linked entry 탐색 깊이 (선택, 기본 0 — cost-aware). 0=자신+revisions만, 1=직접 linked 전문, 2+=2홉 이상 manifest만. 미지정 시 linked entry가 있으면 cost_hint 응답."
-    )]
-    depth: Option<u32>,
-    #[schemars(
-        description = "revision 필터 (선택). N####@r#### 또는 RFC 3339 timestamp 이후 revision만 포함. entry 본문은 항상 포함."
-    )]
-    since: Option<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct QueryParams {
-    #[schemars(description = "태그 필터 (선택)")]
-    tag: Option<String>,
-    #[schemars(description = "상태 필터 (선택)")]
-    status: Option<String>,
-    #[schemars(description = "제목 키워드 검색 (선택)")]
-    title_contains: Option<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct SyncRecordParams {
-    #[schemars(
-        description = "다음 에이전트가 이어서 작업할 때 가장 먼저 읽을 핵심 인수인계 메모. 무엇을 했고 다음 맥락에서 무엇이 중요한지 한두 줄로 기록."
-    )]
-    summary: String,
-    #[schemars(description = "agent 이름 (선택, 기본: ELF_AGENT 환경변수)")]
-    agent: Option<String>,
-    #[schemars(
-        description = "작업한 entry ID 목록 (선택). JSON array / comma-separated / 단일 ID 모두 허용"
-    )]
-    entries: Option<FlexibleEntries>,
-    #[schemars(description = "세션 ID (선택)")]
-    session_id: Option<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct ValidateParams {
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryAttachParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "첨부할 파일의 절대 경로")]
-    file_path: String,
-    #[schemars(description = "저장 시 사용할 파일명 (선택, 기본: 원본 파일명)")]
-    name: Option<String>,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryDetachParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "해제할 asset key")]
-    key: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-    #[serde(default)]
-    #[schemars(
-        description = "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉."
-    )]
-    confirm: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct EntryAssetsParams {
-    #[schemars(description = "entry ID (예: N0001)")]
-    id: String,
-    #[schemars(description = "대상 vault: 'local', 'global', 또는 alias (선택)")]
-    vault: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 struct SessionStartParams {
     #[schemars(
         description = "이 세션의 기본 vault를 설정합니다: 'local', 'global', 또는 alias (선택). \
@@ -648,475 +471,166 @@ struct SessionStartParams {
     vault: Option<String>,
 }
 
-// ─── tool 구현 ────────────────────────────
+// ─── tool dispatch + session_start (P1: ToolDescriptor 소비) ─────────────
 
-#[tool_router]
 impl ElfMcpServer {
-    #[tool(description = "vault의 전체 entry 목록 조회. tag/status 필터 지원. \
-        각 항목 메타: revisions(누적 r#### 수), links_out(이 entry가 거는 outbound link 수), linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), updated(최근 활동 시각) — 어느 entry가 활동적이고 hub인지 한눈에 파악. \
-        세션 시작 시 작업 범위 파악에 사용. \
-        개별 entry 내용은 entry_show 또는 bundle을 사용할 것 — 파일 직접 접근 금지.")]
-    async fn entry_list(
+    /// 14 tool 공통 dispatch entry point. transport-level args (vault alias + confirm)
+    /// 정규화 → vault resolve → write confirm gate → handler invoke → vault_meta merge →
+    /// tool-specific post-process (validate issues → messages, entry_attach warning →
+    /// message) → escalated mark.
+    async fn dispatch_tool(
         &self,
-        Parameters(p): Parameters<EntryListParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "tag":        p.tag,
-            "status":     p.status,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_list::EntryListHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Ok(Json(Out(result)))
-    }
+        name: &str,
+        mut args: serde_json::Value,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        use eln_plugin_sdk::Permissions;
+        let descriptor = self
+            .descriptors
+            .iter()
+            .find(|d| d.name() == name)
+            .ok_or_else(|| ErrorData::invalid_params(format!("unknown tool: {name}"), None))?;
 
-    #[tool(description = "entry manifest + note body 조회. \
-        단일 entry 내용을 읽을 때 사용. \
-        여러 entry + revision chain이 필요하면 bundle을 사용. \
-        note.md 파일을 직접 읽지 말 것.")]
-    async fn entry_show(
-        &self,
-        Parameters(p): Parameters<EntryShowParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_show::EntryShowHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Ok(Json(Out(result)))
-    }
+        // args가 object가 아니면 빈 object로 대체 (transport-level lenient).
+        if !args.is_object() {
+            args = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let args_obj = args.as_object_mut().unwrap();
 
-    #[tool(description = "새 entry 생성. \
-        새로운 아이디어, 결정, 기록을 남길 때 사용. \
-        기존 entry 내용 변경은 revision_add를 사용할 것.")]
-    async fn entry_new(
-        &self,
-        Parameters(p): Parameters<EntryNewParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        // S3.2: transport caller capability gate(`ensure_write_permitted`)는 handler 안의
-        // `ctx.permissions.contains(WRITE)`로 흡수. vault origin axis인 `ensure_write_confirmed`는
-        // handler 호출 *전* 그대로 유지 — guarded origin이면 handler 도달 전에 거절.
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "title":      p.title,
-            "baseline":   p.baseline,
-            "tags":       p.tags,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_new::EntryNewHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
+        // transport-layer: vault alias resolve
+        let vault_alias = args_obj
+            .remove("vault")
+            .and_then(|v| v.as_str().map(String::from));
+        let res = self.resolve_tool_vault(vault_alias)?;
 
-    #[tool(description = "entry status 변경 (draft → stable → archived). \
-        draft: 작업 중, stable: 확정, archived: 보관. \
-        status 변경은 sync.jsonl에 이벤트로 기록됨.")]
-    async fn entry_status(
-        &self,
-        Parameters(p): Parameters<EntryStatusParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "status":     p.status,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_status::EntryStatusHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
+        // write 권한 + confirm gate (vault origin axis — handler 도달 전 가드)
+        let is_write = descriptor.required_permissions().contains(Permissions::WRITE);
+        let confirm = args_obj
+            .remove("confirm")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if is_write {
+            Self::ensure_write_confirmed(&res, confirm)?;
+        }
 
-    #[tool(description = "entry에 tag 추가. \
-        중복 방지 — 이미 있으면 no-op. \
-        manifest mutability 정식 경로 (N0080). 직접 manifest 파일 편집 금지.")]
-    async fn entry_tag_add(
-        &self,
-        Parameters(p): Parameters<EntryTagAddParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "tag":        p.tag,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_tag_add::EntryTagAddHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry에서 tag 제거. \
-        없으면 no-op. manifest mutability 정식 경로 (N0080).")]
-    async fn entry_tag_remove(
-        &self,
-        Parameters(p): Parameters<EntryTagRemoveParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "tag":        p.tag,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_tag_remove::EntryTagRemoveHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry tag 전체 교체. \
-        빈 array = 모든 tag 제거. dedupe/trim 자동 적용. \
-        manifest mutability 정식 경로 (N0080).")]
-    async fn entry_tag_set(
-        &self,
-        Parameters(p): Parameters<EntryTagSetParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "tags":       p.tags,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_tag_set::EntryTagSetHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry에 revision(delta) 추가. \
-        기존 entry의 내용이 바뀌었을 때 호출. \
-        note.md를 직접 편집하지 말고 이 tool로 delta를 기록할 것. \
-        entry 본문과 revision chain은 나중에 bundle로 함께 복원되므로 전체 재작성 금지. \
-        delta는 [Change] 실제로 바뀐 증분, [Impact] 이유나 영향처럼 짧은 diff-first 형식으로 작성.")]
-    async fn revision_add(
-        &self,
-        Parameters(p): Parameters<RevisionAddParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "delta":      p.delta,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::revision_add::RevisionAddHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry + revision chain + linked entries 수집. \
-        세션 시작 시 컨텍스트 복원의 핵심 도구. \
-        짧게 기록된 delta도 entry 본문과 revision chain 옆에서 함께 읽히므로 맥락을 잃지 않습니다. \
-        파일을 직접 읽지 말고 이 tool을 사용할 것. \
-        depth=0 (default): revisions만 (cost-aware), depth=1: 직접 linked 전문, depth=2+: 2홉 이상 manifest만. \
-        cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
-        since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용).")]
-    async fn bundle(
-        &self,
-        Parameters(p): Parameters<BundleParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "depth":      p.depth,
-            "since":      p.since,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::bundle::BundleHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "sqlite 인덱스 기반 entry 검색. \
-        전체 목록보다 빠름. \
-        세션 시작 시 작업 범위 파악: query(tag='...')로 관련 entry를 먼저 탐색.")]
-    async fn query(&self, Parameters(p): Parameters<QueryParams>) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        let args = serde_json::json!({
-            "vault_root":     res.path.to_string_lossy(),
-            "tag":            p.tag,
-            "status":         p.status,
-            "title_contains": p.title_contains,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::query::QueryHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(
-        description = "다음 에이전트를 위한 핵심 인수인계 메모를 sync.jsonl에 기록. \
-        세션 종료 시 반드시 호출. \
-        summary: 무엇을 했고 다음 맥락에서 무엇이 중요한지 한두 줄. entries: 작업한 entry ID 목록."
-    )]
-    async fn sync_record(
-        &self,
-        Parameters(p): Parameters<SyncRecordParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        // FlexibleEntries는 transport-layer 한정 (JSON array / comma-separated / 단일 ID 다 허용).
-        // handler에는 정규화된 Vec<String>으로 전달.
-        let entries = p.entries.map(|e| e.0).unwrap_or_default();
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "summary":    p.summary,
-            "agent":      p.agent,
-            "entries":    entries,
-            "session_id": p.session_id,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::sync_record::SyncRecordHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "vault 무결성 검사 + index.sqlite 재생성. \
-        dangling link, orphan revision, schema 오류를 모두 검사. \
-        vault 상태가 의심스럽거나 query 결과가 부정확할 때 사용.")]
-    async fn validate(
-        &self,
-        Parameters(p): Parameters<ValidateParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-        });
-        let ctx = self.build_call_context();
-        let mut out = crate::tools::validate::ValidateHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut out, &res);
-        // N0091: validate handler가 raw `issues: [{severity, kind, path, message}]` 반환
-        // → adapter가 MessageLevel + messages[]로 변환. raw issues 키는 응답 contract에서 제거.
-        let issues = out
-            .as_object_mut()
-            .and_then(|m| m.remove("issues"))
-            .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
-        if let Some(arr) = issues.as_array() {
-            for issue in arr {
-                let level = match issue.get("severity").and_then(|s| s.as_str()) {
-                    Some("error") => MessageLevel::Error,
-                    _ => MessageLevel::Warning,
-                };
-                let kind = issue
-                    .get("kind")
-                    .and_then(|k| k.as_str())
-                    .unwrap_or("issue")
-                    .to_string();
-                let path = issue.get("path").and_then(|p| p.as_str()).unwrap_or("");
-                let body = issue.get("message").and_then(|m| m.as_str()).unwrap_or("");
-                push_message(
-                    &mut out,
-                    Message {
-                        level,
-                        kind,
-                        message: format!("{path}: {body}"),
-                        scope: MessageScope::Call,
-                    },
+        // sync_record entries 정규화 (FlexibleEntries 표면을 transport-layer에서 흡수).
+        if name == "sync_record" {
+            if let Some(entries_val) = args_obj.remove("entries") {
+                let normalized = normalize_entry_ids(entries_val);
+                args_obj.insert(
+                    "entries".into(),
+                    serde_json::to_value(normalized).unwrap_or(serde_json::Value::Null),
                 );
             }
         }
-        Self::mark_escalated_if_needed(&mut out, &res, p.confirm);
-        Ok(Json(Out(out)))
-    }
 
-    #[tool(description = "파일을 entry에 첨부. \
-        파일을 vault assets 디렉터리로 복사하고 manifest.sources에 등록. \
-        file_path는 MCP 서버가 접근 가능한 절대 경로여야 함.")]
-    async fn entry_attach(
-        &self,
-        Parameters(p): Parameters<EntryAttachParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "file_path":  p.file_path,
-            "name":       p.name,
-        });
+        // handler-level vault_root inject
+        args_obj.insert(
+            "vault_root".into(),
+            serde_json::Value::String(res.path.to_string_lossy().into_owned()),
+        );
+
+        // handler call
         let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_attach::EntryAttachHandler
-            .call(&ctx, args)
+        let mut result = descriptor
+            .handler()
+            .call(&ctx, serde_json::Value::Object(args_obj.clone()))
             .await
             .map_err(Self::map_tool_error)?;
+
+        // vault_meta merge (어댑터 공통 책임)
         self.merge_vault_meta(&mut result, &res);
-        // N0091: handler가 raw `warning: Option<String>` 노출 → adapter가 attach_collision
-        // message로 변환. warning 키는 응답 contract에서 제거 (messages[]로 통일).
-        if let Some(w) = result
-            .as_object_mut()
-            .and_then(|m| m.remove("warning"))
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-        {
-            push_message(
-                &mut result,
-                Message::warning("attach_collision", w, MessageScope::Call),
-            );
+
+        // tool-specific transforms (현재 2건 — validate issues / entry_attach warning).
+        match name {
+            "validate" => {
+                let issues = result
+                    .as_object_mut()
+                    .and_then(|m| m.remove("issues"))
+                    .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+                if let Some(arr) = issues.as_array() {
+                    for issue in arr {
+                        let level = match issue.get("severity").and_then(|s| s.as_str()) {
+                            Some("error") => MessageLevel::Error,
+                            _ => MessageLevel::Warning,
+                        };
+                        let kind = issue
+                            .get("kind")
+                            .and_then(|k| k.as_str())
+                            .unwrap_or("issue")
+                            .to_string();
+                        let path = issue.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                        let body = issue.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                        push_message(
+                            &mut result,
+                            Message {
+                                level,
+                                kind,
+                                message: format!("{path}: {body}"),
+                                scope: MessageScope::Call,
+                            },
+                        );
+                    }
+                }
+            }
+            "entry_attach" => {
+                if let Some(w) = result
+                    .as_object_mut()
+                    .and_then(|m| m.remove("warning"))
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+                {
+                    push_message(
+                        &mut result,
+                        Message::warning("attach_collision", w, MessageScope::Call),
+                    );
+                }
+            }
+            _ => {}
         }
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
+
+        if is_write {
+            Self::mark_escalated_if_needed(&mut result, &res, confirm);
+        }
+
+        Ok(rmcp::model::CallToolResult::structured(result))
     }
 
-    #[tool(description = "entry에서 첨부 파일 해제. \
-        manifest.sources에서 asset key를 제거하고, \
-        다른 entry가 참조하지 않는 경우 실제 파일도 삭제.")]
-    async fn entry_detach(
+    /// session_start dispatch — transport-special (RequestContext 필요).
+    /// HTTP path는 `Mcp-Session-Id` header echo, stdio는 새 UUID v4 발급.
+    /// session_start은 ToolHandler 표면에 안 올라옴 — P3에서 RequestContext 흡수 시점에
+    /// 흡수 가능 (N0102 r0001 의사결정 4: 흔적 기관 (b)).
+    async fn call_session_start(
         &self,
-        Parameters(p): Parameters<EntryDetachParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        Self::ensure_write_confirmed(&res, p.confirm)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-            "key":        p.key,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_detach::EntryDetachHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Self::mark_escalated_if_needed(&mut result, &res, p.confirm);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(description = "entry에 등록된 첨부 파일 목록 조회. \
-        각 자산의 key, 경로, 존재 여부, 파일 크기를 반환.")]
-    async fn entry_assets(
-        &self,
-        Parameters(p): Parameters<EntryAssetsParams>,
-    ) -> Result<Json<Out>, ErrorData> {
-        use eln_plugin_sdk::ToolHandler;
-        let res = self.resolve_tool_vault(p.vault)?;
-        let args = serde_json::json!({
-            "vault_root": res.path.to_string_lossy(),
-            "id":         p.id,
-        });
-        let ctx = self.build_call_context();
-        let mut result = crate::tools::entry_assets::EntryAssetsHandler
-            .call(&ctx, args)
-            .await
-            .map_err(Self::map_tool_error)?;
-        self.merge_vault_meta(&mut result, &res);
-        Ok(Json(Out(result)))
-    }
-
-    #[tool(
-        description = "AI용 세션 랜딩 가이드. 새 세션 시작, 모델 교체, 컨텍스트 초기화 후 \
-        첫 번째로 호출하여 이전 인수인계 메모로 맥락을 복원하고 다음 행동 방향을 파악하세요. \
-        vault 파라미터를 전달하면 해당 세션의 기본 vault가 변경됩니다. \
-        vault가 비어 있으면 사용자 시딩을 유도하기 위한 AI 행동 지침을 반환합니다. \
-        사용자용 대화형 온보딩이 필요하면 'seed' 프롬프트를 사용하세요."
-    )]
-    fn session_start(
-        &self,
-        Parameters(p): Parameters<SessionStartParams>,
+        args: serde_json::Value,
         ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<Out>, ErrorData> {
-        // HTTP transport 식별 ([[N0033]] r0006 Step 4.4):
-        // rmcp StreamableHttpService는 요청의 `http::request::Parts`를
-        // `ctx.extensions`에 inject. stdio에선 없으므로 transport 식별 자연 신호.
-        // `Mcp-Session-Id` header가 transport-level source of truth — tool은
-        // 새 UUID를 발급하지 않고 transport 발급 id를 echo + SessionState만 갱신.
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let vault = args
+            .as_object()
+            .and_then(|m| m.get("vault"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let http_session_id = ctx
             .extensions
             .get::<::http::request::Parts>()
             .and_then(|parts| parts.headers.get("mcp-session-id"))
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
-        self.session_start_impl(p, http_session_id)
+        let value = self.session_start_impl(SessionStartParams { vault }, http_session_id)?;
+        Ok(rmcp::model::CallToolResult::structured(value))
     }
 
-    /// session_start 본문 — `#[tool]` wrapper에서 transport 식별 후 호출.
-    /// `http_session_id`가 `Some`이면 HTTP path (transport 발급 id 사용),
-    /// `None`이면 stdio path (UUID v4 새 발급).
+    /// session_start body — RequestContext 분리된 transport-agnostic 부분.
+    /// stdio: http_session_id=None → 새 UUID v4 발급. HTTP: transport id echo.
+    /// 응답은 raw `serde_json::Value` — call_tool이 `CallToolResult::structured`로 wrap.
     fn session_start_impl(
         &self,
         p: SessionStartParams,
         http_session_id: Option<String>,
-    ) -> Result<Json<Out>, ErrorData> {
-        // N0091 r0006 (B1): stdio 경로는 매 호출마다 새 UUID v4 발급.
-        // HTTP 경로는 `Mcp-Session-Id` header 값을 그대로 echo — 이중 권위 회피.
+    ) -> Result<serde_json::Value, ErrorData> {
         let session_id = http_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-        // session vault override를 결정 — explicit alias 있으면 resolve, 없으면 None.
         let session_local = match p.vault.as_deref() {
             Some(alias) => Some(self.resolve_named_vault(alias)?),
             None => None,
         };
-
-        // sessions map에 새 entry insert + current_session_id 갱신.
         {
             let mut sessions = self
                 .sessions
@@ -1135,16 +649,12 @@ impl ElfMcpServer {
             })?;
             *cur = Some(session_id.clone());
         }
-
         let res = self.resolve_tool_vault(None)?;
         let entries = ops::entry_list(&res.path);
         let entry_count = entries.len();
-
         let recent_sessions = ops::sync_log(&res.path, Some(3), None).unwrap_or_default();
-
         let meta = self.vault_meta(&res);
         let is_global = meta["vault_kind"].as_str().unwrap_or("local") == "global";
-
         if entry_count == 0 {
             let mut result = serde_json::json!({
                 "ok": true,
@@ -1153,8 +663,7 @@ impl ElfMcpServer {
                 "entry_count": 0,
                 "ai_instructions": {
                     "situation": "vault가 비어 있습니다. 사용자가 아직 아이디어를 입력하지 않은 상태입니다.",
-                    "next_action": "사용자에게 어떤 주제든 자유롭게 말해달라고 유도하세요. \
-                        발화를 들은 즉시 entry_new로 기록하고, 대화를 이어가며 revision_add로 보완하세요.",
+                    "next_action": "사용자에게 어떤 주제든 자유롭게 말해달라고 유도하세요. 발화를 들은 즉시 entry_new로 기록하고, 대화를 이어가며 revision_add로 보완하세요.",
                     "tools": {
                         "capture":  "entry_new(title, tags?) — 주제 하나당 entry 하나",
                         "evolve":   "revision_add(id, delta) — [Change]/[Impact] 중심의 증분 기록",
@@ -1167,19 +676,13 @@ impl ElfMcpServer {
                 .as_object_mut()
                 .unwrap()
                 .extend(meta.as_object().unwrap().clone());
-            return Ok(Json(Out(result)));
+            return Ok(result);
         }
-
         let hint = if is_global {
-            "현재 글로벌 vault가 활성화되어 있습니다. \
-            로컬 프로젝트 vault를 참조하려면 session_start(vault='local') 또는 \
-            도구 호출 시 vault 파라미터를 지정하세요."
+            "현재 글로벌 vault가 활성화되어 있습니다. 로컬 프로젝트 vault를 참조하려면 session_start(vault='local') 또는 도구 호출 시 vault 파라미터를 지정하세요."
         } else {
-            "현재 로컬 vault가 활성화되어 있습니다. \
-            글로벌 vault를 참조하려면 session_start(vault='global') 또는 \
-            도구 호출 시 vault='global'을 지정하세요."
+            "현재 로컬 vault가 활성화되어 있습니다. 글로벌 vault를 참조하려면 session_start(vault='global') 또는 도구 호출 시 vault='global'을 지정하세요."
         };
-
         let mut result = serde_json::json!({
             "ok": true,
             "session_id": session_id,
@@ -1203,7 +706,51 @@ impl ElfMcpServer {
             .as_object_mut()
             .unwrap()
             .extend(meta.as_object().unwrap().clone());
-        Ok(Json(Out(result)))
+        Ok(result)
+    }
+
+    /// session_start descriptor를 Tool로 변환 (list_tools용). transport-special이라
+    /// 14 ToolDescriptor list 밖에서 inline build. Tool은 `#[non_exhaustive]`라
+    /// default 후 field assign으로 구성 (E0639 회피).
+    fn session_start_tool() -> Tool {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "vault": {
+                    "type": "string",
+                    "description": "이 세션의 기본 vault를 설정합니다: 'local', 'global', 또는 alias (선택). 설정하면 이후 도구 호출의 기본 vault가 변경됩니다."
+                }
+            }
+        });
+        let schema_obj: rmcp::model::JsonObject = match schema {
+            serde_json::Value::Object(m) => m,
+            _ => serde_json::Map::new(),
+        };
+        let mut tool = Tool::default();
+        tool.name = "session_start".into();
+        tool.description = Some(
+            "AI용 세션 랜딩 가이드. 새 세션 시작, 모델 교체, 컨텍스트 초기화 후 첫 번째로 호출하여 이전 인수인계 메모로 맥락을 복원하고 다음 행동 방향을 파악하세요. vault 파라미터를 전달하면 해당 세션의 기본 vault가 변경됩니다. vault가 비어 있으면 사용자 시딩을 유도하기 위한 AI 행동 지침을 반환합니다. 사용자용 대화형 온보딩이 필요하면 'seed' 프롬프트를 사용하세요."
+                .into(),
+        );
+        tool.input_schema = std::sync::Arc::new(schema_obj);
+        tool
+    }
+
+    /// ToolDescriptor → rmcp::model::Tool 변환 헬퍼.
+    fn descriptor_to_tool(d: &eln_plugin_sdk::ToolDescriptor) -> Tool {
+        let schema = d
+            .input_schema()
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}}));
+        let schema_obj: rmcp::model::JsonObject = match schema {
+            serde_json::Value::Object(m) => m,
+            _ => serde_json::Map::new(),
+        };
+        let mut tool = Tool::default();
+        tool.name = d.name().to_string().into();
+        tool.description = Some(d.description().to_string().into());
+        tool.input_schema = std::sync::Arc::new(schema_obj);
+        tool
     }
 }
 
@@ -1236,9 +783,51 @@ impl ElfMcpServer {
     }
 }
 
-#[rmcp::tool_handler]
 #[rmcp::prompt_handler]
 impl ServerHandler for ElfMcpServer {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        let mut tools: Vec<Tool> = self
+            .descriptors
+            .iter()
+            .map(Self::descriptor_to_tool)
+            .collect();
+        tools.push(Self::session_start_tool());
+        Ok(ListToolsResult {
+            tools,
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let CallToolRequestParams { name, arguments, .. } = request;
+        let args = arguments
+            .map(serde_json::Value::Object)
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+        if name.as_ref() == "session_start" {
+            return self.call_session_start(args, context).await;
+        }
+        self.dispatch_tool(name.as_ref(), args).await
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        if name == "session_start" {
+            return Some(Self::session_start_tool());
+        }
+        self.descriptors
+            .iter()
+            .find(|d| d.name() == name)
+            .map(Self::descriptor_to_tool)
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()
@@ -1649,11 +1238,9 @@ mod tests {
         };
         let r1 = call();
         let r2 = call();
-        // Json<Out>(Out(value)) — value의 session_id 추출
-        let v1 = &r1.0.0;
-        let v2 = &r2.0.0;
-        let sid1 = v1["session_id"].as_str().expect("session_id absent");
-        let sid2 = v2["session_id"].as_str().expect("session_id absent");
+        // session_start_impl returns raw Value (P1: Json<Out> wrapper 제거)
+        let sid1 = r1["session_id"].as_str().expect("session_id absent");
+        let sid2 = r2["session_id"].as_str().expect("session_id absent");
         assert_ne!(sid1, sid2, "session_start는 매번 새 UUID 발급");
         // UUID v4 형식 — 36자 + version nibble '4'
         for sid in [sid1, sid2] {

@@ -47,16 +47,18 @@ impl ToolHandler for SyncRecordHandler {
     }
 }
 
+/// Transport-level JSON schema. `vault_root`는 transport가 inject.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "summary":    { "type": "string", "description": "다음 에이전트가 이어서 작업할 때 첫 줄로 읽을 핵심 인수인계" },
-            "agent":      { "type": "string", "description": "에이전트 이름 (기본: ELF_AGENT 환경변수 또는 'human')" },
-            "entries":    { "type": "array", "items": { "type": "string" }, "description": "작업한 entry ID 목록 (adapter가 정규화)" },
-            "session_id": { "type": "string", "description": "세션 ID (선택)" }
+            "summary":    { "type": "string", "description": "다음 에이전트가 이어서 작업할 때 가장 먼저 읽을 핵심 인수인계 메모. 무엇을 했고 다음 맥락에서 무엇이 중요한지 한두 줄로 기록." },
+            "agent":      { "type": "string", "description": "agent 이름 (선택, 기본: ELF_AGENT 환경변수)" },
+            "entries":    { "type": "array", "items": { "type": "string" }, "description": "작업한 entry ID 목록 (선택). JSON array / comma-separated / 단일 ID 모두 허용" },
+            "session_id": { "type": "string", "description": "세션 ID (선택)" },
+            "vault":      { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" },
+            "confirm":    { "type": "boolean", "description": "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉." }
         },
-        "required": ["vault_root", "summary"]
+        "required": ["summary"]
     })
 }

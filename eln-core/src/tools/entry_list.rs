@@ -16,8 +16,10 @@ use crate::vault::ops;
 pub const NAME: &str = "entry_list";
 pub const DESCRIPTION: &str = "vault의 전체 entry 목록 조회. tag/status 필터 지원. \
     각 항목 메타: revisions(누적 r#### 수), links_out(이 entry가 거는 outbound link 수), \
-    linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), \
-    updated(최근 활동 시각).";
+    linked_by(이 entry를 link하는 다른 entry 수, 필터 무관 vault 전체 기준), updated(최근 활동 시각) — \
+    어느 entry가 활동적이고 hub인지 한눈에 파악. \
+    세션 시작 시 작업 범위 파악에 사용. \
+    개별 entry 내용은 entry_show 또는 bundle을 사용할 것 — 파일 직접 접근 금지.";
 
 pub struct EntryListHandler;
 
@@ -81,15 +83,15 @@ impl ToolHandler for EntryListHandler {
     }
 }
 
-/// JSON schema for `entry_list` args. S3.2 adapter가 `ToolDescriptor::with_input_schema`에 전달.
+/// Transport-level JSON schema (MCP client가 보는 schema). `vault_root`는 transport가
+/// `vault` alias를 resolve하여 handler 도달 전 inject — schema에서는 제외.
 pub fn input_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "vault_root": { "type": "string", "description": "절대경로로 해석된 vault root" },
-            "tag":        { "type": "string" },
-            "status":     { "type": "string" }
-        },
-        "required": ["vault_root"]
+            "tag":    { "type": "string", "description": "태그 필터 (선택)" },
+            "status": { "type": "string", "description": "상태 필터: draft / stable / archived (선택)" },
+            "vault":  { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택, 기본: 세션/서버 기본값)" }
+        }
     })
 }
