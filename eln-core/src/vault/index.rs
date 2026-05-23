@@ -156,8 +156,42 @@ pub struct QueryRow {
     pub baseline: Option<String>,
 }
 
+/// index.sqlite가 entry manifest보다 오래되었는지 검사 (lazy rebuild trigger).
+///
+/// query는 N0034 원칙상 "degradation 가능한 편의 기능"이자 "lazy initialization 대상".
+/// entry write(entry_new/status/tag)는 index를 갱신하지 않으므로, query 시점에
+/// `entries/*/manifest.toml` 최신 mtime이 `index.sqlite` mtime보다 나중이면 stale로 보고
+/// rebuild를 트리거한다. revision은 query 결과(entry meta: id/title/status/tag)에 영향이
+/// 없으므로 비교 대상에서 제외 — manifest mtime만으로 충분.
+fn index_is_stale(vault_root: &Path) -> bool {
+    let idx_mtime = match std::fs::metadata(index_path(vault_root)).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return true, // index 부재 → lazy init 대상
+    };
+    let entries_dir = crate::vault::metadata_root(vault_root).join("entries");
+    let Ok(rd) = std::fs::read_dir(&entries_dir) else {
+        return false; // entries dir 없으면 비교 의미 없음 (빈 vault)
+    };
+    for entry in rd.flatten() {
+        let manifest = entry.path().join("manifest.toml");
+        if let Ok(m) = std::fs::metadata(&manifest).and_then(|md| md.modified()) {
+            if m > idx_mtime {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// 필터 기반 entry 검색.
+///
+/// 호출 시 index staleness를 검사해 stale이면 rebuild를 먼저 수행한다 (lazy rebuild,
+/// N0034 원칙 4 "lazy initialization"). rebuild 실패는 degradation으로 흡수 — stale read라도
+/// query 자체는 진행 (편의 기능 degradation 허용).
 pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, ElfError> {
+    if index_is_stale(vault_root) {
+        let _ = rebuild(vault_root);
+    }
     let conn = open(vault_root)?;
 
     let mut sql = String::from(

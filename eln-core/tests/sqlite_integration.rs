@@ -153,6 +153,34 @@ fn rebuild_reflects_new_entries_after_initial_build() {
 }
 
 #[test]
+fn query_lazy_rebuilds_stale_index() {
+    let (dir, _guard) = setup_vault();
+    new_entry(&dir, "처음 항목", vec!["x".into()]);
+    index::rebuild(dir.path()).unwrap();
+
+    // 명시적 rebuild 없이 새 entry 추가 — write(entry_new/status/tag)는 index를 갱신하지 않는다.
+    new_entry(&dir, "나중 항목", vec!["x".into()]);
+
+    // query가 staleness(manifest mtime > index mtime)를 감지해 lazy rebuild → 2개 반영.
+    // 이 가드가 없으면 query는 stale index를 읽어 1개만 반환 (N0103 staleness gap).
+    let rows = index::query(
+        dir.path(),
+        &QueryFilter {
+            tag: Some("x".into()),
+            status: None,
+            baseline: None,
+            title_contains: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        rows.len(),
+        2,
+        "query는 stale index를 lazy rebuild하여 새 entry를 포함해야 한다 (N0103)"
+    );
+}
+
+#[test]
 fn query_links_present_in_index_after_rebuild() {
     let (dir, _guard) = setup_vault();
     new_entry(&dir, "A 항목", vec![]);
