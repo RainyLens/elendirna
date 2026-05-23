@@ -389,7 +389,7 @@ impl ElfMcpServer {
     }
 }
 
-// ─── FlexibleEntries: sync_record entries 역직렬화 ────────────────────
+// ─── sync_record entries 정규화 ────────────────────
 
 /// JSON array / comma-separated / 단일 string / stringified JSON array 모두 수용.
 /// sync_record는 fail-soft handoff hint이므로 strict 거부 대신 best-effort 정규화.
@@ -422,42 +422,6 @@ fn normalize_entry_ids(v: serde_json::Value) -> Vec<String> {
     // 순서 유지하며 중복 제거
     let mut seen = std::collections::HashSet::new();
     raw.into_iter().filter(|s| seen.insert(s.clone())).collect()
-}
-
-/// `sync_record` transport-level `entries` 폼 — JSON array / comma-separated / 단일 ID /
-/// stringified JSON array 모두 수용. 본 P1 dispatch는 `normalize_entry_ids` 함수만 직접 호출하므로
-/// struct 자체 사용처는 deserialize test에 한정 (회귀 baseline 보존). P3에서 정리 후보.
-#[allow(dead_code)]
-struct FlexibleEntries(Vec<String>);
-
-impl<'de> serde::de::Deserialize<'de> for FlexibleEntries {
-    fn deserialize<D>(d: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let v = serde_json::Value::deserialize(d)?;
-        if !matches!(
-            v,
-            serde_json::Value::Array(_) | serde_json::Value::String(_)
-        ) {
-            return Err(serde::de::Error::custom(
-                "entries must be an array, a string, a comma-separated string, or a stringified JSON array",
-            ));
-        }
-        Ok(FlexibleEntries(normalize_entry_ids(v)))
-    }
-}
-
-impl schemars::JsonSchema for FlexibleEntries {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "FlexibleEntries".into()
-    }
-    fn schema_id() -> std::borrow::Cow<'static, str> {
-        "FlexibleEntries".into()
-    }
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({"type": "array", "items": {"type": "string"}})
-    }
 }
 
 // ─── 파라미터 타입 ────────────────────────
@@ -596,8 +560,10 @@ impl ElfMcpServer {
 
     /// session_start dispatch — transport-special (RequestContext 필요).
     /// HTTP path는 `Mcp-Session-Id` header echo, stdio는 새 UUID v4 발급.
-    /// session_start은 ToolHandler 표면에 안 올라옴 — P3에서 RequestContext 흡수 시점에
-    /// 흡수 가능 (N0102 r0001 의사결정 4: 흔적 기관 (b)).
+    /// session_start은 ToolHandler 표면에 안 올라옴 — 세션 수립이 서버 상태(sessions /
+    /// current_session_id) mutate라 vault-only plugin tool 추상에 안 맞음. P3 결정
+    /// (N0102 r0009): 흔적 기관 *확정* — RequestContext 흡수는 transport 관심사를 SDK 경계로
+    /// 끌어들여 N0072 위반이므로 의도적으로 transport-special 유지.
     async fn call_session_start(
         &self,
         args: serde_json::Value,
@@ -655,12 +621,23 @@ impl ElfMcpServer {
         let recent_sessions = ops::sync_log(&res.path, Some(3), None).unwrap_or_default();
         let meta = self.vault_meta(&res);
         let is_global = meta["vault_kind"].as_str().unwrap_or("local") == "global";
+        // 호환성 진단: core(eln-core) / plugin_sdk(eln-plugin-sdk) / plugins[] 3-tier 버전.
+        // 현재 14 tool은 eln-core built-in이라 단일 "elendirna-builtin" plugin 항목 (version=core).
+        // 외부 plugin 로딩(N0094) 도착 시 각 {name, version}로 plugins[] 확장.
+        let versions = serde_json::json!({
+            "core": env!("CARGO_PKG_VERSION"),
+            "plugin_sdk": eln_plugin_sdk::VERSION,
+            "plugins": [
+                { "name": "elendirna-builtin", "version": env!("CARGO_PKG_VERSION") }
+            ],
+        });
         if entry_count == 0 {
             let mut result = serde_json::json!({
                 "ok": true,
                 "session_id": session_id,
                 "vault_status": "empty",
                 "entry_count": 0,
+                "versions": versions.clone(),
                 "ai_instructions": {
                     "situation": "vault가 비어 있습니다. 사용자가 아직 아이디어를 입력하지 않은 상태입니다.",
                     "next_action": "사용자에게 어떤 주제든 자유롭게 말해달라고 유도하세요. 발화를 들은 즉시 entry_new로 기록하고, 대화를 이어가며 revision_add로 보완하세요.",
@@ -688,6 +665,7 @@ impl ElfMcpServer {
             "session_id": session_id,
             "vault_status": "active",
             "entry_count": entry_count,
+            "versions": versions,
             "recent_sessions": recent_sessions,
             "handover_status": "이전 세션의 인수인계 메모와 bundle 가능한 entry/revision chain을 통해 최근 맥락을 복원했습니다.",
             "next_action": "query 또는 entry_list로 작업 범위를 파악한 뒤, 상황에 맞게 bundle(id, depth/since)를 선택하세요.",
@@ -887,7 +865,7 @@ pub fn run_stdio(resolution: VaultResolution, launch_init_fallback: bool) -> any
 
 #[cfg(test)]
 mod tests {
-    use super::{ElfMcpServer, FlexibleEntries, normalize_entry_ids};
+    use super::{ElfMcpServer, normalize_entry_ids};
     use crate::output::message::{Message, MessageLevel};
     use crate::vault::{VaultOrigin, VaultResolution};
 
@@ -1356,16 +1334,8 @@ mod tests {
     }
 
     #[test]
-    fn flex_entries_deserialize_accepts_stringified_array() {
-        let entries: FlexibleEntries =
-            serde_json::from_value(serde_json::json!("[\"N0001\",\"N0002\"]")).unwrap();
-        assert_eq!(entries.0, vec!["N0001", "N0002"]);
-    }
-
-    #[test]
-    fn flex_entries_deserialize_rejects_uninterpretable_types() {
-        assert!(serde_json::from_value::<FlexibleEntries>(serde_json::json!(42)).is_err());
-        assert!(serde_json::from_value::<FlexibleEntries>(serde_json::json!(true)).is_err());
-        assert!(serde_json::from_value::<FlexibleEntries>(serde_json::json!({})).is_err());
+    fn flex_entries_accepts_stringified_array() {
+        let v = serde_json::json!("[\"N0001\",\"N0002\"]");
+        assert_eq!(normalize_entry_ids(v), vec!["N0001", "N0002"]);
     }
 }
