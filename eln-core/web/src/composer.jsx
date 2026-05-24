@@ -5,7 +5,12 @@ import { api } from "./api.js";
 import { go } from "./router.js";
 import { Caps, Loading, ErrorNote, useAsync, fmtTs } from "./atoms.jsx";
 
-const { useState } = React;
+const { useState, useEffect, useMemo } = React;
+
+// 서버 렌더 마크다운 본문(baseline 문서). entry.jsx의 .prose 패턴 재사용.
+function Prose({ html }) {
+  return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 const btnStyle = { fontFamily: "var(--font-mono)", fontSize: "var(--fs-12)" };
 function disabledStyle(disabled) {
@@ -81,6 +86,48 @@ function Crumb({ items }) {
   );
 }
 
+// ─── draft 영속(localStorage) + 상대시간 ─────  [[N0106]] C′ ②
+function draftKeyOf(id) { return "compose-draft:" + id; }
+function loadDraft(id) {
+  try { return JSON.parse(localStorage.getItem(draftKeyOf(id))) || {}; } catch (_) { return {}; }
+}
+function saveDraftRaw(id, d) {
+  try { localStorage.setItem(draftKeyOf(id), JSON.stringify(d)); } catch (_) {}
+}
+function clearDraft(id) {
+  try { localStorage.removeItem(draftKeyOf(id)); } catch (_) {}
+}
+function agoStr(ts) {
+  if (!ts) return "";
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
+// ─── 라인 diff (LCS) ─────────────────────────  [[N0106]] C′ ③
+function lineDiff(a, b) {
+  const A = a ? a.split("\n") : [];
+  const B = b ? b.split("\n") : [];
+  const m = A.length, n = B.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (A[i] === B[j]) { out.push({ t: " ", l: A[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "-", l: A[i] }); i++; }
+    else { out.push({ t: "+", l: B[j] }); j++; }
+  }
+  while (i < m) out.push({ t: "-", l: A[i++] });
+  while (j < n) out.push({ t: "+", l: B[j++] });
+  return out;
+}
+
 // live validate — per-rev validate 스키마는 묵힘이라, composer의 client-side 체크를
 // 디자인의 validate rail 형태로 표시한다(스키마 없이 "느낌"만 재현). [[N0106]]
 function validateItems(mode, change, impact, delta, head) {
@@ -123,10 +170,10 @@ function ValidateRow({ item }) {
   );
 }
 
-function ValidateRail({ items }) {
+function ValidateList({ items }) {
   const attention = items.filter((i) => !i.ok).length;
   return (
-    <aside style={{ borderLeft: "1px solid var(--rule)", paddingLeft: 24, position: "sticky", top: 0 }}>
+    <>
       <Caps style={{ marginBottom: 4 }}>
         validate · live{attention ? ` · ${attention} attention` : ""}
       </Caps>
@@ -135,19 +182,87 @@ function ValidateRail({ items }) {
           <ValidateRow key={it.key} item={it} />
         ))}
       </ul>
-    </aside>
+    </>
+  );
+}
+
+// 초안(합성 delta) vs baseline head delta의 라인 diff. append 모델이라 공통 라인이
+// 적을 수 있어 라벨을 정직하게 'r#### → draft'로 둔다. [[N0106]] C′ ③
+function DiffPreview({ base, draft, headRev }) {
+  const lines = useMemo(() => lineDiff(base, draft), [base, draft]);
+  const empty = !draft || !draft.trim();
+  return (
+    <div style={{ marginTop: 24 }}>
+      <Caps style={{ marginBottom: 6 }}>
+        diff preview{headRev ? ` · ${headRev} → draft` : " · first revision"}
+      </Caps>
+      {empty ? (
+        <div className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--ink-4)" }}>초안 입력 시 표시</div>
+      ) : (
+        <pre style={{
+          margin: 0, fontFamily: "var(--font-mono)", fontSize: "var(--fs-12)",
+          lineHeight: "var(--lh-mono)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 360, overflow: "auto",
+        }}>
+          {lines.map((d, i) => (
+            <div key={i} style={{
+              color: d.t === "+" ? "var(--ink)" : d.t === "-" ? "var(--ink-4)" : "var(--ink-3)",
+              textDecoration: d.t === "-" ? "line-through" : "none",
+            }}>
+              <span style={{ color: "var(--ink-4)", userSelect: "none" }}>{d.t} </span>{d.l || " "}
+            </div>
+          ))}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ① baseline head를 read-only 문서로 — 접힘 기본 + expand 토글. [[N0106]] C′ ①
+function BaselineDoc({ head }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!head || !head.delta_html) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ position: "relative", maxHeight: expanded ? "none" : 200, overflow: "hidden" }}>
+        <Prose html={head.delta_html} />
+        {!expanded && (
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0, height: 48,
+            background: "linear-gradient(transparent, var(--bg))", pointerEvents: "none",
+          }} />
+        )}
+      </div>
+      <button
+        className="mono"
+        onClick={() => setExpanded((e) => !e)}
+        style={{ ...btnStyle, marginTop: 8, border: "none", background: "transparent", color: "var(--ink-3)", textDecoration: "underline", padding: 0, cursor: "pointer" }}
+      >
+        {expanded ? "collapse baseline ↑" : "expand baseline ↓"}
+      </button>
+    </div>
   );
 }
 
 // ─── 새 revision ─────────────────────────────
 export function EntryCompose({ id }) {
   const { data, err, loading } = useAsync(() => api.bundle(id), [id]);
-  const [mode, setMode] = useState("structured"); // structured | freeform
-  const [change, setChange] = useState("");
-  const [impact, setImpact] = useState("");
-  const [delta, setDelta] = useState("");
+  const initial = useMemo(() => loadDraft(id), [id]);
+  const [mode, setMode] = useState(initial.mode || "structured"); // structured | freeform
+  const [change, setChange] = useState(initial.change || "");
+  const [impact, setImpact] = useState(initial.impact || "");
+  const [delta, setDelta] = useState(initial.delta || "");
+  const [lastEdit, setLastEdit] = useState(null);                 // 마지막 keystroke ts → dirty
+  const [savedAt, setSavedAt] = useState(initial.savedAt || null); // 마지막 저장(복원 포함) ts
   const [busy, setBusy] = useState(false);
   const [subErr, setSubErr] = useState(null);
+  const [, setTick] = useState(0);
+
+  // "Ns ago" 라이브 갱신.
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   if (loading) return <Loading what={id} />;
   if (err) return <ErrorNote err={err} />;
@@ -160,6 +275,26 @@ export function EntryCompose({ id }) {
       ? change.trim().length >= 12 && impact.trim().length >= 12
       : delta.trim().length > 0;
 
+  // 초안 합성 delta — BE compose_delta와 동일 규칙(diff 비교 source).
+  const draftDelta =
+    mode === "structured"
+      ? `## Change\n\n${change.trim()}\n\n## Impact\n\n${impact.trim()}`
+      : delta.trim();
+
+  const touch = () => setLastEdit(Date.now());
+  const onChange = (setter) => (v) => { setter(v); touch(); };
+  const onMode = () => { setMode(mode === "structured" ? "freeform" : "structured"); touch(); };
+
+  const dirty = lastEdit != null;
+  const saveDraft = () => {
+    saveDraftRaw(id, { mode, change, impact, delta, savedAt: Date.now() });
+    setSavedAt(Date.now());
+    setLastEdit(null);
+  };
+  const draftStatus = dirty
+    ? `unsaved · last keystroke ${agoStr(lastEdit)}`
+    : savedAt ? `draft saved · ${agoStr(savedAt)}` : "no draft";
+
   const commit = async () => {
     setSubErr(null);
     setBusy(true);
@@ -169,6 +304,7 @@ export function EntryCompose({ id }) {
           ? { change: change.trim(), impact: impact.trim() }
           : { delta: delta.trim() };
       await api.createRevision(id, body);
+      clearDraft(id);
       go("#/entry/" + id);
     } catch (e) {
       setSubErr(e);
@@ -177,48 +313,45 @@ export function EntryCompose({ id }) {
   };
 
   return (
-    <div className="wrap" style={{ maxWidth: 1040 }}>
+    <div className="wrap" style={{ maxWidth: 1100 }}>
       <Crumb items={[{ label: "entries", href: "#/entries" }, { label: id, href: "#/entry/" + id }, { label: "new revision" }]} />
 
+      {/* ① baseline-as-document */}
       <section style={{ paddingBottom: 18, borderBottom: "1px solid var(--rule-strong)", marginBottom: 20 }}>
         <Caps style={{ marginBottom: 8 }}>baseline · read-only</Caps>
         <h2 style={{ margin: 0, fontWeight: 500, fontSize: "var(--fs-20)", color: "var(--ink-1)", letterSpacing: "-0.005em" }}>
           {entry.title}
         </h2>
         <div className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--ink-3)", marginTop: 6 }}>
-          {head ? `head ${head.rev_id} · ${fmtTs(head.created)} · ${head.author}` : "아직 revision 없음"}
+          {head ? `head ${head.rev_id} · ${fmtTs(head.created)} · ${head.author}` : "아직 revision 없음 (첫 revision)"}
         </div>
+        <BaselineDoc head={head} />
       </section>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
         <Caps style={{ color: "var(--accent-fg)" }}>↓ composing new revision · as User</Caps>
-        <button
-          className="mono"
-          onClick={() => setMode(mode === "structured" ? "freeform" : "structured")}
-          style={btnStyle}
-          title="toggle input mode"
-        >
+        <button className="mono" onClick={onMode} style={btnStyle} title="toggle input mode">
           {mode === "structured" ? "→ free-form" : "→ structured"}
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 32, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 32, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>
           {mode === "structured" ? (
             <>
               <div style={{ marginBottom: 18 }}>
                 <FieldLabel sub="min 12 · required">[change] — what shifted</FieldLabel>
-                <Area value={change} onChange={setChange} placeholder="무엇이 바뀌었나" />
+                <Area value={change} onChange={onChange(setChange)} placeholder="무엇이 바뀌었나" />
               </div>
               <div style={{ marginBottom: 18 }}>
                 <FieldLabel sub="min 12 · required · so-what">[impact] — what now changes</FieldLabel>
-                <Area value={impact} onChange={setImpact} placeholder="그래서 무엇이 달라지나" />
+                <Area value={impact} onChange={onChange(setImpact)} placeholder="그래서 무엇이 달라지나" />
               </div>
             </>
           ) : (
             <div style={{ marginBottom: 18 }}>
               <FieldLabel sub="markdown · required">delta — free-form</FieldLabel>
-              <Area value={delta} onChange={setDelta} rows={10} placeholder="자유 형식 delta (markdown). [[N####]] / → see N#### 참조 가능." />
+              <Area value={delta} onChange={onChange(setDelta)} rows={10} placeholder="자유 형식 delta (markdown). [[N####]] / → see N#### 참조 가능." />
             </div>
           )}
 
@@ -228,17 +361,29 @@ export function EntryCompose({ id }) {
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
-            <a href={"#/entry/" + id} className="mono" style={{ ...btnStyle, textDecoration: "none", padding: "6px 10px", border: "1px solid var(--rule-strong)", borderRadius: 2 }}>
-              discard
-            </a>
-            <button className="primary" disabled={!valid || busy} onClick={commit} style={disabledStyle(!valid || busy)}>
-              {busy ? "committing…" : "commit revision →"}
-            </button>
+          {/* ② draft 상태 + 액션 footer */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--rule)", paddingTop: 14, gap: 10 }}>
+            <span className="mono" style={{ fontSize: "var(--fs-12)", color: dirty ? "var(--accent-fg)" : "var(--ink-3)" }}>
+              {draftStatus}
+            </span>
+            <div style={{ display: "flex", gap: 10 }}>
+              <a href={"#/entry/" + id} onClick={() => clearDraft(id)} className="mono" style={{ ...btnStyle, textDecoration: "none", padding: "6px 10px", border: "1px solid var(--rule-strong)", borderRadius: 2 }}>
+                discard
+              </a>
+              <button className="mono" onClick={saveDraft} disabled={!dirty} style={disabledStyle(!dirty)}>
+                save draft
+              </button>
+              <button className="primary" disabled={!valid || busy} onClick={commit} style={disabledStyle(!valid || busy)}>
+                {busy ? "committing…" : "commit revision →"}
+              </button>
+            </div>
           </div>
         </div>
 
-        <ValidateRail items={items} />
+        <aside style={{ borderLeft: "1px solid var(--rule)", paddingLeft: 24, position: "sticky", top: 0 }}>
+          <ValidateList items={items} />
+          <DiffPreview base={head ? head.delta : ""} draft={draftDelta} headRev={head ? head.rev_id : null} />
+        </aside>
       </div>
     </div>
   );

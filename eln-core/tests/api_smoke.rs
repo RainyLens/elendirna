@@ -284,6 +284,12 @@ async fn api_bundle_linkifies_and_flags_dangling() {
     let revs = v["revisions"].as_array().expect("revisions array");
     assert_eq!(revs.len(), 1, "one revision: {v}");
 
+    // raw delta(원문)도 노출 — composer diff preview의 비교 source. [[N0106]]
+    assert!(
+        revs[0]["delta"].as_str().unwrap().contains("[[N0001]]"),
+        "raw delta exposes unlinkified source: {v}"
+    );
+
     let delta_html = revs[0]["delta_html"].as_str().unwrap();
     assert!(
         delta_html.contains(r##"href="#/entry/N0001""##),

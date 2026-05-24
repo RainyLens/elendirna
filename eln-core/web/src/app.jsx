@@ -11,7 +11,7 @@ export function App() {
   let body;
   if (route.view === "entry") body = <EntryView id={route.id} />;
   else if (route.view === "lineage") body = <LineageView id={route.id} />;
-  else if (route.view === "compose") body = <EntryCompose id={route.id} />;
+  else if (route.view === "compose") body = <EntryCompose key={route.id} id={route.id} />;
   else if (route.view === "new") body = <NewEntry />;
   else body = <EntriesLanding />;
 

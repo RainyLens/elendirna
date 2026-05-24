@@ -230,6 +230,8 @@ pub struct RevisionDto {
     baseline: String,
     created: String,
     author: String,
+    /// raw delta(markdown 원문) — composer diff preview의 비교 source. delta_html과 병기. [[N0106]]
+    delta: String,
     delta_html: String,
 }
 
@@ -306,6 +308,7 @@ pub async fn bundle_entry(
             baseline: r.baseline.to_string(),
             created: r.created.to_rfc3339(),
             author: r.author.clone(),
+            delta: r.delta.clone(),
             delta_html: collect(render_markdown(&r.delta, &ids)),
         })
         .collect();
