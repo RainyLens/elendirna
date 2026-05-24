@@ -45,8 +45,11 @@ function Node({ n, kind }) {
 
 function Arrow() {
   return (
-    <span className="mono" style={{ color: "var(--ink-4)", padding: "0 4px" }}>
-      ↓
+    <span
+      className="mono"
+      style={{ display: "flex", alignItems: "center", color: "var(--ink-4)", padding: "0 10px", fontSize: "var(--fs-18)" }}
+    >
+      →
     </span>
   );
 }
@@ -60,7 +63,7 @@ export function LineageView({ id }) {
   const up = [...[...data.ancestors].reverse(), ...data.parents];
 
   return (
-    <div className="wrap" style={{ maxWidth: 720 }}>
+    <div className="wrap" style={{ maxWidth: 1100 }}>
       <div className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--ink-3)", marginBottom: 8 }}>
         <a href="#/entries" style={{ textDecoration: "none", color: "var(--ink-3)" }}>
           entries
@@ -74,12 +77,12 @@ export function LineageView({ id }) {
       </div>
 
       <Caps style={{ margin: "18px 0 14px" }}>baseline chain · oldest → this</Caps>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        {up.length === 0 && (
-          <div className="mono" style={{ color: "var(--ink-3)", fontSize: "var(--fs-12)", marginBottom: 8 }}>
-            no baseline — this is a root.
-          </div>
-        )}
+      {up.length === 0 ? (
+        <div className="mono" style={{ color: "var(--ink-3)", fontSize: "var(--fs-12)" }}>
+          no baseline — this is a root.
+        </div>
+      ) : null}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", rowGap: 12 }}>
         {up.map((n) => (
           <React.Fragment key={n.id}>
             <Node n={n} kind="ancestor" />
@@ -90,16 +93,20 @@ export function LineageView({ id }) {
       </div>
 
       <Caps style={{ margin: "30px 0 14px" }}>derived from this · {data.children.length}</Caps>
-      {data.children.length === 0 && (
+      {data.children.length === 0 ? (
         <div className="mono" style={{ color: "var(--ink-3)", fontSize: "var(--fs-12)" }}>
           nothing derived yet.
         </div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <span className="mono" style={{ color: "var(--accent-fg)", fontSize: "var(--fs-12)", paddingRight: 4 }}>
+            {id} →
+          </span>
+          {data.children.map((c) => (
+            <Node key={c.id} n={c} kind="child" />
+          ))}
+        </div>
       )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        {data.children.map((c) => (
-          <Node key={c.id} n={c} kind="child" />
-        ))}
-      </div>
     </div>
   );
 }

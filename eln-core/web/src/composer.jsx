@@ -81,6 +81,64 @@ function Crumb({ items }) {
   );
 }
 
+// live validate — per-rev validate 스키마는 묵힘이라, composer의 client-side 체크를
+// 디자인의 validate rail 형태로 표시한다(스키마 없이 "느낌"만 재현). [[N0106]]
+function validateItems(mode, change, impact, delta, head) {
+  const items = [];
+  if (mode === "structured") {
+    const cl = change.trim().length;
+    const il = impact.trim().length;
+    items.push({ key: "change.length", ok: cl >= 12, msg: `${cl}/12 chars` });
+    items.push({ key: "impact.length", ok: il >= 12, msg: `${il}/12 chars` });
+  } else {
+    const dl = delta.trim().length;
+    items.push({ key: "delta.nonempty", ok: dl > 0, msg: dl > 0 ? `${dl} chars` : "empty" });
+  }
+  items.push({ key: "baseline.reach", ok: true, msg: head ? `head ${head.rev_id}` : "first revision (@r0000)" });
+  items.push({ key: "author.identity", ok: true, msg: "byline = User" });
+  return items;
+}
+
+function ValidateRow({ item }) {
+  const color = item.ok ? "var(--ink-3)" : "var(--warning)";
+  return (
+    <li
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "2px 10px",
+        alignItems: "baseline",
+        padding: "6px 0",
+        borderTop: "1px solid var(--rule)",
+        fontSize: "var(--fs-12)",
+      }}
+    >
+      <span className="mono" style={{ color, flex: "0 0 auto", minWidth: 116 }}>{item.key}</span>
+      <span className="mono" style={{ color: "var(--ink-2)", flex: "1 1 120px" }}>
+        <span style={{ color }}>{item.ok ? "ok" : "needs_attention"}</span>
+        <span style={{ color: "var(--ink-4)", margin: "0 6px" }}>·</span>
+        {item.msg}
+      </span>
+    </li>
+  );
+}
+
+function ValidateRail({ items }) {
+  const attention = items.filter((i) => !i.ok).length;
+  return (
+    <aside style={{ borderLeft: "1px solid var(--rule)", paddingLeft: 24, position: "sticky", top: 0 }}>
+      <Caps style={{ marginBottom: 4 }}>
+        validate · live{attention ? ` · ${attention} attention` : ""}
+      </Caps>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {items.map((it) => (
+          <ValidateRow key={it.key} item={it} />
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
 // ─── 새 revision ─────────────────────────────
 export function EntryCompose({ id }) {
   const { data, err, loading } = useAsync(() => api.bundle(id), [id]);
@@ -96,6 +154,7 @@ export function EntryCompose({ id }) {
 
   const { entry, revisions } = data;
   const head = revisions.length ? revisions[revisions.length - 1] : null;
+  const items = validateItems(mode, change, impact, delta, head);
   const valid =
     mode === "structured"
       ? change.trim().length >= 12 && impact.trim().length >= 12
@@ -118,7 +177,7 @@ export function EntryCompose({ id }) {
   };
 
   return (
-    <div className="wrap" style={{ maxWidth: 860 }}>
+    <div className="wrap" style={{ maxWidth: 1040 }}>
       <Crumb items={[{ label: "entries", href: "#/entries" }, { label: id, href: "#/entry/" + id }, { label: "new revision" }]} />
 
       <section style={{ paddingBottom: 18, borderBottom: "1px solid var(--rule-strong)", marginBottom: 20 }}>
@@ -143,37 +202,43 @@ export function EntryCompose({ id }) {
         </button>
       </div>
 
-      {mode === "structured" ? (
-        <>
-          <div style={{ marginBottom: 18 }}>
-            <FieldLabel sub="min 12 · required">[change] — what shifted</FieldLabel>
-            <Area value={change} onChange={setChange} placeholder="무엇이 바뀌었나" />
-          </div>
-          <div style={{ marginBottom: 18 }}>
-            <FieldLabel sub="min 12 · required · so-what">[impact] — what now changes</FieldLabel>
-            <Area value={impact} onChange={setImpact} placeholder="그래서 무엇이 달라지나" />
-          </div>
-        </>
-      ) : (
-        <div style={{ marginBottom: 18 }}>
-          <FieldLabel sub="markdown · required">delta — free-form</FieldLabel>
-          <Area value={delta} onChange={setDelta} rows={10} placeholder="자유 형식 delta (markdown). [[N####]] / → see N#### 참조 가능." />
-        </div>
-      )}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 32, alignItems: "start" }}>
+        <div style={{ minWidth: 0 }}>
+          {mode === "structured" ? (
+            <>
+              <div style={{ marginBottom: 18 }}>
+                <FieldLabel sub="min 12 · required">[change] — what shifted</FieldLabel>
+                <Area value={change} onChange={setChange} placeholder="무엇이 바뀌었나" />
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <FieldLabel sub="min 12 · required · so-what">[impact] — what now changes</FieldLabel>
+                <Area value={impact} onChange={setImpact} placeholder="그래서 무엇이 달라지나" />
+              </div>
+            </>
+          ) : (
+            <div style={{ marginBottom: 18 }}>
+              <FieldLabel sub="markdown · required">delta — free-form</FieldLabel>
+              <Area value={delta} onChange={setDelta} rows={10} placeholder="자유 형식 delta (markdown). [[N####]] / → see N#### 참조 가능." />
+            </div>
+          )}
 
-      {subErr && (
-        <div className="notice error" style={{ padding: "8px 0" }}>
-          commit 실패: {subErr.message}
-        </div>
-      )}
+          {subErr && (
+            <div className="notice error" style={{ padding: "8px 0" }}>
+              commit 실패: {subErr.message}
+            </div>
+          )}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
-        <a href={"#/entry/" + id} className="mono" style={{ ...btnStyle, textDecoration: "none", padding: "6px 10px", border: "1px solid var(--rule-strong)", borderRadius: 2 }}>
-          discard
-        </a>
-        <button className="primary" disabled={!valid || busy} onClick={commit} style={disabledStyle(!valid || busy)}>
-          {busy ? "committing…" : "commit revision →"}
-        </button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
+            <a href={"#/entry/" + id} className="mono" style={{ ...btnStyle, textDecoration: "none", padding: "6px 10px", border: "1px solid var(--rule-strong)", borderRadius: 2 }}>
+              discard
+            </a>
+            <button className="primary" disabled={!valid || busy} onClick={commit} style={disabledStyle(!valid || busy)}>
+              {busy ? "committing…" : "commit revision →"}
+            </button>
+          </div>
+        </div>
+
+        <ValidateRail items={items} />
       </div>
     </div>
   );
