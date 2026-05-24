@@ -30,6 +30,7 @@ pub fn router(vault_root: Arc<PathBuf>) -> Router {
     let state = ApiState { vault_root };
     Router::new()
         .route("/health", get(health))
+        .route("/meta", get(api::meta))
         // read (P1)
         .route("/entries", get(api::list_entries).post(api::create_entry))
         .route("/entries/{id}", get(api::show_entry))

@@ -60,6 +60,13 @@ fn vault(state: &ApiState) -> &Path {
     state.vault_root.as_path()
 }
 
+/// 표시용 vault 경로 — Windows 확장 길이 prefix(`\\?\`)를 벗긴다.
+/// 우상단 chrome에 그대로 노출(FE가 길면 말줄임). [[N0106]] vault 표기.
+fn display_path(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+}
+
 /// vault의 모든 entry id 집합 — cross-ref dangling 판정용.
 fn known_ids(entries: &[Entry]) -> HashSet<String> {
     entries.iter().map(|e| e.manifest.id.clone()).collect()
@@ -85,6 +92,11 @@ pub struct EntryListItem {
     id: String,
     title: String,
     status: String,
+    baseline: Option<String>,
+    /// head(최신) revision 작성자 — 목록 row의 주 author 신호. revision 없으면 None.
+    author: Option<String>,
+    /// rev_id 오름차순 작성자 배열 — RevTicks(리비전별 hue 틱)용. [[N0106]] entry-list redesign.
+    rev_authors: Vec<String>,
     created: String,
     updated: String,
     revs: u32,
@@ -102,19 +114,47 @@ pub async fn list_entries(State(state): State<ApiState>) -> ApiResult<Vec<EntryL
         .iter()
         .map(|e| {
             let m = &e.manifest;
+            // author 배열은 revision_list(파일 읽기)로 얻는다 — index revisions 테이블엔 author가
+            // 없다. 비용이 문제되면 index에 author 컬럼을 추가해 query로 승격. [[N0106]]
+            let revisions = ops::revision_list(vault_root, &m.id).unwrap_or_default();
+            let rev_authors: Vec<String> = revisions.iter().map(|r| r.author.clone()).collect();
+            let author = rev_authors.last().cloned();
             EntryListItem {
                 id: m.id.clone(),
                 title: m.title.clone(),
                 status: m.status.to_string(),
+                baseline: m.baseline.clone(),
+                author,
+                rev_authors,
                 created: m.created.to_rfc3339(),
                 updated: m.updated.to_rfc3339(),
-                revs: revs_of(vault_root, &m.id),
+                revs: revisions.len() as u32,
                 out: ops::links_out_count(e),
                 linked_by: linked_by.get(&m.id).copied().unwrap_or(0),
             }
         })
         .collect();
     Ok(Json(items))
+}
+
+// ─── GET /api/meta ───────────────────────────
+
+#[derive(Serialize)]
+pub struct MetaResponse {
+    /// 표시용 vault 경로 (`\\?\` prefix 제거).
+    vault_path: String,
+    entry_count: usize,
+    core_version: String,
+}
+
+pub async fn meta(State(state): State<ApiState>) -> ApiResult<MetaResponse> {
+    let vault_root = vault(&state);
+    let entry_count = ops::entry_list(vault_root).len();
+    Ok(Json(MetaResponse {
+        vault_path: display_path(vault_root),
+        entry_count,
+        core_version: env!("CARGO_PKG_VERSION").to_string(),
+    }))
 }
 
 // ─── GET /api/entries/{id} ───────────────────

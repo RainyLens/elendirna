@@ -1,7 +1,11 @@
-// 공유 atom — 디자인 소스(common.jsx)의 시각 언어를 P1 스키마에 맞춰 재구성.
-// author hue / per-rev validate / schema chip 은 P2 게이트이므로 제외.
+// 공유 atom — 디자인 소스(common.jsx)의 시각 언어를 구현 스키마에 맞춰 재구성.
+// author hue는 P2 author 결정 해제 후 도입(RevTicks/AuthorTag). schema chip만 여전히 묵힘.
+import { api } from "./api.js";
 
 export function TopChrome({ section }) {
+  // vault 경로는 chrome이 한 번 조회(App에 1회 마운트라 화면 전환에도 재요청 없음). [[N0106]]
+  const meta = useAsync(() => api.meta(), []);
+  const vaultPath = meta.data ? meta.data.vault_path : null;
   const link = (key, hash, label) => (
     <a
       href={hash}
@@ -38,10 +42,17 @@ export function TopChrome({ section }) {
       </div>
       <div
         className="mono"
-        style={{ display: "flex", gap: 14, fontSize: "var(--fs-12)", color: "var(--ink-3)" }}
+        style={{ display: "flex", alignItems: "baseline", gap: 14, fontSize: "var(--fs-12)", color: "var(--ink-3)", minWidth: 0 }}
       >
-        <span>read-only</span>
-        <span style={{ color: "var(--ink-2)" }}>{">"} _</span>
+        {vaultPath && (
+          <span
+            title={vaultPath}
+            style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            <span style={{ color: "var(--ink-4)" }}>vault:</span> {vaultPath}
+          </span>
+        )}
+        <span style={{ color: "var(--ink-2)", flex: "0 0 auto" }}>{">"} _</span>
       </div>
     </div>
   );
@@ -75,21 +86,65 @@ export function StatusChip({ status }) {
   );
 }
 
-// 작성자 태그 — known(User/claude/codex/gemini)은 tokens.css hue, unknown은 ink-2.
-// 자유 문자열 색 배정(A3)은 미룸([[N0033]] r0014).
+// 작성자 hue — known(user/claude/codex/gemini)은 tokens.css `.auth-*`, unknown은 ink-2.
+// BE author는 "User"(사람)/agent명 → 대소문자 무관 정규화로 hue 매핑. 자유 색(A3)은 묵힘([[N0033]] r0014).
 const KNOWN_AUTHOR_HUE = {
-  User: "auth-user",
+  user: "auth-user",
   claude: "auth-claude",
   codex: "auth-codex",
   gemini: "auth-gemini",
 };
+function authorHueClass(author) {
+  return KNOWN_AUTHOR_HUE[String(author || "").toLowerCase()] || null;
+}
 
 export function AuthorTag({ author }) {
   if (!author) return null;
-  const hue = KNOWN_AUTHOR_HUE[author];
+  const hue = authorHueClass(author);
   return (
     <span className={hue ? "mono " + hue : "mono"} style={hue ? undefined : { color: "var(--ink-2)" }}>
       {author}
+    </span>
+  );
+}
+
+// revision별 작성자 틱 — 리비전 하나당 세로 막대, 작성자 hue. 목록 row의 활동 신호. [[N0106]]
+// revision이 많을 수 있어 max개까지만 그리고 초과분은 `++`로 축약(실 vault는 10+ 흔함).
+export function RevTicks({ authors, max = 10 }) {
+  if (!authors || !authors.length) return null;
+  // 최신 max개를 보이고 오래된 초과분은 앞쪽 `++`로 축약 — head/updated 신호와 같은 방향.
+  const overflow = authors.length - max;
+  const start = overflow > 0 ? overflow : 0;
+  const shown = authors.slice(start);
+  return (
+    <span style={{ display: "inline-flex", gap: 2, alignItems: "center", height: 12 }}>
+      {overflow > 0 && (
+        <span
+          className="mono"
+          style={{ fontSize: "var(--fs-10)", color: "var(--ink-3)", marginRight: 1, lineHeight: 1 }}
+          title={`+${overflow} earlier`}
+        >
+          ++
+        </span>
+      )}
+      {shown.map((a, i) => {
+        const hue = authorHueClass(a);
+        const revNum = start + i + 1; // 실제 rev 번호(오름차순)
+        return (
+          <span
+            key={i}
+            className={hue || undefined}
+            style={{
+              display: "inline-block",
+              width: 3,
+              height: 12,
+              background: "currentColor",
+              color: hue ? undefined : "var(--ink-3)",
+            }}
+            title={`r${String(revNum).padStart(4, "0")} · ${a}`}
+          />
+        );
+      })}
     </span>
   );
 }

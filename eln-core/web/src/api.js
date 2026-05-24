@@ -39,6 +39,7 @@ async function sendJSON(method, path, body) {
 const id_ = (id) => encodeURIComponent(id);
 
 export const api = {
+  meta: () => getJSON("/meta"),
   entries: () => getJSON("/entries"),
   entry: (id) => getJSON("/entries/" + id_(id)),
   bundle: (id) => getJSON("/entries/" + id_(id) + "/bundle"),

@@ -227,6 +227,41 @@ async fn api_entries_list_includes_counts() {
 }
 
 #[tokio::test]
+async fn api_entries_list_includes_author_and_baseline() {
+    // entry-list redesign: row의 author hue/RevTicks/baseline 신호. [[N0106]]
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+
+    let v = get_json(&app, "/api/entries").await;
+    let arr = v.as_array().unwrap();
+
+    // N0002: revision 1개(author=User) + baseline N0001.
+    let n0002 = arr.iter().find(|e| e["id"] == "N0002").unwrap();
+    assert_eq!(n0002["baseline"], "N0001", "baseline: {n0002}");
+    assert_eq!(n0002["author"], "User", "head author: {n0002}");
+    assert_eq!(n0002["rev_authors"], serde_json::json!(["User"]), "rev_authors: {n0002}");
+
+    // N0001: root(baseline null) + revision 없음(author null, rev_authors []).
+    let n0001 = arr.iter().find(|e| e["id"] == "N0001").unwrap();
+    assert!(n0001["baseline"].is_null(), "root baseline null: {n0001}");
+    assert!(n0001["author"].is_null(), "no-revision author null: {n0001}");
+    assert_eq!(n0001["rev_authors"], serde_json::json!([]), "empty rev_authors: {n0001}");
+}
+
+#[tokio::test]
+async fn api_meta_returns_vault_path_and_count() {
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+
+    let v = get_json(&app, "/api/meta").await;
+    assert_eq!(v["entry_count"], 3, "entry_count: {v}");
+    let path = v["vault_path"].as_str().expect("vault_path string");
+    assert!(!path.is_empty(), "vault_path present: {v}");
+    assert!(!path.contains(r"\\?\"), "extended-length prefix stripped: {v}");
+    assert!(v["core_version"].is_string(), "core_version: {v}");
+}
+
+#[tokio::test]
 async fn api_entry_detail_renders_note() {
     let dir = setup_populated_vault();
     let app = app_for(&dir);
