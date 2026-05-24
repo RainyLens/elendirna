@@ -43,6 +43,7 @@ fn setup_populated_vault() -> TempDir {
         root,
         "N0002",
         "관련 [[N0001]] 와 → see N0003 그리고 끊긴 [[N9999]].",
+        "User",
     )
     .unwrap();
 
@@ -74,6 +75,135 @@ fn app_for(dir: &TempDir) -> axum::Router {
         path: dir.path().to_path_buf(),
         origin: VaultOrigin::ExplicitPath,
     })
+}
+
+/// write 요청 헬퍼 — method/uri/host/origin/extra header/body 지정.
+async fn send(
+    app: &axum::Router,
+    method: Method,
+    uri: &str,
+    host: Option<&str>,
+    origin: Option<&str>,
+    extra: &[(&str, &str)],
+    body: &str,
+) -> (StatusCode, String) {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
+    if let Some(h) = host {
+        b = b.header("host", h);
+    }
+    if let Some(o) = origin {
+        b = b.header("origin", o);
+    }
+    for (k, v) in extra {
+        b = b.header(*k, *v);
+    }
+    let req = b.body(Body::from(body.to_string())).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = to_bytes(resp.into_body(), 4 * 1024 * 1024).await.unwrap();
+    (status, String::from_utf8(bytes.to_vec()).unwrap())
+}
+
+const LOOPBACK: Option<&str> = Some("127.0.0.1:7878");
+const SAME_ORIGIN: Option<&str> = Some("http://127.0.0.1:7878");
+
+#[tokio::test]
+async fn api_write_structured_revision_records_user_author() {
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+
+    let body = r#"{"change":"새 변경 사항을 추가한다","impact":"이런 영향이 생긴다고 기록"}"#;
+    let (status, resp) = send(
+        &app,
+        Method::POST,
+        "/api/entries/N0001/revisions",
+        LOOPBACK,
+        SAME_ORIGIN,
+        &[],
+        body,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "resp={resp}");
+    let v: Value = serde_json::from_str(&resp).unwrap();
+    assert_eq!(v["author"], "User", "휴먼 write author=User: {v}");
+
+    // bundle에 새 revision이 author=User + composed delta로 등장.
+    let b = get_json(&app, "/api/entries/N0001/bundle").await;
+    let last = b["revisions"].as_array().unwrap().last().unwrap();
+    assert_eq!(last["author"], "User");
+    assert!(
+        last["delta_html"].as_str().unwrap().contains("Change"),
+        "[Change]/[Impact] 합성: {last}"
+    );
+}
+
+#[tokio::test]
+async fn api_write_freeform_revision_ok() {
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+    let (status, _) = send(
+        &app,
+        Method::POST,
+        "/api/entries/N0001/revisions",
+        LOOPBACK,
+        SAME_ORIGIN,
+        &[],
+        r#"{"delta":"free-form 본문 delta"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn api_write_entry_status_tags_link() {
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+
+    // new entry
+    let (s, _) = send(&app, Method::POST, "/api/entries", LOOPBACK, SAME_ORIGIN, &[], r#"{"title":"brand new"}"#).await;
+    assert_eq!(s, StatusCode::CREATED);
+
+    // status
+    let (s, body) = send(&app, Method::PUT, "/api/entries/N0001/status", LOOPBACK, SAME_ORIGIN, &[], r#"{"status":"stable"}"#).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    assert!(body.contains("stable"));
+
+    // tags (dedup + sort)
+    let (s, body) = send(&app, Method::PUT, "/api/entries/N0001/tags", LOOPBACK, SAME_ORIGIN, &[], r#"{"tags":["y","x","y"]}"#).await;
+    assert_eq!(s, StatusCode::OK);
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["tags"], serde_json::json!(["x", "y"]), "dedup+sort: {v}");
+
+    // link
+    let (s, _) = send(&app, Method::POST, "/api/entries/N0001/links", LOOPBACK, SAME_ORIGIN, &[], r#"{"to":"N0002"}"#).await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn api_write_guard_blocks_cross_site() {
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+    let body = r#"{"delta":"x delta"}"#;
+    let uri = "/api/entries/N0001/revisions";
+
+    // cross-origin Origin → 403
+    let (s, _) = send(&app, Method::POST, uri, LOOPBACK, Some("https://evil.example.com"), &[], body).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "cross-origin write rejected");
+
+    // Sec-Fetch-Site: cross-site → 403
+    let (s, _) = send(&app, Method::POST, uri, LOOPBACK, None, &[("sec-fetch-site", "cross-site")], body).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "cross-site fetch rejected");
+
+    // Origin 부재(curl/CLI) → 허용 (201)
+    let (s, _) = send(&app, Method::POST, uri, LOOPBACK, None, &[], body).await;
+    assert_eq!(s, StatusCode::CREATED, "no-Origin (CLI) allowed");
+
+    // same-origin → 허용
+    let (s, _) = send(&app, Method::POST, uri, LOOPBACK, SAME_ORIGIN, &[("sec-fetch-site", "same-origin")], body).await;
+    assert_eq!(s, StatusCode::CREATED, "same-origin allowed");
 }
 
 #[tokio::test]

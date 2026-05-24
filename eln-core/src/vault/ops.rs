@@ -139,6 +139,54 @@ pub fn links_out_count(entry: &Entry) -> u32 {
     seen.len() as u32
 }
 
+/// entry status 변경 ([[N0106]] P2 write). `status_str`: draft / stable / archived.
+/// CLI `run_status`와 동일 동작을 ops로 추출 — 뷰어·CLI 공유.
+pub fn entry_set_status(vault_root: &Path, id_str: &str, status_str: &str) -> Result<Entry, ElfError> {
+    use crate::schema::manifest::EntryStatus;
+    let status = match status_str {
+        "draft" => EntryStatus::Draft,
+        "stable" => EntryStatus::Stable,
+        "archived" => EntryStatus::Archived,
+        other => {
+            return Err(ElfError::InvalidInput {
+                message: format!("알 수 없는 status: '{other}' (draft / stable / archived)"),
+            });
+        }
+    };
+    let id = EntryId::from_str(id_str).ok_or_else(|| ElfError::InvalidInput {
+        message: format!("'{id_str}' 는 유효한 entry ID가 아닙니다"),
+    })?;
+    let mut entry = Entry::find_by_id(vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: id_str.to_string(),
+    })?;
+    entry.manifest.status = status;
+    entry.manifest.touch_and_write(&entry.dir)?;
+    let event = format!("status.changed.{}.{}", id, entry.manifest.status);
+    append_sync_event(vault_root, &event, Some(id_str))?;
+    Ok(entry)
+}
+
+/// entry tags 일괄 설정(전체 교체). trim + 빈 항목 제거 + sort/dedup. [[N0106]] P2 write.
+pub fn entry_set_tags(vault_root: &Path, id_str: &str, tags: Vec<String>) -> Result<Entry, ElfError> {
+    let id = EntryId::from_str(id_str).ok_or_else(|| ElfError::InvalidInput {
+        message: format!("'{id_str}' 는 유효한 entry ID가 아닙니다"),
+    })?;
+    let mut entry = Entry::find_by_id(vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: id_str.to_string(),
+    })?;
+    let mut new_tags: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    new_tags.sort();
+    new_tags.dedup();
+    entry.manifest.tags = new_tags;
+    entry.manifest.touch_and_write(&entry.dir)?;
+    append_sync_event(vault_root, &format!("entry.tag.set.{id}"), Some(id_str))?;
+    Ok(entry)
+}
+
 // ─── revision ────────────────────────────
 
 pub struct RevisionAddResult {
@@ -146,10 +194,12 @@ pub struct RevisionAddResult {
 }
 
 /// revision 추가. manifest updated 갱신 + sync.jsonl 기록 포함.
+/// `author`: 작성자(사람/CLI/뷰어=`"User"`, agent=agent명). [[N0033]] r0014.
 pub fn revision_add(
     vault_root: &Path,
     entry_id_str: &str,
     delta: &str,
+    author: &str,
 ) -> Result<RevisionAddResult, ElfError> {
     if delta.trim().is_empty() {
         return Err(ElfError::InvalidInput {
@@ -164,7 +214,7 @@ pub fn revision_add(
         id: entry_id_str.to_string(),
     })?;
 
-    let revision = Revision::create(vault_root, &entry_id, delta)?;
+    let revision = Revision::create(vault_root, &entry_id, delta, author)?;
     entry.manifest.touch_and_write(&entry.dir)?;
     append_sync_event(vault_root, "revision.add", Some(entry_id_str))?;
 

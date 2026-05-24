@@ -40,14 +40,22 @@ impl ToolHandler for RevisionAddHandler {
         let vault_root = Path::new(require_string(&args, "vault_root")?);
         let id = require_string(&args, "id")?;
         let delta = require_string(&args, "delta")?;
+        // author ([[N0033]] r0014): 명시 arg > ELF_AGENT 환경변수 > "User".
+        let author = args
+            .get("author")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("ELF_AGENT").ok())
+            .unwrap_or_else(|| "User".to_string());
 
-        let r = ops::revision_add(vault_root, id, delta).map_err(map_ops_error)?;
+        let r = ops::revision_add(vault_root, id, delta, &author).map_err(map_ops_error)?;
 
         Ok(json!({
             "ok":       true,
             "entry_id": r.revision.entry_id.to_string(),
             "rev_id":   r.revision.rev_id.to_string(),
             "baseline": r.revision.baseline.to_string(),
+            "author":   r.revision.author,
         }))
     }
 }
@@ -59,6 +67,7 @@ pub fn input_schema() -> Value {
         "properties": {
             "id":      { "type": "string", "description": "entry ID (예: N0001)" },
             "delta":   { "type": "string", "description": "변화 내용 (delta). entry 본문과 revision chain은 bundle로 함께 복원되므로 전체 재작성 금지. [Change] 실제로 바뀐 증분, [Impact] 이유나 영향만 짧게 기록." },
+            "author":  { "type": "string", "description": "작성자 (선택). 지정 시 그 이름, 미지정 시 ELF_AGENT 환경변수 → \"User\". agent는 자기 이름을 넣을 것." },
             "vault":   { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" },
             "confirm": { "type": "boolean", "description": "global-origin vault 쓰기 허용 확인 (fallback_global/cwd_search_home, 기본 false). true로 통과 시 응답에 escalated_write:true + messages[] (kind: escalated_write) 동봉." }
         },

@@ -122,6 +122,7 @@ fn mcp_bundle_includes_revisions_and_linked() {
         command: RevisionCommand::Add(AddArgs {
             id: "N0001".into(),
             delta: Some("번들 델타".into()),
+            author: "User".to_string(),
             dry_run: false,
             json: false,
         }),
@@ -513,7 +514,7 @@ fn mcp_revision_add_appends_and_touches_manifest() {
         .unwrap();
 
     // sleep을 피해 manifest 시간이 동일해도 통과하도록 단조 비교만
-    let r = ops::revision_add(dir.path(), "N0001", "[Change] gap fill test").unwrap();
+    let r = ops::revision_add(dir.path(), "N0001", "[Change] gap fill test", "User").unwrap();
     assert_eq!(r.revision.entry_id.to_string(), "N0001");
     assert_eq!(r.revision.rev_id.to_string(), "r0001");
 

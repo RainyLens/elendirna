@@ -99,17 +99,18 @@ mod revision {
     #[test]
     fn first_revision_baseline_is_r0000() {
         let (dir, eid) = setup(1);
-        let rev = Revision::create(dir.path(), &eid, "첫 번째 delta").unwrap();
+        let rev = Revision::create(dir.path(), &eid, "첫 번째 delta", "User").unwrap();
         assert_eq!(rev.rev_id, RevisionId::new(1));
         assert_eq!(rev.baseline.rev, None);
         assert_eq!(rev.baseline.to_string(), "N0001@r0000");
+        assert_eq!(rev.author, "User");
     }
 
     #[test]
     fn second_revision_baseline_is_r0001() {
         let (dir, eid) = setup(1);
-        Revision::create(dir.path(), &eid, "첫 번째").unwrap();
-        let rev2 = Revision::create(dir.path(), &eid, "두 번째").unwrap();
+        Revision::create(dir.path(), &eid, "첫 번째", "User").unwrap();
+        let rev2 = Revision::create(dir.path(), &eid, "두 번째", "claude").unwrap();
         assert_eq!(rev2.rev_id, RevisionId::new(2));
         assert_eq!(rev2.baseline.to_string(), "N0001@r0001");
     }
@@ -117,20 +118,44 @@ mod revision {
     #[test]
     fn empty_delta_is_still_created() {
         let (dir, eid) = setup(1);
-        let rev = Revision::create(dir.path(), &eid, "").unwrap();
+        let rev = Revision::create(dir.path(), &eid, "", "User").unwrap();
         assert_eq!(rev.rev_id, RevisionId::new(1));
     }
 
     #[test]
     fn list_revisions_sorted() {
         let (dir, eid) = setup(1);
-        Revision::create(dir.path(), &eid, "a").unwrap();
-        Revision::create(dir.path(), &eid, "b").unwrap();
-        Revision::create(dir.path(), &eid, "c").unwrap();
+        Revision::create(dir.path(), &eid, "a", "User").unwrap();
+        Revision::create(dir.path(), &eid, "b", "User").unwrap();
+        Revision::create(dir.path(), &eid, "c", "User").unwrap();
         let list = Revision::list(dir.path(), &eid);
         assert_eq!(list.len(), 3);
         assert_eq!(list[0].rev_id, RevisionId::new(1));
         assert_eq!(list[2].rev_id, RevisionId::new(3));
+    }
+
+    #[test]
+    fn legacy_revision_without_author_defaults_to_user() {
+        // author 라인 없는 구형 포맷 파일은 고치지 않고 "User"로 읽힌다 ([[N0033]] r0014).
+        let (dir, eid) = setup(1);
+        let rev_dir = Revision::rev_dir(dir.path(), &eid);
+        std::fs::create_dir_all(&rev_dir).unwrap();
+        let legacy =
+            "---\nbaseline: N0001@r0000\ncreated: 2026-01-01T00:00:00+09:00\n---\n\n## Delta\n\nlegacy delta";
+        std::fs::write(rev_dir.join("r0001.md"), legacy).unwrap();
+
+        let list = Revision::list(dir.path(), &eid);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].author, "User");
+        assert_eq!(list[0].delta, "legacy delta");
+    }
+
+    #[test]
+    fn revision_author_round_trips() {
+        let (dir, eid) = setup(1);
+        Revision::create(dir.path(), &eid, "delta", "codex").unwrap();
+        let list = Revision::list(dir.path(), &eid);
+        assert_eq!(list[0].author, "codex");
     }
 }
 

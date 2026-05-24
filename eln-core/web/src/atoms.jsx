@@ -75,8 +75,27 @@ export function StatusChip({ status }) {
   );
 }
 
-// git-blame 스타일 byline — author 없음(P1). rev · ts · baseline.
-export function Byline({ rev, ts, baseline }) {
+// 작성자 태그 — known(User/claude/codex/gemini)은 tokens.css hue, unknown은 ink-2.
+// 자유 문자열 색 배정(A3)은 미룸([[N0033]] r0014).
+const KNOWN_AUTHOR_HUE = {
+  User: "auth-user",
+  claude: "auth-claude",
+  codex: "auth-codex",
+  gemini: "auth-gemini",
+};
+
+export function AuthorTag({ author }) {
+  if (!author) return null;
+  const hue = KNOWN_AUTHOR_HUE[author];
+  return (
+    <span className={hue ? "mono " + hue : "mono"} style={hue ? undefined : { color: "var(--ink-2)" }}>
+      {author}
+    </span>
+  );
+}
+
+// git-blame 스타일 byline — author · rev · ts · baseline.
+export function Byline({ author, rev, ts, baseline }) {
   return (
     <span
       className="mono"
@@ -86,7 +105,13 @@ export function Byline({ rev, ts, baseline }) {
         whiteSpace: "nowrap",
       }}
     >
-      {rev && <span style={{ color: "var(--ink-1)" }}>{rev}</span>}
+      {author && <AuthorTag author={author} />}
+      {rev && (
+        <>
+          {author && " · "}
+          <span style={{ color: "var(--ink-1)" }}>{rev}</span>
+        </>
+      )}
       {ts && <> · {fmtTs(ts)}</>}
       {baseline && <> · baseline {baseline}</>}
     </span>

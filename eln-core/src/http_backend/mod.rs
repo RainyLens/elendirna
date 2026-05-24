@@ -16,7 +16,7 @@ use axum::extract::Request;
 use axum::http::{StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post, put};
 use rust_embed::RustEmbed;
 
 /// `/api` 핸들러가 공유하는 상태 — launch vault root.
@@ -30,13 +30,20 @@ pub fn router(vault_root: Arc<PathBuf>) -> Router {
     let state = ApiState { vault_root };
     Router::new()
         .route("/health", get(health))
-        .route("/entries", get(api::list_entries))
+        // read (P1)
+        .route("/entries", get(api::list_entries).post(api::create_entry))
         .route("/entries/{id}", get(api::show_entry))
         .route("/entries/{id}/bundle", get(api::bundle_entry))
         .route("/lineage/{id}", get(api::lineage))
         .route("/search", get(api::search))
         .route("/validate", get(api::validate))
+        // write (P2) — Origin/Sec-Fetch 가드는 write_guard 레이어가 적용
+        .route("/entries/{id}/revisions", post(api::create_revision))
+        .route("/entries/{id}/status", put(api::set_status))
+        .route("/entries/{id}/tags", put(api::set_tags))
+        .route("/entries/{id}/links", post(api::add_link))
         .with_state(state)
+        .layer(middleware::from_fn(write_guard))
         .layer(middleware::from_fn(host_guard))
 }
 
@@ -106,5 +113,39 @@ async fn host_guard(req: Request, next: Next) -> Response {
             return (StatusCode::FORBIDDEN, "forbidden host").into_response();
         }
     }
+    next.run(req).await
+}
+
+/// write 하드닝 ([[N0106]] C2) — write 메서드(POST/PUT/PATCH/DELETE)에만 적용.
+/// 브라우저는 `Origin`·`Sec-Fetch-Site`를 위조 불가하게 자동 부착하므로,
+///  - `Sec-Fetch-Site: cross-site`/`cross-origin` → 거부
+///  - `Origin`이 있으면 요청 Host와 동일 origin일 때만 허용(다른 사이트의 fetch 차단)
+///  - `Origin` 부재(curl/CLI 등 비-브라우저) → 허용
+/// GET 등 read는 통과(기존 Host 가드만). DNS rebinding은 Host 가드가, 브라우저발 CSRF는 여기서 막는다.
+async fn write_guard(req: Request, next: Next) -> Response {
+    let is_write = matches!(req.method().as_str(), "POST" | "PUT" | "PATCH" | "DELETE");
+    if !is_write {
+        return next.run(req).await;
+    }
+    let headers = req.headers();
+
+    if let Some(sfs) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
+        if sfs.eq_ignore_ascii_case("cross-site") || sfs.eq_ignore_ascii_case("cross-origin") {
+            return (StatusCode::FORBIDDEN, "cross-site write blocked").into_response();
+        }
+    }
+
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let host = headers
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        // "http://127.0.0.1:7879" → "127.0.0.1:7879" 와 Host 비교(same-origin).
+        let origin_host = origin.split("://").nth(1).unwrap_or("");
+        if origin_host.is_empty() || origin_host != host {
+            return (StatusCode::FORBIDDEN, "cross-origin write blocked").into_response();
+        }
+    }
+
     next.run(req).await
 }

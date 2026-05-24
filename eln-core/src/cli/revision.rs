@@ -29,6 +29,10 @@ pub struct AddArgs {
     #[arg(long)]
     pub delta: Option<String>,
 
+    /// 작성자 ([[N0033]] r0014). 기본 "User"; agent는 자기 이름 지정.
+    #[arg(long, default_value = "User")]
+    pub author: String,
+
     /// dry-run (fix-003)
     #[arg(long)]
     pub dry_run: bool,
@@ -87,7 +91,7 @@ pub fn run_add(args: AddArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         return Ok(());
     }
 
-    let rev = Revision::create(&vault_root, &entry_id, &delta)?;
+    let rev = Revision::create(&vault_root, &entry_id, &delta, &args.author)?;
 
     // manifest updated 갱신 (Q3: revision.add)
     entry.manifest.touch_and_write(&entry.dir)?;

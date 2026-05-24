@@ -42,16 +42,126 @@ function RevisionCard({ rev, focused }) {
           marginBottom: 12,
         }}
       >
-        <Byline rev={rev.rev_id} ts={rev.created} baseline={rev.baseline} />
+        <Byline author={rev.author} rev={rev.rev_id} ts={rev.created} baseline={rev.baseline} />
       </header>
       <Prose html={rev.delta_html} />
     </article>
   );
 }
 
+// ─── 인라인 편집 atoms ([[N0106]] P2 write) ───
+const linkBtn = {
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--fs-11)",
+  border: "none",
+  background: "transparent",
+  color: "var(--ink-3)",
+  textDecoration: "underline",
+  cursor: "pointer",
+  padding: "0 4px",
+};
+const inlineInput = {
+  fontSize: "var(--fs-12)",
+  border: "1px solid var(--rule)",
+  background: "var(--bg-elev)",
+  color: "var(--ink-1)",
+  padding: "2px 6px",
+  borderRadius: 2,
+};
+function chipBtn(active) {
+  return {
+    fontFamily: "var(--font-mono)",
+    fontSize: "var(--fs-11)",
+    padding: "1px 7px",
+    marginRight: 4,
+    borderRadius: 2,
+    cursor: "pointer",
+    border: "1px solid " + (active ? "var(--accent)" : "var(--rule)"),
+    background: active ? "var(--accent-soft)" : "var(--bg-elev)",
+    color: active ? "var(--accent-fg)" : "var(--ink-2)",
+  };
+}
+
+function StatusEditor({ id, status, reload }) {
+  const set = async (s) => {
+    if (s === status) return;
+    try {
+      await api.setStatus(id, s);
+      reload();
+    } catch (e) {
+      alert("status 변경 실패: " + e.message);
+    }
+  };
+  return (
+    <span className="mono" style={{ fontSize: "var(--fs-12)" }}>
+      <span style={{ color: "var(--ink-3)" }}>status </span>
+      {["draft", "stable", "archived"].map((s) => (
+        <button key={s} onClick={() => set(s)} style={chipBtn(s === status)}>
+          {s}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function TagsEditor({ id, tags, reload }) {
+  const [editing, setEditing] = React.useState(false);
+  const [val, setVal] = React.useState("");
+  const save = async () => {
+    const arr = val.split(",").map((s) => s.trim()).filter(Boolean);
+    try {
+      await api.setTags(id, arr);
+      setEditing(false);
+      reload();
+    } catch (e) {
+      alert("tags 저장 실패: " + e.message);
+    }
+  };
+  if (!editing) {
+    return (
+      <span className="mono" style={{ fontSize: "var(--fs-12)" }}>
+        <span style={{ color: "var(--ink-3)" }}>tags </span>
+        {tags.length ? tags.join(", ") : "—"}{" "}
+        <button onClick={() => { setVal(tags.join(", ")); setEditing(true); }} style={linkBtn}>edit</button>
+      </span>
+    );
+  }
+  return (
+    <span className="mono" style={{ fontSize: "var(--fs-12)" }}>
+      <input value={val} onChange={(e) => setVal(e.target.value)} className="mono" style={inlineInput} placeholder="comma-separated" />
+      <button onClick={save} style={linkBtn}>save</button>
+      <button onClick={() => setEditing(false)} style={linkBtn}>cancel</button>
+    </span>
+  );
+}
+
+function LinkAdder({ id, reload }) {
+  const [val, setVal] = React.useState("");
+  const add = async () => {
+    const to = val.trim();
+    if (!to) return;
+    try {
+      await api.addLink(id, to);
+      setVal("");
+      reload();
+    } catch (e) {
+      alert("link 실패: " + e.message);
+    }
+  };
+  return (
+    <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+      <input value={val} onChange={(e) => setVal(e.target.value)} className="mono" placeholder="N0002" style={{ ...inlineInput, width: 90 }} />
+      <button onClick={add} style={linkBtn}>+ link</button>
+    </div>
+  );
+}
+
 export function EntryView({ id }) {
-  const { data, err, loading } = useAsync(() => api.bundle(id), [id]);
-  const lineage = useAsync(() => api.lineage(id), [id]);
+  // write 후 nonce를 올려 bundle/lineage를 재조회.
+  const [nonce, setNonce] = React.useState(0);
+  const reload = () => setNonce((n) => n + 1);
+  const { data, err, loading } = useAsync(() => api.bundle(id), [id, nonce]);
+  const lineage = useAsync(() => api.lineage(id), [id, nonce]);
   // 정렬 선호는 localStorage로 entry 간 유지. 기본 asc(오래된→최신).
   const [order, setOrder] = React.useState(() => {
     try {
@@ -117,11 +227,13 @@ export function EntryView({ id }) {
           {entry.title}
         </h1>
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 18, alignItems: "baseline" }}>
+          <StatusEditor id={id} status={entry.status} reload={reload} />
+          <TagsEditor id={id} tags={entry.tags || []} reload={reload} />
+        </div>
+        <div style={{ marginTop: 10 }}>
           <MetaInline
             items={[
-              ["status", entry.status],
-              ["tags", entry.tags && entry.tags.length ? entry.tags.join(", ") : null],
               ["baseline", entry.baseline],
               ["created", fmtTs(entry.created)],
               ["updated", fmtTs(entry.updated)],
@@ -149,7 +261,23 @@ export function EntryView({ id }) {
             <Caps>
               revision chain · {revisions.length} {revisions.length === 1 ? "delta" : "deltas"}
             </Caps>
-            {revisions.length > 1 && <OrderToggle order={order} onToggle={toggleOrder} />}
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+              {revisions.length > 1 && <OrderToggle order={order} onToggle={toggleOrder} />}
+              <a
+                href={"#/entry/" + id + "/compose"}
+                className="mono caps"
+                style={{
+                  border: "1px solid var(--rule-strong)",
+                  color: "var(--ink-1)",
+                  fontSize: "var(--fs-11)",
+                  padding: "3px 8px",
+                  borderRadius: 2,
+                  textDecoration: "none",
+                }}
+              >
+                + revision
+              </a>
+            </div>
           </div>
           {revs.length === 0 && <div className="notice">no revisions yet.</div>}
           {revs.map((r) => (
@@ -158,12 +286,12 @@ export function EntryView({ id }) {
         </section>
       </main>
 
-      <Rail id={id} linked={linked} lineage={lineage} />
+      <Rail id={id} linked={linked} lineage={lineage} reload={reload} />
     </div>
   );
 }
 
-function Rail({ id, linked, lineage }) {
+function Rail({ id, linked, lineage, reload }) {
   return (
     <aside
       style={{
@@ -189,6 +317,7 @@ function Rail({ id, linked, lineage }) {
           </li>
         ))}
       </ul>
+      <LinkAdder id={id} reload={reload} />
 
       <div style={{ marginTop: 24 }}>
         <a href={"#/lineage/" + id} className="mono" style={{ fontSize: "var(--fs-12)" }}>

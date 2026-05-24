@@ -222,6 +222,7 @@ fn validate_and_rebuild_consistent() {
         command: RevisionCommand::Add(AddArgs {
             id: "N0001".into(),
             delta: Some("첫 번째 델타".into()),
+            author: "User".to_string(),
             dry_run: false,
             json: false,
         }),

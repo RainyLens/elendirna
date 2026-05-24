@@ -510,6 +510,7 @@ mod revision {
                 id: "N0001".to_string(),
                 delta: Some(delta.to_string()),
                 dry_run: false,
+                author: "User".to_string(),
                 json: false,
             }),
         })
@@ -555,6 +556,7 @@ mod revision {
                 id: "N0001".to_string(),
                 delta: Some("".to_string()),
                 dry_run: false,
+                author: "User".to_string(),
                 json: false,
             }),
         })
@@ -571,6 +573,7 @@ mod revision {
                 id: "N0099".to_string(),
                 delta: Some("delta".to_string()),
                 dry_run: false,
+                author: "User".to_string(),
                 json: false,
             }),
         })
@@ -587,6 +590,7 @@ mod revision {
                 id: "N0001".to_string(),
                 delta: Some("dry".to_string()),
                 dry_run: true,
+                author: "User".to_string(),
                 json: false,
             }),
         })

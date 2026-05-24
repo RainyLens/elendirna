@@ -189,6 +189,7 @@ pub struct RevisionDto {
     rev_id: String,
     baseline: String,
     created: String,
+    author: String,
     delta_html: String,
 }
 
@@ -264,6 +265,7 @@ pub async fn bundle_entry(
             rev_id: r.rev_id.to_string(),
             baseline: r.baseline.to_string(),
             created: r.created.to_rfc3339(),
+            author: r.author.clone(),
             delta_html: collect(render_markdown(&r.delta, &ids)),
         })
         .collect();
@@ -482,4 +484,150 @@ pub async fn validate(State(state): State<ApiState>) -> ApiResult<ValidateRespon
         warning_count: vresult.warning_count(),
         issues,
     }))
+}
+
+// ─── WRITE ([[N0106]] P2) ────────────────────
+// 뷰어(localhost 신뢰)의 write. author는 항상 "User"(휴먼). Origin/Sec-Fetch 가드(C2)는
+// router 레이어에서 적용. 쓰기 권한 토큰은 없음 — /api는 휴먼 백엔드라 loopback+same-origin이 경계.
+
+/// 휴먼 뷰어 write의 작성자 라벨 ([[N0033]] r0014).
+const VIEWER_AUTHOR: &str = "User";
+
+#[derive(Deserialize)]
+pub struct RevisionReq {
+    change: Option<String>,
+    impact: Option<String>,
+    delta: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct RevisionCreated {
+    entry_id: String,
+    rev_id: String,
+    baseline: String,
+    author: String,
+}
+
+/// 구조화 입력(change+impact)이면 `## Change/## Impact` 마크다운으로 합성, free-form(delta)이면 그대로.
+fn compose_delta(req: &RevisionReq) -> Result<String, ApiError> {
+    if let Some(d) = req.delta.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        return Ok(d.to_string());
+    }
+    let change = req.change.as_deref().unwrap_or("").trim();
+    let impact = req.impact.as_deref().unwrap_or("").trim();
+    if change.is_empty() || impact.is_empty() {
+        return Err(ApiError(ElfError::InvalidInput {
+            message: "change/impact 둘 다 채우거나 free-form delta를 제공하세요".to_string(),
+        }));
+    }
+    Ok(format!("## Change\n\n{change}\n\n## Impact\n\n{impact}"))
+}
+
+pub async fn create_revision(
+    State(state): State<ApiState>,
+    AxPath(id): AxPath<String>,
+    Json(req): Json<RevisionReq>,
+) -> Result<(StatusCode, Json<RevisionCreated>), ApiError> {
+    let delta = compose_delta(&req)?;
+    let r = ops::revision_add(vault(&state), &id, &delta, VIEWER_AUTHOR)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(RevisionCreated {
+            entry_id: r.revision.entry_id.to_string(),
+            rev_id: r.revision.rev_id.to_string(),
+            baseline: r.revision.baseline.to_string(),
+            author: r.revision.author,
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct EntryReq {
+    title: String,
+    baseline: Option<String>,
+    tags: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct EntryCreated {
+    id: String,
+    title: String,
+}
+
+pub async fn create_entry(
+    State(state): State<ApiState>,
+    Json(req): Json<EntryReq>,
+) -> Result<(StatusCode, Json<EntryCreated>), ApiError> {
+    let r = ops::entry_new(
+        vault(&state),
+        &req.title,
+        req.baseline.as_deref(),
+        req.tags.unwrap_or_default(),
+    )?;
+    let m = &r.entry.manifest;
+    Ok((
+        StatusCode::CREATED,
+        Json(EntryCreated {
+            id: m.id.clone(),
+            title: m.title.clone(),
+        }),
+    ))
+}
+
+#[derive(Serialize)]
+pub struct EntrySummary {
+    id: String,
+    status: String,
+    tags: Vec<String>,
+}
+
+fn summary(entry: &Entry) -> EntrySummary {
+    let m = &entry.manifest;
+    EntrySummary {
+        id: m.id.clone(),
+        status: m.status.to_string(),
+        tags: m.tags.clone(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct StatusReq {
+    status: String,
+}
+
+pub async fn set_status(
+    State(state): State<ApiState>,
+    AxPath(id): AxPath<String>,
+    Json(req): Json<StatusReq>,
+) -> ApiResult<EntrySummary> {
+    let e = ops::entry_set_status(vault(&state), &id, &req.status)?;
+    Ok(Json(summary(&e)))
+}
+
+#[derive(Deserialize)]
+pub struct TagsReq {
+    tags: Vec<String>,
+}
+
+pub async fn set_tags(
+    State(state): State<ApiState>,
+    AxPath(id): AxPath<String>,
+    Json(req): Json<TagsReq>,
+) -> ApiResult<EntrySummary> {
+    let e = ops::entry_set_tags(vault(&state), &id, req.tags)?;
+    Ok(Json(summary(&e)))
+}
+
+#[derive(Deserialize)]
+pub struct LinkReq {
+    to: String,
+}
+
+pub async fn add_link(
+    State(state): State<ApiState>,
+    AxPath(id): AxPath<String>,
+    Json(req): Json<LinkReq>,
+) -> ApiResult<serde_json::Value> {
+    let added = ops::link_add(vault(&state), &id, &req.to)?;
+    Ok(Json(json!({ "ok": true, "added": added })))
 }
