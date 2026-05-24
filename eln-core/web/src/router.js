@@ -4,9 +4,11 @@
 //   #/lineage/N####    → lineage 뷰
 export function parseHash() {
   const h = window.location.hash.replace(/^#\/?/, "");
-  const [seg, id] = h.split("/");
+  const [seg, id, sub] = h.split("/");
+  if (seg === "entry" && id && sub === "compose") return { view: "compose", id };
   if (seg === "entry" && id) return { view: "entry", id };
   if (seg === "lineage" && id) return { view: "lineage", id };
+  if (seg === "new") return { view: "new" };
   return { view: "entries" };
 }
 

@@ -74,6 +74,7 @@ fn add_revision(dir: &TempDir, entry_id: &str, delta: &str) {
         command: RevisionCommand::Add(AddArgs {
             id: entry_id.to_string(),
             delta: Some(delta.to_string()),
+            author: "User".to_string(),
             dry_run: false,
             json: false,
         }),

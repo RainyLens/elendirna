@@ -700,7 +700,7 @@ async fn entry_show_unknown_id_returns_invalid_argument() {
 async fn bundle_returns_entry_with_revisions() {
     let dir = setup_vault();
     ops::entry_new(dir.path(), "bundle entry", None, vec![]).unwrap();
-    ops::revision_add(dir.path(), "N0001", "[Change] r1\n[Impact] test").unwrap();
+    ops::revision_add(dir.path(), "N0001", "[Change] r1\n[Impact] test", "User").unwrap();
 
     let result = BundleHandler
         .call(

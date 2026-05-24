@@ -23,13 +23,13 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ElfError> {
 }
 
 /// sync.jsonl에 이벤트 append (fix-004, fix-013)
-/// agent 필드: ELF_AGENT 환경 변수 → "human"
+/// agent 필드: ELF_AGENT 환경 변수 → "User" ([[N0033]] r0014, 사람 기본 라벨 통일)
 pub fn append_sync_event(
     vault_root: &Path,
     action: &str,
     id: Option<&str>,
 ) -> Result<(), ElfError> {
-    let agent = std::env::var("ELF_AGENT").unwrap_or_else(|_| "human".to_string());
+    let agent = std::env::var("ELF_AGENT").unwrap_or_else(|_| "User".to_string());
     let ts = chrono::Local::now().to_rfc3339();
     let event = match id {
         Some(i) => serde_json::json!({"ts": ts, "agent": agent, "action": action, "id": i}),

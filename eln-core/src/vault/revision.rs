@@ -3,11 +3,18 @@ use crate::vault::id::{EntryId, EntryRevRef, RevisionId};
 use chrono::{DateTime, FixedOffset, Local};
 use std::path::{Path, PathBuf};
 
+/// revision 작성자가 없을 때의 기본값 ([[N0033]] r0014). 과거 author-less revision 파일은
+/// 이 값으로 읽힌다 — 파일을 고치지 않는 lazy default.
+pub const DEFAULT_AUTHOR: &str = "User";
+
 pub struct Revision {
     pub entry_id: EntryId,
     pub rev_id: RevisionId,
     pub baseline: EntryRevRef,
     pub created: DateTime<FixedOffset>,
+    /// 작성자 ([[N0033]] r0014). 사람/CLI/뷰어=`User`, agent write=agent명.
+    /// 파일에 `author:` 부재 시 `DEFAULT_AUTHOR`("User").
+    pub author: String,
     pub delta: String,
 }
 
@@ -62,13 +69,15 @@ impl Revision {
         max
     }
 
-    /// 새 revision 생성
+    /// 새 revision 생성. `author`는 작성자(사람/CLI/뷰어=`"User"`, agent=agent명).
     pub fn create(
         vault_root: &Path,
         entry_id: &EntryId,
         delta: impl Into<String>,
+        author: impl Into<String>,
     ) -> Result<Revision, ElfError> {
         let delta = delta.into();
+        let author = author.into();
 
         let rev_dir = Self::rev_dir(vault_root, entry_id);
         std::fs::create_dir_all(&rev_dir)?;
@@ -82,7 +91,7 @@ impl Revision {
         };
 
         let created = Local::now().fixed_offset();
-        let content = format_revision_file(&baseline, created, &delta);
+        let content = format_revision_file(&baseline, created, &author, &delta);
         let file_path = rev_dir.join(format!("{rev_id}.md"));
         crate::vault::util::atomic_write(&file_path, content.as_bytes())?;
 
@@ -91,6 +100,7 @@ impl Revision {
             rev_id,
             baseline,
             created,
+            author,
             delta,
         })
     }
@@ -104,10 +114,11 @@ impl Revision {
 fn format_revision_file(
     baseline: &EntryRevRef,
     created: DateTime<FixedOffset>,
+    author: &str,
     delta: &str,
 ) -> String {
     format!(
-        "---\nbaseline: {baseline}\ncreated: {}\n---\n\n## Delta\n\n{delta}",
+        "---\nbaseline: {baseline}\ncreated: {}\nauthor: {author}\n---\n\n## Delta\n\n{delta}",
         created.to_rfc3339()
     )
 }
@@ -127,12 +138,19 @@ fn parse_revision_file(entry_id: EntryId, rev_id: RevisionId, content: &str) -> 
 
     let mut baseline_str = String::new();
     let mut created_str = String::new();
+    // author 부재 시 default — 과거 author-less revision 파일을 고치지 않는다 ([[N0033]] r0014).
+    let mut author = DEFAULT_AUTHOR.to_string();
 
     for line in fm_raw.lines() {
         if let Some(v) = line.strip_prefix("baseline:") {
             baseline_str = v.trim().to_string();
         } else if let Some(v) = line.strip_prefix("created:") {
             created_str = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("author:") {
+            let v = v.trim();
+            if !v.is_empty() {
+                author = v.to_string();
+            }
         }
     }
 
@@ -152,6 +170,7 @@ fn parse_revision_file(entry_id: EntryId, rev_id: RevisionId, content: &str) -> 
         rev_id,
         baseline,
         created,
+        author,
         delta,
     })
 }

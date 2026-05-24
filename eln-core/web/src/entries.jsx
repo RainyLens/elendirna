@@ -24,23 +24,40 @@ export function EntriesLanding() {
 
   return (
     <div className="wrap">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16, gap: 12 }}>
         <Caps>entries · {data.length}</Caps>
-        <input
-          value={q}
-          onChange={(ev) => setQ(ev.target.value)}
-          placeholder="filter title / id"
-          className="mono"
-          style={{
-            fontSize: "var(--fs-12)",
-            color: "var(--ink)",
-            background: "var(--bg-elev)",
-            border: "1px solid var(--rule)",
-            borderRadius: 2,
-            padding: "5px 10px",
-            width: 240,
-          }}
-        />
+        <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+          <input
+            value={q}
+            onChange={(ev) => setQ(ev.target.value)}
+            placeholder="filter title / id"
+            className="mono"
+            style={{
+              fontSize: "var(--fs-12)",
+              color: "var(--ink)",
+              background: "var(--bg-elev)",
+              border: "1px solid var(--rule)",
+              borderRadius: 2,
+              padding: "5px 10px",
+              width: 220,
+            }}
+          />
+          <a
+            href="#/new"
+            className="mono caps"
+            style={{
+              border: "1px solid var(--rule-strong)",
+              color: "var(--ink-1)",
+              fontSize: "var(--fs-11)",
+              padding: "5px 10px",
+              borderRadius: 2,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + new entry
+          </a>
+        </div>
       </div>
 
       {rows.length === 0 && <div className="notice">no entries match.</div>}
