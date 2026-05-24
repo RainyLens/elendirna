@@ -3,6 +3,7 @@ pub mod error;
 pub mod http_backend;
 pub mod mcp_server;
 pub mod output;
+pub mod render;
 pub mod schema;
 pub mod tools;
 pub mod vault;
