@@ -7,6 +7,29 @@ function Prose({ html }) {
   return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// 리비전 정렬 토글 — asc(오래된→최신) / desc(최신→오래된).
+function OrderToggle({ order, onToggle }) {
+  const label = order === "asc" ? "oldest → newest" : "newest → oldest";
+  return (
+    <button
+      className="mono caps"
+      onClick={onToggle}
+      title="toggle revision order"
+      style={{
+        border: "1px solid var(--rule)",
+        background: "var(--bg-elev)",
+        color: "var(--ink-2)",
+        fontSize: "var(--fs-11)",
+        padding: "3px 8px",
+        borderRadius: 2,
+        cursor: "pointer",
+      }}
+    >
+      {label} ⇅
+    </button>
+  );
+}
+
 function RevisionCard({ rev, focused }) {
   return (
     <article className={"card" + (focused ? " focused" : "")}>
@@ -29,16 +52,42 @@ function RevisionCard({ rev, focused }) {
 export function EntryView({ id }) {
   const { data, err, loading } = useAsync(() => api.bundle(id), [id]);
   const lineage = useAsync(() => api.lineage(id), [id]);
+  // 정렬 선호는 localStorage로 entry 간 유지. 기본 asc(오래된→최신).
+  const [order, setOrder] = React.useState(() => {
+    try {
+      return localStorage.getItem("rev-order") || "asc";
+    } catch (_) {
+      return "asc";
+    }
+  });
+  const toggleOrder = () => {
+    const next = order === "asc" ? "desc" : "asc";
+    setOrder(next);
+    try {
+      localStorage.setItem("rev-order", next);
+    } catch (_) {}
+  };
 
   if (loading) return <Loading what={id} />;
   if (err) return <ErrorNote err={err} />;
 
   const { entry, revisions, linked } = data;
-  // newest first.
-  const revs = [...revisions].reverse();
+  // API는 rev_id 오름차순 반환. asc면 그대로(최신 head가 맨 아래), desc면 뒤집음.
+  // head(최신) 강조는 정렬과 무관하게 rev_id로 판정.
+  const headId = revisions.length ? revisions[revisions.length - 1].rev_id : null;
+  const revs = order === "asc" ? revisions : [...revisions].reverse();
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 36, alignItems: "start" }} className="wrap">
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) 300px",
+        gap: 40,
+        alignItems: "start",
+        maxWidth: 1240,
+      }}
+      className="wrap"
+    >
       <main style={{ minWidth: 0 }}>
         <div className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--ink-3)", marginBottom: 8 }}>
           <a href="#/entries" style={{ textDecoration: "none", color: "var(--ink-3)" }}>
@@ -88,12 +137,23 @@ export function EntryView({ id }) {
         )}
 
         <section style={{ marginTop: 26 }}>
-          <Caps style={{ marginBottom: 12 }}>
-            revision chain · {revisions.length} {revisions.length === 1 ? "delta" : "deltas"} · newest first
-          </Caps>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: 12,
+              gap: 12,
+            }}
+          >
+            <Caps>
+              revision chain · {revisions.length} {revisions.length === 1 ? "delta" : "deltas"}
+            </Caps>
+            {revisions.length > 1 && <OrderToggle order={order} onToggle={toggleOrder} />}
+          </div>
           {revs.length === 0 && <div className="notice">no revisions yet.</div>}
-          {revs.map((r, i) => (
-            <RevisionCard key={r.rev_id} rev={r} focused={i === 0} />
+          {revs.map((r) => (
+            <RevisionCard key={r.rev_id} rev={r} focused={r.rev_id === headId} />
           ))}
         </section>
       </main>
