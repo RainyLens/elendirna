@@ -1,0 +1,4 @@
+# Sarasa Mono K woff2는 각 ~9MB로 크다. 로컬 빌드에선 dist/fonts에 두어 디자인된 mono로
+# 렌더되지만 git 히스토리엔 적재하지 않는다(부재 시 tokens.css의 system mono fallback).
+# 온라인 배포 시 woff2 포함 여부를 별도 결정([[N0106]]).
+**/fonts/*.woff2

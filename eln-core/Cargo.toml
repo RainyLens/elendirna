@@ -28,7 +28,8 @@ http            = { workspace = true }
 schemars        = { workspace = true }
 rusqlite        = { workspace = true }
 uuid            = { workspace = true }
-pulldown-cmark  = { workspace = true }
+pulldown-cmark  = { workspace = true, features = ["html"] }
+rust-embed      = { workspace = true }
 # eln-plugin-sdk: crates.io version + 로컬 path 병행. registry resolve 가능 +
 # workbench 로컬 빌드 유지 (N0097 High 1 — publish 단계 dep 전환 완료).
 eln-plugin-sdk  = { version = "0.1.0", path = "../../eln-plugins" }

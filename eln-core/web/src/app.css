@@ -1,0 +1,72 @@
+/* P1 뷰어 전용 스타일. tokens.css(디자인 소스)는 건드리지 않고 여기에 분리.
+   서버사이드 렌더된 note_html/delta_html(.prose)과 cross-ref(.ref) 표기를 담당. */
+
+html, body, #root { margin: 0; padding: 0; height: 100%; width: 100%; }
+body { background: var(--bg); }
+
+/* 앱 셸 — 전체 높이, 세로 스택, 본문만 스크롤 */
+.app { display: flex; flex-direction: column; height: 100%; }
+.app-body { flex: 1; overflow-y: auto; }
+.app-body::-webkit-scrollbar { width: 10px; }
+.app-body::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 6px; }
+
+.wrap { max-width: 920px; margin: 0 auto; padding: 28px 40px 80px; }
+
+/* cross-ref 앵커 — 일반(ref) / dangling(미발견) */
+.prose a.ref, a.ref {
+  font-family: var(--font-mono);
+  text-decoration-color: var(--rule-strong);
+}
+a.ref.dangling {
+  color: var(--warning);
+  text-decoration-style: wavy;
+  text-decoration-color: var(--warning);
+  cursor: help;
+}
+
+/* 서버 렌더 마크다운 본문 */
+.prose { color: var(--ink-1); line-height: var(--lh-prose); }
+.prose > :first-child { margin-top: 0; }
+.prose h1 { font-size: var(--fs-22); font-weight: 600; line-height: 1.2; margin: 22px 0 10px; color: var(--ink); }
+.prose h2 { font-size: var(--fs-18); font-weight: 600; margin: 20px 0 8px; color: var(--ink); }
+.prose h3 { font-size: var(--fs-15); font-weight: 700; margin: 16px 0 6px; color: var(--ink); }
+.prose p { margin: 0 0 12px; }
+.prose ul, .prose ol { margin: 0 0 12px; padding-left: 22px; }
+.prose li { margin: 2px 0; }
+.prose blockquote {
+  margin: 12px 0; padding: 4px 14px; color: var(--ink-2);
+  border-left: 2px solid var(--rule-strong); background: var(--bg-sunk);
+}
+.prose code {
+  font-family: var(--font-mono); font-size: 0.9em;
+  background: var(--bg-sunk); padding: 1px 5px; border-radius: 2px;
+}
+.prose pre {
+  font-family: var(--font-mono); font-size: var(--fs-12); line-height: var(--lh-mono);
+  background: var(--bg-sunk); border: 1px solid var(--rule); border-radius: 2px;
+  padding: 12px 14px; overflow-x: auto;
+}
+.prose pre code { background: none; padding: 0; }
+.prose table { border-collapse: collapse; margin: 12px 0; font-size: var(--fs-13); }
+.prose th, .prose td { border: 1px solid var(--rule); padding: 5px 10px; text-align: left; }
+.prose th { background: var(--bg-sunk); }
+.prose hr { border: none; border-top: 1px solid var(--rule); margin: 20px 0; }
+
+/* 상태/안내 */
+.notice { padding: 40px; color: var(--ink-3); font-family: var(--font-mono); font-size: var(--fs-13); }
+.notice.error { color: var(--accent-fg); }
+
+/* 카드 */
+.card {
+  background: var(--bg-elev); border: 1px solid var(--rule);
+  padding: 16px 20px; margin-bottom: 14px; border-radius: 2px;
+}
+.card.focused { border-left: 2px solid var(--accent); }
+
+/* 클릭 가능한 목록 행 */
+.row {
+  display: block; width: 100%; text-align: left; text-decoration: none;
+  padding: 12px 16px; border: 1px solid var(--rule); border-radius: 2px;
+  margin-bottom: 8px; background: var(--bg-elev); color: var(--ink); cursor: pointer;
+}
+.row:hover { background: var(--bg-hilite); }

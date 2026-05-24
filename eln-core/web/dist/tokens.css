@@ -1,0 +1,212 @@
+/* Elendirna — design tokens
+   Brief overrides rainylens. Cool ink-on-near-white (light) /
+   near-black (dark). One cold accent: oxblood. Warm forbidden.
+   Author prose & schema/diff share the SAME visual register —
+   sans for prose (Pyeojin / Pretendard), mono (Sarasa Mono K)
+   for identifiers, diff, byline metadata. No serif anywhere.
+*/
+
+/* Pretendard — body sans, ko-friendly. Loaded via jsDelivr. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css");
+
+/* Sarasa Mono K — packaged locally (woff2 in /fonts) */
+@font-face {
+  font-family: "Sarasa Mono K";
+  src: url("fonts/SarasaMonoK-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sarasa Mono K";
+  src: url("fonts/SarasaMonoK-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.theme {
+  /* type — single sans register; --font-serif kept as an alias to
+     --font-sans so existing call-sites continue to render correctly. */
+  --font-sans:
+    "Pyeojin Gothic", "Pretendard Variable", Pretendard,
+    -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI",
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-sans);     /* prose = sans now */
+  --font-mono:
+    "Sarasa Mono K", "JetBrains Mono", ui-monospace, SFMono-Regular,
+    "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* size scale */
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-22: 22px;
+  --fs-26: 26px;
+  --fs-32: 32px;
+
+  /* line-heights */
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-prose: 1.55;
+  --lh-mono: 1.5;
+
+  /* tracking */
+  --tr-caps: 0.08em;
+  --tr-mono: 0;
+}
+
+.theme,
+.theme * {
+  box-sizing: border-box;
+}
+
+/* ─── light ─────────────────────────────────────────────────── */
+.theme-light {
+  --bg: #ecedef;            /* cool off-white, no warmth */
+  --bg-elev: #f5f6f8;       /* slightly lighter — cards "lift" by being lighter */
+  --bg-sunk: #e2e4e8;       /* sunken panels, code blocks */
+  --bg-codestripe: #e7e9ec; /* alt row in diff/table */
+  --bg-hilite: #d9dde3;     /* row hover */
+
+  --ink: #111418;
+  --ink-1: #2a2f37;
+  --ink-2: #525a66;         /* default secondary */
+  --ink-3: #818995;         /* faint */
+  --ink-4: #a8aeb8;         /* placeholder, faintest */
+
+  --rule: #d0d4da;
+  --rule-strong: #b5bbc4;
+
+  --accent: #6e1f1a;        /* oxblood, used very sparingly */
+  --accent-fg: #5a1814;     /* same family, darker for fg */
+  --accent-soft: #ead7d5;   /* muted backdrop for accent chip */
+
+  --warning: #6e571c;       /* the only non-accent semantic color allowed */
+  --warning-soft: #ebe4cf;
+
+  /* author hues — all near same luminance, only hue varies; ~0.10 chroma */
+  --auth-user: #555b66;
+  --auth-claude: #4d6c6c;
+  --auth-codex: #6a5d7a;
+  --auth-gemini: #4f658a;
+
+  /* gutters for diff */
+  --diff-add-bg: #dee4d5;
+  --diff-add-fg: #2c3a1f;
+  --diff-del-bg: #e6d7d6;
+  --diff-del-fg: #4a1f1c;
+
+  --shadow-1: 0 1px 0 rgba(17,20,24,0.04);
+}
+
+/* ─── dark ──────────────────────────────────────────────────── */
+.theme-dark {
+  --bg: #0c0f14;
+  --bg-elev: #14181f;
+  --bg-sunk: #070a0e;
+  --bg-codestripe: #11151c;
+  --bg-hilite: #1c2129;
+
+  --ink: #e6e9ee;
+  --ink-1: #c2c7d0;
+  --ink-2: #8a92a0;
+  --ink-3: #5c6573;
+  --ink-4: #404754;
+
+  --rule: #232932;
+  --rule-strong: #353c47;
+
+  --accent: #b04a42;
+  --accent-fg: #c25f57;
+  --accent-soft: #2b1614;
+
+  --warning: #b89240;
+  --warning-soft: #2a230f;
+
+  --auth-user: #9ea4af;
+  --auth-claude: #84a8a8;
+  --auth-codex: #aa9bbc;
+  --auth-gemini: #8aa1c2;
+
+  --diff-add-bg: #18241a;
+  --diff-add-fg: #b6c9a6;
+  --diff-del-bg: #2a1816;
+  --diff-del-fg: #d3a8a5;
+
+  --shadow-1: 0 1px 0 rgba(255,255,255,0.02);
+}
+
+/* ─── base ──────────────────────────────────────────────────── */
+.theme {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-15);
+  line-height: var(--lh-prose);
+  font-feature-settings: "ss01", "cv01", "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.theme a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.theme a:hover {
+  color: var(--accent-fg);
+  text-decoration-color: var(--accent-fg);
+}
+
+.theme button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.theme button:hover { background: var(--bg-hilite); }
+.theme button.primary {
+  border-color: var(--ink-1);
+  background: var(--ink-1);
+  color: var(--bg-elev);
+}
+.theme button.primary:hover { background: var(--ink); }
+
+/* utility classes */
+.mono { font-family: var(--font-mono); font-feature-settings: "ss01","cv01"; }
+.caps { text-transform: uppercase; letter-spacing: var(--tr-caps); font-size: var(--fs-11); }
+.faint { color: var(--ink-3); }
+.muted { color: var(--ink-2); }
+.rule  { border-top: 1px solid var(--rule); }
+
+/* author hue classes — applied to mono identifier text */
+.auth-user   { color: var(--auth-user); }
+.auth-claude { color: var(--auth-claude); }
+.auth-codex  { color: var(--auth-codex); }
+.auth-gemini { color: var(--auth-gemini); }
+
+/* selection */
+.theme ::selection {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+}
+
+/* scrollbars hidden inside artboards (host already does this, but doubly so) */
+.theme::-webkit-scrollbar { display: none; }
+.theme { scrollbar-width: none; }
