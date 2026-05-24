@@ -35,14 +35,17 @@ pub struct ServeArgs {
     /// vault 경로 (기본: 현재 디렉터리에서 탐색 → 없으면 글로벌 vault 자동 생성)
     #[arg(long)]
     pub vault: Option<std::path::PathBuf>,
+
+    /// MCP client 설정 snippet만 출력하고 종료 (`--mcp` 없이). transport에 따라 stdio/http snippet.
+    /// `--mcp` 없는 `elf serve`는 기본적으로 휴먼 뷰어를 구동하므로, config 안내가 필요할 때 사용.
+    #[arg(long)]
+    pub snippet: bool,
 }
 
 pub fn run(args: ServeArgs) -> Result<(), ElfError> {
-    if !args.mcp {
-        // --mcp 없이 호출 시: 선택된 transport용 snippet 출력.
-        // (N0033 r0009 Step 6.1) stdio/HTTP 둘로 분기 — stdio는 Claude Desktop
-        // mcpServers config, HTTP는 curl smoke + remote MCP client 안내.
-        // 사용자 명시한 --addr가 있으면 HTTP snippet에서 그대로 반영.
+    // `--mcp` 없이 `--snippet` → MCP client 설정 snippet만 출력하고 종료(vault 해석/init 전).
+    // (N0033 r0009 Step 6.1) stdio는 Claude Desktop mcpServers config, HTTP는 curl smoke 안내.
+    if !args.mcp && args.snippet {
         let addr = args
             .http
             .clone()
@@ -70,7 +73,8 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
     };
 
     // codex review 2: stdio + explicit --addr는 silent ignore가 사용성 함정. warning emit.
-    if transport == TransportKind::Stdio && addr.is_some() {
+    // (뷰어 모드(`!args.mcp`)는 transport와 무관하게 --addr를 쓰므로 MCP stdio일 때만 경고.)
+    if args.mcp && transport == TransportKind::Stdio && addr.is_some() {
         eprintln!(
             "[elf] WARNING: `--addr`는 `--transport http`에만 의미. \
             stdio transport에서는 무시됩니다."
@@ -151,6 +155,22 @@ pub fn run(args: ServeArgs) -> Result<(), ElfError> {
 
     // v1 vault 자동 이관 (MCP stdio 보호: stderr만 사용)
     crate::cli::migrate::auto_migrate_silent(&resolution.path);
+
+    // `--mcp` 없는 `elf serve` → 휴먼 뷰어 HTTP 서버(/, /api). MCP 런타임과 독립.
+    // 항상 HTTP이므로 transport는 무시하고 --addr만 사용.
+    if !args.mcp {
+        let bind: std::net::SocketAddr =
+            addr_resolved
+                .parse()
+                .map_err(|e: std::net::AddrParseError| ElfError::InvalidInput {
+                    message: format!("--addr 형식 오류 '{addr_resolved}': {e}"),
+                })?;
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        return rt
+            .block_on(crate::http_backend::run_viewer(resolution.path, bind))
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())));
+    }
 
     match transport {
         TransportKind::Stdio => crate::mcp_server::run_stdio(resolution, launch_init_fallback)

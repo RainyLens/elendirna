@@ -7,6 +7,7 @@
 
 mod api;
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -41,6 +42,23 @@ pub fn router(vault_root: Arc<PathBuf>) -> Router {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+/// 휴먼 뷰어 전용 axum 앱 — `/api`(read-only) + 루트 임베드 FE. MCP(`/mcp`)는 없다.
+/// `--mcp` 없이 `elf serve` 했을 때 사용 — MCP 런타임과 독립으로 side-by-side 구동 가능([[N0106]]).
+pub fn viewer_app(vault_root: Arc<PathBuf>) -> Router {
+    Router::new()
+        .nest("/api", router(vault_root))
+        .fallback(static_handler)
+}
+
+/// 뷰어 전용 HTTP 서버 구동 (blocking). `/` → 임베드 FE, `/api` → read-only 백엔드.
+pub async fn run_viewer(vault_root: PathBuf, addr: SocketAddr) -> anyhow::Result<()> {
+    let app = viewer_app(Arc::new(vault_root));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    eprintln!("[elf] viewer listening on http://{addr}/ (API: /api) — read-only, MCP 없음");
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 /// 빌드된 FE 정적 자산(`web/dist/`)을 바이너리에 임베드.

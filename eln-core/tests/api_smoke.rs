@@ -199,6 +199,26 @@ async fn api_unknown_entry_is_404() {
 }
 
 #[tokio::test]
+async fn viewer_app_serves_api_and_fe_without_mcp() {
+    // `--mcp` 없이 `elf serve` → viewer_app: /api + 임베드 FE만, /mcp 라우트 자체가 없다.
+    let dir = setup_populated_vault();
+    let app = eln_core::http_backend::viewer_app(std::sync::Arc::new(dir.path().to_path_buf()));
+
+    let (status, body) = get(&app, "/api/entries", Some("localhost")).await;
+    assert_eq!(status, StatusCode::OK, "viewer /api works");
+    assert!(body.contains("N0001"), "real entries: {body}");
+
+    let (status, body) = get(&app, "/", Some("localhost")).await;
+    assert_eq!(status, StatusCode::OK, "viewer / serves FE");
+    assert!(body.contains("id=\"root\""), "FE shell served");
+
+    // 미매칭 경로(/mcp 포함)는 SPA fallback으로 index.html(HTML) — MCP 서비스 아님.
+    let (status, body) = get(&app, "/mcp", Some("localhost")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<!doctype html>"), "/mcp → SPA fallback, not MCP");
+}
+
+#[tokio::test]
 async fn api_host_guard_rejects_non_loopback() {
     let dir = setup_populated_vault();
     let app = app_for(&dir);
