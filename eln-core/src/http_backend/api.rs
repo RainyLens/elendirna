@@ -145,15 +145,29 @@ pub struct MetaResponse {
     vault_path: String,
     entry_count: usize,
     core_version: String,
+    /// revision content-shape enforcement (vault 정책): `"off"`|`"warn"`|`"fail"`.
+    /// 휴먼 뷰어 schema chip(④)이 표시 — per-rev validate row는 항상 advisory(Warn)로 계산되고,
+    /// 이 값이 "실제로 막히는지"를 전한다. → see N0106 ④, N0108
+    revision_severity: String,
 }
 
 pub async fn meta(State(state): State<ApiState>) -> ApiResult<MetaResponse> {
+    use crate::vault::config::{RevisionSeverity, VaultConfig};
     let vault_root = vault(&state);
     let entry_count = ops::entry_list(vault_root).len();
+    let severity = VaultConfig::read(vault_root)
+        .map(|c| c.revision_severity)
+        .unwrap_or_default();
     Ok(Json(MetaResponse {
         vault_path: display_path(vault_root),
         entry_count,
         core_version: env!("CARGO_PKG_VERSION").to_string(),
+        revision_severity: match severity {
+            RevisionSeverity::Off => "off",
+            RevisionSeverity::Warn => "warn",
+            RevisionSeverity::Fail => "fail",
+        }
+        .to_string(),
     }))
 }
 
@@ -224,6 +238,17 @@ pub struct BundleEntry {
     note_html: String,
 }
 
+/// per-revision 구조적 validate 결과 — 휴먼 뷰어 revision 카드의 validate row(④)에 표시.
+/// content-shape는 항상 advisory(Warn)로 계산됨 — 실제 enforcement는 `meta.revision_severity`. → see N0106 ④
+#[derive(Serialize, Clone)]
+pub struct RevIssueDto {
+    /// `"error"`(chain.head integrity, 항상) | `"warning"`(content-shape advisory).
+    severity: String,
+    /// 검사 이름: `chain.head` | `change.present` | `impact.present` | `content.length`.
+    check: String,
+    message: String,
+}
+
 #[derive(Serialize)]
 pub struct RevisionDto {
     rev_id: String,
@@ -233,6 +258,8 @@ pub struct RevisionDto {
     /// raw delta(markdown 원문) — composer diff preview의 비교 source. delta_html과 병기. [[N0106]]
     delta: String,
     delta_html: String,
+    /// 이 revision의 validate 위반(④). 없으면 빈 배열. → see N0106 ④
+    issues: Vec<RevIssueDto>,
 }
 
 #[derive(Serialize)]
@@ -276,6 +303,30 @@ pub async fn bundle_entry(
     let out = ops::bundle_with_opts(vault_root, &id, opts)?;
     let ids = known_ids(&ops::entry_list(vault_root));
 
+    // per-revision validate(④) — enforcement와 무관하게 항상 Warn 수준으로 content-shape를 계산해
+    // advisory 미리보기. 실제 정책(off/warn/fail)은 /api/meta의 revision_severity가 chip으로 전한다.
+    // chain.head는 토글 밖 항상 Error. rev_id로 그룹핑해 RevisionDto에 첨부. → see N0106 ④
+    let checks_by_rev: HashMap<String, Vec<RevIssueDto>> = {
+        use crate::schema::validate::{Severity, check_entry_revisions};
+        use crate::vault::revision::Revision;
+        let mut map: HashMap<String, Vec<RevIssueDto>> = HashMap::new();
+        if let Some(eid) = EntryId::from_str(&id) {
+            let full_revs = Revision::list(vault_root, &eid);
+            for rc in check_entry_revisions(&full_revs, &eid, Some(Severity::Warning)) {
+                map.entry(rc.rev_id.clone()).or_default().push(RevIssueDto {
+                    severity: match rc.severity {
+                        Severity::Error => "error",
+                        Severity::Warning => "warning",
+                    }
+                    .to_string(),
+                    check: rc.check.to_string(),
+                    message: rc.message,
+                });
+            }
+        }
+        map
+    };
+
     // dangling은 entry note + 모든 delta + linked note에서 합산(중복 제거).
     let mut dangling: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -303,13 +354,18 @@ pub async fn bundle_entry(
     let revisions = out
         .revisions
         .iter()
-        .map(|r| RevisionDto {
-            rev_id: r.rev_id.to_string(),
-            baseline: r.baseline.to_string(),
-            created: r.created.to_rfc3339(),
-            author: r.author.clone(),
-            delta: r.delta.clone(),
-            delta_html: collect(render_markdown(&r.delta, &ids)),
+        .map(|r| {
+            let rev_id = r.rev_id.to_string();
+            let issues = checks_by_rev.get(&rev_id).cloned().unwrap_or_default();
+            RevisionDto {
+                rev_id,
+                baseline: r.baseline.to_string(),
+                created: r.created.to_rfc3339(),
+                author: r.author.clone(),
+                delta: r.delta.clone(),
+                delta_html: collect(render_markdown(&r.delta, &ids)),
+                issues,
+            }
         })
         .collect();
 

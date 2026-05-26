@@ -30,7 +30,47 @@ function OrderToggle({ order, onToggle }) {
   );
 }
 
-function RevisionCard({ rev, focused }) {
+// per-rev validate row(④) — bundle이 실은 rev.issues를 칩으로 표시. content-shape는 항상
+// advisory(Warn)라 enforcement는 상단 SchemaChip이 전한다. ⑤ fix→ 는 advisory navigate —
+// 과거 revision은 immutable이므로 새 revision을 append해 해소(composer로). → see N0106 ④⑤
+function RevValidate({ issues, id }) {
+  if (!issues || !issues.length) return null;
+  return (
+    <div
+      className="mono"
+      style={{
+        marginTop: 12,
+        paddingTop: 8,
+        borderTop: "1px solid var(--rule)",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "4px 10px",
+        alignItems: "baseline",
+        fontSize: "var(--fs-11)",
+      }}
+    >
+      <span className="caps" style={{ color: "var(--ink-3)" }}>validate</span>
+      {issues.map((iss, i) => (
+        <span
+          key={i}
+          title={iss.message}
+          style={{ color: iss.severity === "error" ? "var(--accent-fg)" : "var(--warning)" }}
+        >
+          {iss.check}
+        </span>
+      ))}
+      <a
+        href={"#/entry/" + id + "/compose"}
+        title="advisory — 과거 revision은 immutable. 새 revision을 append해 해소"
+        style={{ color: "var(--ink-3)", textDecoration: "underline", marginLeft: "auto" }}
+      >
+        fix →
+      </a>
+    </div>
+  );
+}
+
+function RevisionCard({ rev, id, focused }) {
   return (
     <article className={"card" + (focused ? " focused" : "")}>
       <header
@@ -45,6 +85,7 @@ function RevisionCard({ rev, focused }) {
         <Byline author={rev.author} rev={rev.rev_id} ts={rev.created} baseline={rev.baseline} />
       </header>
       <Prose html={rev.delta_html} />
+      <RevValidate issues={rev.issues} id={id} />
     </article>
   );
 }
@@ -281,7 +322,7 @@ export function EntryView({ id }) {
           </div>
           {revs.length === 0 && <div className="notice">no revisions yet.</div>}
           {revs.map((r) => (
-            <RevisionCard key={r.rev_id} rev={r} focused={r.rev_id === headId} />
+            <RevisionCard key={r.rev_id} rev={r} id={id} focused={r.rev_id === headId} />
           ))}
         </section>
       </main>

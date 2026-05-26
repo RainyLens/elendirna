@@ -535,19 +535,114 @@ fn check_asset(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
 // 8. Revision — chain.head integrity + content-shape (→ see N0108)
 // ─────────────────────────────────────────
 
+/// 단일 revision의 구조적 검증 결과 — rev_id로 그룹핑해 휴먼 뷰어의 per-rev validate row(④)·
+/// composer rail에 싣는다. flat `Issue`(run_all)와 같은 규칙·메시지를 단일 출처에서 공유. → see N0106 ④⑤
+#[derive(Debug, Clone)]
+pub struct RevCheck {
+    pub rev_id: String,
+    pub severity: Severity,
+    /// 검사 이름: `"chain.head"` | `"change.present"` | `"impact.present"` | `"content.length"`.
+    pub check: &'static str,
+    pub message: String,
+}
+
+/// 한 entry의 revision 체인을 검사해 구조적 위반을 반환한다.
+///
+/// `chain.head`(append-only integrity)는 토글 밖 — 항상 `Error`. content-shape(change/impact
+/// present·length)는 `content_sev`가 `Some`일 때만 그 severity로, `None`이면 skip.
+/// `check_revision`(run_all flat-issue)과 휴먼 뷰어 API가 공유한다 — 마커 정규식·길이 규칙
+/// 단일 출처. 뷰어는 enforcement(off/warn/fail)와 무관하게 `Some(Warning)`로 advisory 미리보기를
+/// 계산하고, 실제 정책은 chip이 별도로 전한다. → see N0106 ④, N0108
+pub fn check_entry_revisions(
+    revisions: &[Revision],
+    eid: &EntryId,
+    content_sev: Option<Severity>,
+) -> Vec<RevCheck> {
+    // matcher: 역사적 3표기 흡수 —
+    //   `[Change]` 인라인 / `## [Change]` 헤더  →  공통 `\[Change\]`
+    //   `## Change` composer 정규형              →  `(?m)^##\s+Change\b`
+    let change_re = Regex::new(r"(?m)\[Change\]|^##\s+Change\b").unwrap();
+    let impact_re = Regex::new(r"(?m)\[Impact\]|^##\s+Impact\b").unwrap();
+    let mut out = Vec::new();
+
+    // ── chain.head (integrity — 항상 Error, 토글 밖) ──
+    // append-only 체인: 각 revision baseline이 직전 head를 가리켜야 한다.
+    // 첫 revision은 @r0000(virtual, rev=None), 이후는 직전 rev_id.
+    let mut expected_prev: Option<RevisionId> = None;
+    for rev in revisions {
+        let base = &rev.baseline;
+        if base.entry != *eid || base.rev != expected_prev {
+            let expected = match &expected_prev {
+                None => format!("{eid}@r0000"),
+                Some(r) => format!("{eid}@{r}"),
+            };
+            out.push(RevCheck {
+                rev_id: rev.rev_id.to_string(),
+                severity: Severity::Error,
+                check: "chain.head",
+                message: format!(
+                    "chain.head 위반: {eid}@{} baseline이 '{base}' — append-only 체인은 직전 head '{expected}'를 가리켜야 함",
+                    rev.rev_id
+                ),
+            });
+        }
+        expected_prev = Some(rev.rev_id.clone());
+    }
+
+    // ── content-shape (severity 토글) ──
+    let Some(sev) = content_sev else {
+        return out;
+    };
+    for rev in revisions {
+        let has_change = change_re.is_match(&rev.delta);
+        let has_impact = impact_re.is_match(&rev.delta);
+        if !has_change {
+            out.push(RevCheck {
+                rev_id: rev.rev_id.to_string(),
+                severity: sev.clone(),
+                check: "change.present",
+                message: format!(
+                    "change.present 위반: {eid}@{} delta에 [Change]/## Change 섹션이 없음",
+                    rev.rev_id
+                ),
+            });
+        }
+        if !has_impact {
+            out.push(RevCheck {
+                rev_id: rev.rev_id.to_string(),
+                severity: sev.clone(),
+                check: "impact.present",
+                message: format!(
+                    "impact.present 위반: {eid}@{} delta에 [Impact]/## Impact 섹션이 없음",
+                    rev.rev_id
+                ),
+            });
+        }
+        if has_change && has_impact {
+            let body_len = rev.delta.trim().chars().count();
+            if body_len < MIN_REVISION_BODY_LEN {
+                out.push(RevCheck {
+                    rev_id: rev.rev_id.to_string(),
+                    severity: sev.clone(),
+                    check: "content.length",
+                    message: format!(
+                        "content.length 위반: {eid}@{} 본문이 너무 짧음 ({body_len}자 < {MIN_REVISION_BODY_LEN})",
+                        rev.rev_id
+                    ),
+                });
+            }
+        }
+    }
+    out
+}
+
 fn check_revision(
     vault_root: &Path,
     entries: &[Entry],
     severity: RevisionSeverity,
     issues: &mut Vec<Issue>,
 ) {
-    // matcher: 역사적 3표기 흡수 —
-    //   `[Change]` 인라인 / `## [Change]` 헤더  →  공통 `\[Change\]`
-    //   `## Change` composer 정규형              →  `(?m)^##\s+Change\b`
-    let change_re = Regex::new(r"(?m)\[Change\]|^##\s+Change\b").unwrap();
-    let impact_re = Regex::new(r"(?m)\[Impact\]|^##\s+Impact\b").unwrap();
-
-    // content-shape에만 적용 — None(Off)이면 검사 자체 skip.
+    // content-shape에만 적용 — None(Off)이면 검사 자체 skip. chain.head는 토글 밖 항상 Error.
     let content_sev = match severity {
         RevisionSeverity::Off => None,
         RevisionSeverity::Warn => Some(Severity::Warning),
@@ -558,80 +653,15 @@ fn check_revision(
         let eid = entry_id_from_manifest(entry);
         let revisions = Revision::list(vault_root, &eid); // rev_id 오름차순
         let rev_dir = Revision::rev_dir(vault_root, &eid);
-
-        // ── chain.head (integrity — 항상 Error, 토글 밖) ──
-        // append-only 체인: 각 revision baseline이 직전 head를 가리켜야 한다.
-        // 첫 revision은 @r0000(virtual, rev=None), 이후는 직전 rev_id.
-        let mut expected_prev: Option<RevisionId> = None;
-        for rev in &revisions {
-            let base = &rev.baseline;
-            if base.entry != eid || base.rev != expected_prev {
-                let expected = match &expected_prev {
-                    None => format!("{eid}@r0000"),
-                    Some(r) => format!("{eid}@{r}"),
-                };
-                issues.push(Issue {
-                    severity: Severity::Error,
-                    kind: IssueKind::RevisionContent,
-                    path: rev_dir.join(format!("{}.md", rev.rev_id)),
-                    message: format!(
-                        "chain.head 위반: {eid}@{} baseline이 '{base}' — append-only 체인은 직전 head '{expected}'를 가리켜야 함",
-                        rev.rev_id
-                    ),
-                    fix: None,
-                });
-            }
-            expected_prev = Some(rev.rev_id.clone());
-        }
-
-        // ── content-shape (revision_severity 토글) ──
-        let Some(sev) = content_sev.clone() else {
-            continue;
-        };
-        for rev in &revisions {
-            let rev_path = rev_dir.join(format!("{}.md", rev.rev_id));
-            let has_change = change_re.is_match(&rev.delta);
-            let has_impact = impact_re.is_match(&rev.delta);
-            // ⑤ fix=advisory (composer navigate) — validate는 fix:None. → see N0108
-            if !has_change {
-                issues.push(Issue {
-                    severity: sev.clone(),
-                    kind: IssueKind::RevisionContent,
-                    path: rev_path.clone(),
-                    message: format!(
-                        "change.present 위반: {eid}@{} delta에 [Change]/## Change 섹션이 없음",
-                        rev.rev_id
-                    ),
-                    fix: None,
-                });
-            }
-            if !has_impact {
-                issues.push(Issue {
-                    severity: sev.clone(),
-                    kind: IssueKind::RevisionContent,
-                    path: rev_path.clone(),
-                    message: format!(
-                        "impact.present 위반: {eid}@{} delta에 [Impact]/## Impact 섹션이 없음",
-                        rev.rev_id
-                    ),
-                    fix: None,
-                });
-            }
-            if has_change && has_impact {
-                let body_len = rev.delta.trim().chars().count();
-                if body_len < MIN_REVISION_BODY_LEN {
-                    issues.push(Issue {
-                        severity: sev.clone(),
-                        kind: IssueKind::RevisionContent,
-                        path: rev_path,
-                        message: format!(
-                            "content.length 위반: {eid}@{} 본문이 너무 짧음 ({body_len}자 < {MIN_REVISION_BODY_LEN})",
-                            rev.rev_id
-                        ),
-                        fix: None,
-                    });
-                }
-            }
+        // ⑤ fix=advisory(composer navigate) — flat-issue는 fix:None. → see N0108
+        for rc in check_entry_revisions(&revisions, &eid, content_sev.clone()) {
+            issues.push(Issue {
+                severity: rc.severity,
+                kind: IssueKind::RevisionContent,
+                path: rev_dir.join(format!("{}.md", rc.rev_id)),
+                message: rc.message,
+                fix: None,
+            });
         }
     }
 }

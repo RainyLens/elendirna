@@ -259,6 +259,48 @@ async fn api_meta_returns_vault_path_and_count() {
     assert!(!path.is_empty(), "vault_path present: {v}");
     assert!(!path.contains(r"\\?\"), "extended-length prefix stripped: {v}");
     assert!(v["core_version"].is_string(), "core_version: {v}");
+    // schema chip(④) backing — fresh init vault는 revision_severity 기본 off. → see N0106 ④
+    assert_eq!(v["revision_severity"], "off", "default enforcement off: {v}");
+}
+
+#[tokio::test]
+async fn api_bundle_per_rev_validate_advisory() {
+    // per-rev validate row(④) — bundle revisions[].issues. content-shape는 enforcement(off)와
+    // 무관하게 항상 Warn 수준으로 advisory 미리보기. → see N0106 ④
+    let dir = setup_populated_vault();
+    let app = app_for(&dir);
+
+    // free-form revision(마커 없음) → change/impact.present advisory(warning). vault 정책 off여도.
+    let v = get_json(&app, "/api/entries/N0002/bundle").await;
+    let rev = &v["revisions"].as_array().unwrap()[0];
+    let issues = rev["issues"].as_array().expect("issues array");
+    let checks: Vec<&str> = issues.iter().filter_map(|i| i["check"].as_str()).collect();
+    assert!(checks.contains(&"change.present"), "free-form lacks [Change]: {v}");
+    assert!(checks.contains(&"impact.present"), "free-form lacks [Impact]: {v}");
+    assert!(
+        issues.iter().all(|i| i["severity"] == "warning"),
+        "content-shape는 항상 advisory warning(off여도): {v}"
+    );
+
+    // 구조화 revision(## Change/## Impact + 충분한 길이) → content-shape 위반 0.
+    let body = r#"{"change":"충분히 긴 변경 내용을 여기에 적는다","impact":"그래서 이런 영향이 생긴다고 기록"}"#;
+    let (s, _) = send(
+        &app,
+        Method::POST,
+        "/api/entries/N0003/revisions",
+        LOOPBACK,
+        SAME_ORIGIN,
+        &[],
+        body,
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED);
+    let v = get_json(&app, "/api/entries/N0003/bundle").await;
+    let rev = v["revisions"].as_array().unwrap().last().unwrap();
+    assert!(
+        rev["issues"].as_array().unwrap().is_empty(),
+        "구조화 revision은 위반 0: {v}"
+    );
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@
 // author는 서버가 "User"로 기록(휴먼 뷰어).
 import { api } from "./api.js";
 import { go } from "./router.js";
-import { Caps, Loading, ErrorNote, useAsync, fmtTs } from "./atoms.jsx";
+import { Caps, Loading, ErrorNote, useAsync, fmtTs, SchemaChip } from "./atoms.jsx";
 
 const { useState, useEffect, useMemo } = React;
 
@@ -128,26 +128,34 @@ function lineDiff(a, b) {
   return out;
 }
 
-// live validate — per-rev validate 스키마는 묵힘이라, composer의 client-side 체크를
-// 디자인의 validate rail 형태로 표시한다(스키마 없이 "느낌"만 재현). [[N0106]]
-function validateItems(mode, change, impact, delta, head) {
+// live validate — 백엔드 check_entry_revisions와 같은 규칙을 draft(미커밋)에 미러한다.
+// 서버는 커밋된 파일만 검사하므로 composer는 같은 정규식·길이 규칙으로 미리 본다. enforcement와
+// 무관하게 항상 advisory(커밋은 막지 않음) — 색만 vault 정책을 따른다. → see N0106 ④, N0108
+// `\b`는 JS에서 ASCII word-boundary라 Rust regex crate의 Unicode-aware `\b`와 발산한다
+// (예: `## Change한글` — JS는 present, Rust는 absent). `/u` + Unicode word char 부정 lookahead로
+// 충실히 미러: "Change" 뒤에 letter/number/underscore가 없을 때만 present. → codex review
+const CHANGE_RE = /\[Change\]|^##\s+Change(?![\p{L}\p{N}_])/mu;
+const IMPACT_RE = /\[Impact\]|^##\s+Impact(?![\p{L}\p{N}_])/mu;
+const MIN_BODY = 24; // 백엔드 MIN_REVISION_BODY_LEN과 동일
+
+function validateItems(draftDelta, head) {
+  const body = (draftDelta || "").trim();
+  const hasChange = CHANGE_RE.test(body);
+  const hasImpact = IMPACT_RE.test(body);
+  const len = [...body].length; // 백엔드는 chars().count() — code point 기준
   const items = [];
-  if (mode === "structured") {
-    const cl = change.trim().length;
-    const il = impact.trim().length;
-    items.push({ key: "change.length", ok: cl >= 12, msg: `${cl}/12 chars` });
-    items.push({ key: "impact.length", ok: il >= 12, msg: `${il}/12 chars` });
-  } else {
-    const dl = delta.trim().length;
-    items.push({ key: "delta.nonempty", ok: dl > 0, msg: dl > 0 ? `${dl} chars` : "empty" });
+  items.push({ key: "change.present", ok: hasChange, msg: hasChange ? "found" : "no [Change]/## Change" });
+  items.push({ key: "impact.present", ok: hasImpact, msg: hasImpact ? "found" : "no [Impact]/## Impact" });
+  if (hasChange && hasImpact) {
+    items.push({ key: "content.length", ok: len >= MIN_BODY, msg: `${len}/${MIN_BODY} chars` });
   }
-  items.push({ key: "baseline.reach", ok: true, msg: head ? `head ${head.rev_id}` : "first revision (@r0000)" });
-  items.push({ key: "author.identity", ok: true, msg: "byline = User" });
+  // chain.head: 새 revision은 항상 현재 head에 append → integrity ok(정보).
+  items.push({ key: "chain.head", ok: true, msg: head ? `appends ${head.rev_id}` : "first revision @r0000" });
   return items;
 }
 
-function ValidateRow({ item }) {
-  const color = item.ok ? "var(--ink-3)" : "var(--warning)";
+function ValidateRow({ item, attnColor }) {
+  const color = item.ok ? "var(--ink-3)" : attnColor;
   return (
     <li
       style={{
@@ -170,18 +178,26 @@ function ValidateRow({ item }) {
   );
 }
 
-function ValidateList({ items }) {
+function ValidateList({ items, policy }) {
   const attention = items.filter((i) => !i.ok).length;
+  // attention 색은 vault 정책을 따른다 — fail=error(oxblood), off/warn=warning. 모두 advisory.
+  const attnColor = policy === "fail" ? "var(--accent-fg)" : "var(--warning)";
   return (
     <>
-      <Caps style={{ marginBottom: 4 }}>
-        validate · live{attention ? ` · ${attention} attention` : ""}
-      </Caps>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+        <Caps>validate · live{attention ? ` · ${attention} attention` : ""}</Caps>
+        {policy && <SchemaChip severity={policy} />}
+      </div>
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {items.map((it) => (
-          <ValidateRow key={it.key} item={it} />
+          <ValidateRow key={it.key} item={it} attnColor={attnColor} />
         ))}
       </ul>
+      {policy === "off" && attention > 0 && (
+        <div className="mono" style={{ fontSize: "var(--fs-11)", color: "var(--ink-4)", marginTop: 6 }}>
+          advisory only · schema off (커밋은 막지 않음)
+        </div>
+      )}
     </>
   );
 }
@@ -247,6 +263,7 @@ function BaselineDoc({ head }) {
 // ─── 새 revision ─────────────────────────────
 export function EntryCompose({ id }) {
   const { data, err, loading } = useAsync(() => api.bundle(id), [id]);
+  const metaQ = useAsync(() => api.meta(), []); // vault 정책(schema chip) — 1회.
   const initial = useMemo(() => loadDraft(id), [id]);
   const [mode, setMode] = useState(initial.mode || "structured"); // structured | freeform
   const [change, setChange] = useState(initial.change || "");
@@ -269,17 +286,21 @@ export function EntryCompose({ id }) {
 
   const { entry, revisions } = data;
   const head = revisions.length ? revisions[revisions.length - 1] : null;
-  const items = validateItems(mode, change, impact, delta, head);
-  const valid =
-    mode === "structured"
-      ? change.trim().length >= 12 && impact.trim().length >= 12
-      : delta.trim().length > 0;
+  const policy = metaQ.data ? metaQ.data.revision_severity : null;
 
-  // 초안 합성 delta — BE compose_delta와 동일 규칙(diff 비교 source).
+  // 초안 합성 delta — BE compose_delta와 동일 규칙(diff 비교 source + validate 미러 source).
   const draftDelta =
     mode === "structured"
       ? `## Change\n\n${change.trim()}\n\n## Impact\n\n${impact.trim()}`
       : delta.trim();
+
+  const items = validateItems(draftDelta, head);
+  // 커밋 게이트는 "비어 있지 않음"만 — 서버 write는 content-shape를 강제하지 않고(off default
+  // 비블로킹), compose_delta는 빈 입력만 400으로 거부한다. 길이/마커는 rail의 advisory. → see N0050
+  const valid =
+    mode === "structured"
+      ? change.trim().length > 0 && impact.trim().length > 0
+      : delta.trim().length > 0;
 
   const touch = () => setLastEdit(Date.now());
   const onChange = (setter) => (v) => { setter(v); touch(); };
@@ -340,11 +361,11 @@ export function EntryCompose({ id }) {
           {mode === "structured" ? (
             <>
               <div style={{ marginBottom: 18 }}>
-                <FieldLabel sub="min 12 · required">[change] — what shifted</FieldLabel>
+                <FieldLabel sub="required">[change] — what shifted</FieldLabel>
                 <Area value={change} onChange={onChange(setChange)} placeholder="무엇이 바뀌었나" />
               </div>
               <div style={{ marginBottom: 18 }}>
-                <FieldLabel sub="min 12 · required · so-what">[impact] — what now changes</FieldLabel>
+                <FieldLabel sub="required · so-what">[impact] — what now changes</FieldLabel>
                 <Area value={impact} onChange={onChange(setImpact)} placeholder="그래서 무엇이 달라지나" />
               </div>
             </>
@@ -381,7 +402,7 @@ export function EntryCompose({ id }) {
         </div>
 
         <aside style={{ borderLeft: "1px solid var(--rule)", paddingLeft: 24, position: "sticky", top: 0 }}>
-          <ValidateList items={items} />
+          <ValidateList items={items} policy={policy} />
           <DiffPreview base={head ? head.delta : ""} draft={draftDelta} headRev={head ? head.rev_id : null} />
         </aside>
       </div>

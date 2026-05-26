@@ -44,6 +44,7 @@ export function TopChrome({ section }) {
         className="mono"
         style={{ display: "flex", alignItems: "baseline", gap: 14, fontSize: "var(--fs-12)", color: "var(--ink-3)", minWidth: 0 }}
       >
+        {meta.data && <SchemaChip severity={meta.data.revision_severity} />}
         {vaultPath && (
           <span
             title={vaultPath}
@@ -63,6 +64,36 @@ export function Caps({ children, style }) {
     <div className="mono caps" style={{ color: "var(--ink-3)", ...(style || {}) }}>
       {children}
     </div>
+  );
+}
+
+// revision content-shape enforcement(vault 정책) chip — off/warn/fail. 휴먼이 "지금 검사 강도가
+// 무엇인지"를 chrome/composer에서 본다. per-rev validate row는 enforcement와 무관하게 항상
+// advisory(Warn 수준)로 계산되고, 이 chip이 실제 강제 여부를 전한다. → see N0106 ④
+export function SchemaChip({ severity }) {
+  if (!severity) return null;
+  const meta =
+    {
+      off: { label: "schema · off", color: "var(--ink-3)" },
+      warn: { label: "schema · warn", color: "var(--warning)" },
+      fail: { label: "schema · fail", color: "var(--accent-fg)" },
+    }[severity] || { label: "schema · " + severity, color: "var(--ink-3)" };
+  return (
+    <span
+      className="mono"
+      title="revision content-shape 검사 강도 (vault 정책). off=조용·비강제, warn=비블로킹 경고, fail=exit 1"
+      style={{
+        fontSize: "var(--fs-11)",
+        color: meta.color,
+        border: "1px solid var(--rule)",
+        padding: "1px 6px",
+        borderRadius: 2,
+        whiteSpace: "nowrap",
+        flex: "0 0 auto",
+      }}
+    >
+      {meta.label}
+    </span>
   );
 }
 
