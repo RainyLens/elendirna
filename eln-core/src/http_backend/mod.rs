@@ -1,9 +1,11 @@
-//! 휴먼용 HTTP 백엔드 ([[N0106]] P1 — localhost read-only 뷰어).
+//! 휴먼용 HTTP 백엔드 ([[N0106]] — localhost 휴먼 뷰어. P1 read + P2 write).
 //!
-//! `mcp_server::http::run_http`에서 `/api` 아래 nest. 모든 엔드포인트는 GET·read-only이며
-//! `vault::ops` / `vault::index` / `schema::validate`를 그대로 호출해 vault 도메인을 그대로
-//! 노출한다(쓰기 없음 — write는 P2 composer 단계). `127.0.0.1` 바인드 자체가 신뢰 경계이고,
-//! 추가로 Host 가드로 DNS rebinding/CSRF를 차단한다.
+//! `mcp_server::http::build_app`에서 `/api` 아래 nest(또는 `viewer_app`으로 단독 구동).
+//! `vault::ops` / `vault::index` / `schema::validate`를 그대로 호출해 vault 도메인을 노출하며,
+//! read(GET)와 write(POST/PUT — revision/entry/status/tags/link)를 함께 제공한다. `127.0.0.1`
+//! 바인드 자체가 신뢰 경계이고, Host 가드(loopback only)가 DNS rebinding을, write 가드
+//! (Origin/Sec-Fetch same-origin)가 브라우저발 CSRF를 막는다. 외부 노출 MCP `/mcp`는 그쪽이
+//! READ 유지(C1, → see N0106 r0006) — "read-only" 라벨은 viewer가 아니라 거기에 붙는다.
 
 mod api;
 
@@ -52,7 +54,7 @@ async fn health() -> &'static str {
     "ok"
 }
 
-/// 휴먼 뷰어 전용 axum 앱 — `/api`(read-only) + 루트 임베드 FE. MCP(`/mcp`)는 없다.
+/// 휴먼 뷰어 전용 axum 앱 — `/api`(read + write, loopback 신뢰) + 루트 임베드 FE. MCP(`/mcp`)는 없다.
 /// `--mcp` 없이 `elf serve` 했을 때 사용 — MCP 런타임과 독립으로 side-by-side 구동 가능([[N0106]]).
 pub fn viewer_app(vault_root: Arc<PathBuf>) -> Router {
     Router::new()
@@ -60,11 +62,11 @@ pub fn viewer_app(vault_root: Arc<PathBuf>) -> Router {
         .fallback(static_handler)
 }
 
-/// 뷰어 전용 HTTP 서버 구동 (blocking). `/` → 임베드 FE, `/api` → read-only 백엔드.
+/// 뷰어 전용 HTTP 서버 구동 (blocking). `/` → 임베드 FE, `/api` → 휴먼 백엔드(read + write, loopback+same-origin 가드).
 pub async fn run_viewer(vault_root: PathBuf, addr: SocketAddr) -> anyhow::Result<()> {
     let app = viewer_app(Arc::new(vault_root));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    eprintln!("[elf] viewer listening on http://{addr}/ (API: /api) — read-only, MCP 없음");
+    eprintln!("[elf] viewer listening on http://{addr}/ (API: /api, read+write) — loopback only, MCP 없음");
     axum::serve(listener, app).await?;
     Ok(())
 }
