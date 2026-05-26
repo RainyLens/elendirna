@@ -4,9 +4,14 @@ use std::path::{Path, PathBuf};
 
 use crate::error::ElfError;
 use crate::schema::manifest::NoteFrontmatter;
+use crate::vault::config::{RevisionSeverity, VaultConfig};
 use crate::vault::entry::Entry;
-use crate::vault::id::{EntryId, EntryRevRef};
+use crate::vault::id::{EntryId, EntryRevRef, RevisionId};
 use crate::vault::revision::Revision;
+
+/// content-shape 검사에서 revision 본문(마커 포함 trim 후) 최소 길이. 마커만 있고 내용이
+/// 사실상 빈 revision을 잡되, false-positive를 피하게 보수적으로. → see N0108
+const MIN_REVISION_BODY_LEN: usize = 24;
 
 // ─────────────────────────────────────────
 // 타입 정의
@@ -27,6 +32,8 @@ pub enum IssueKind {
     Cycle,
     Orphan,
     Asset,
+    /// revision content-shape(Change/Impact present·length) + chain.head integrity. → see N0108
+    RevisionContent,
 }
 
 #[derive(Debug, Clone)]
@@ -75,8 +82,23 @@ impl ValidateResult {
     }
 }
 
-/// 7단계 검사 실행 (PLAN Phase 6 순서 준수)
+/// 검사 실행. revision content-shape 강도는 vault config의 `revision_severity`(default Off).
+/// CLI `--strict`/`--lenient` override가 필요하면 [`run_all_with_severity`]를 직접 호출. → see N0108
 pub fn run_all(vault_root: &Path) -> Result<ValidateResult, ElfError> {
+    let severity = VaultConfig::read(vault_root)
+        .map(|c| c.revision_severity)
+        .unwrap_or_default();
+    run_all_with_severity(vault_root, severity)
+}
+
+/// 8단계 검사 실행 (PLAN Phase 6 순서 + N0108 revision stage).
+///
+/// `revision_severity`는 content-shape 검사에만 적용 — chain.head/baseline.reach 등 integrity는
+/// 토글 밖 항상 Error. CLI는 flag>config>Off precedence로 계산한 값을 전달, MCP/뷰어는 config 값.
+pub fn run_all_with_severity(
+    vault_root: &Path,
+    revision_severity: RevisionSeverity,
+) -> Result<ValidateResult, ElfError> {
     let entries = Entry::find_all(vault_root);
     let entry_ids: HashSet<String> = entries.iter().map(|e| e.manifest.id.clone()).collect();
 
@@ -102,6 +124,9 @@ pub fn run_all(vault_root: &Path) -> Result<ValidateResult, ElfError> {
 
     // 7. Asset
     check_asset(vault_root, &entries, &mut issues);
+
+    // 8. Revision — chain.head integrity (항상 Error) + content-shape (revision_severity 토글)
+    check_revision(vault_root, &entries, revision_severity, &mut issues);
 
     Ok(ValidateResult { issues })
 }
@@ -501,6 +526,111 @@ fn check_asset(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
                     message: format!("assets/{name}가 어떤 entry sources에도 등록되지 않음"),
                     fix: None,
                 });
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────
+// 8. Revision — chain.head integrity + content-shape (→ see N0108)
+// ─────────────────────────────────────────
+
+fn check_revision(
+    vault_root: &Path,
+    entries: &[Entry],
+    severity: RevisionSeverity,
+    issues: &mut Vec<Issue>,
+) {
+    // matcher: 역사적 3표기 흡수 —
+    //   `[Change]` 인라인 / `## [Change]` 헤더  →  공통 `\[Change\]`
+    //   `## Change` composer 정규형              →  `(?m)^##\s+Change\b`
+    let change_re = Regex::new(r"(?m)\[Change\]|^##\s+Change\b").unwrap();
+    let impact_re = Regex::new(r"(?m)\[Impact\]|^##\s+Impact\b").unwrap();
+
+    // content-shape에만 적용 — None(Off)이면 검사 자체 skip.
+    let content_sev = match severity {
+        RevisionSeverity::Off => None,
+        RevisionSeverity::Warn => Some(Severity::Warning),
+        RevisionSeverity::Fail => Some(Severity::Error),
+    };
+
+    for entry in entries {
+        let eid = entry_id_from_manifest(entry);
+        let revisions = Revision::list(vault_root, &eid); // rev_id 오름차순
+        let rev_dir = Revision::rev_dir(vault_root, &eid);
+
+        // ── chain.head (integrity — 항상 Error, 토글 밖) ──
+        // append-only 체인: 각 revision baseline이 직전 head를 가리켜야 한다.
+        // 첫 revision은 @r0000(virtual, rev=None), 이후는 직전 rev_id.
+        let mut expected_prev: Option<RevisionId> = None;
+        for rev in &revisions {
+            let base = &rev.baseline;
+            if base.entry != eid || base.rev != expected_prev {
+                let expected = match &expected_prev {
+                    None => format!("{eid}@r0000"),
+                    Some(r) => format!("{eid}@{r}"),
+                };
+                issues.push(Issue {
+                    severity: Severity::Error,
+                    kind: IssueKind::RevisionContent,
+                    path: rev_dir.join(format!("{}.md", rev.rev_id)),
+                    message: format!(
+                        "chain.head 위반: {eid}@{} baseline이 '{base}' — append-only 체인은 직전 head '{expected}'를 가리켜야 함",
+                        rev.rev_id
+                    ),
+                    fix: None,
+                });
+            }
+            expected_prev = Some(rev.rev_id.clone());
+        }
+
+        // ── content-shape (revision_severity 토글) ──
+        let Some(sev) = content_sev.clone() else {
+            continue;
+        };
+        for rev in &revisions {
+            let rev_path = rev_dir.join(format!("{}.md", rev.rev_id));
+            let has_change = change_re.is_match(&rev.delta);
+            let has_impact = impact_re.is_match(&rev.delta);
+            // ⑤ fix=advisory (composer navigate) — validate는 fix:None. → see N0108
+            if !has_change {
+                issues.push(Issue {
+                    severity: sev.clone(),
+                    kind: IssueKind::RevisionContent,
+                    path: rev_path.clone(),
+                    message: format!(
+                        "change.present 위반: {eid}@{} delta에 [Change]/## Change 섹션이 없음",
+                        rev.rev_id
+                    ),
+                    fix: None,
+                });
+            }
+            if !has_impact {
+                issues.push(Issue {
+                    severity: sev.clone(),
+                    kind: IssueKind::RevisionContent,
+                    path: rev_path.clone(),
+                    message: format!(
+                        "impact.present 위반: {eid}@{} delta에 [Impact]/## Impact 섹션이 없음",
+                        rev.rev_id
+                    ),
+                    fix: None,
+                });
+            }
+            if has_change && has_impact {
+                let body_len = rev.delta.trim().chars().count();
+                if body_len < MIN_REVISION_BODY_LEN {
+                    issues.push(Issue {
+                        severity: sev.clone(),
+                        kind: IssueKind::RevisionContent,
+                        path: rev_path,
+                        message: format!(
+                            "content.length 위반: {eid}@{} 본문이 너무 짧음 ({body_len}자 < {MIN_REVISION_BODY_LEN})",
+                            rev.rev_id
+                        ),
+                        fix: None,
+                    });
+                }
             }
         }
     }

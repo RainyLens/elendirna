@@ -62,8 +62,11 @@ mod validate {
     use crate::cli::entry::{NewArgs, run_new};
     use crate::cli::init::{InitArgs, run as init_run};
     use crate::schema::manifest::Manifest;
-    use crate::schema::validate::{IssueKind, run_all};
+    use crate::schema::validate::{IssueKind, Severity, run_all, run_all_with_severity};
     use crate::vault::VaultArgs;
+    use crate::vault::config::RevisionSeverity;
+    use crate::vault::id::EntryId;
+    use crate::vault::revision::Revision;
     use tempfile::TempDir;
 
     fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -277,6 +280,154 @@ mod validate {
         assert!(
             msgs.iter().any(|m| m.contains(r#"\""#)),
             "consistency 메시지에 \\\" 같은 escape 표현이 있어야 함: {msgs:?}"
+        );
+    }
+
+    // ─── N0108: revision chain.head + content-shape ───
+
+    fn rev_content_issues(result: &crate::schema::validate::ValidateResult) -> Vec<&str> {
+        result
+            .issues
+            .iter()
+            .filter(|i| {
+                i.kind == IssueKind::RevisionContent && !i.message.contains("chain.head")
+            })
+            .map(|i| i.message.as_str())
+            .collect()
+    }
+
+    /// 정상 append된 chain + content Off(default) → RevisionContent issue 0.
+    #[test]
+    fn revision_chain_clean_no_issues() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Chained");
+        let eid = EntryId::new(1);
+        Revision::create(dir.path(), &eid, "[Change] 첫 변경 [Impact] 첫 영향", "claude").unwrap();
+        Revision::create(dir.path(), &eid, "[Change] 둘째 변경 [Impact] 둘째 영향", "claude").unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let rev_issues = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::RevisionContent)
+            .count();
+        assert_eq!(rev_issues, 0, "정상 chain + Off는 issue 0");
+    }
+
+    /// baseline을 직전 head가 아닌 곳으로 조작 → chain.head Error (토글 밖, content Off여도 잡힘).
+    #[test]
+    fn chain_head_violation_detected_even_when_off() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Tampered");
+        let eid = EntryId::new(1);
+        Revision::create(dir.path(), &eid, "[Change] a [Impact] b", "claude").unwrap();
+        Revision::create(dir.path(), &eid, "[Change] c [Impact] d", "claude").unwrap();
+
+        // r0002의 baseline을 @r0001(정상) → @r0000(virtual, 직전 head 아님)으로 조작
+        let r2 = dir.path().join(".elendirna/revisions/N0001/r0002.md");
+        let content = std::fs::read_to_string(&r2).unwrap();
+        let tampered = content.replace("baseline: N0001@r0001", "baseline: N0001@r0000");
+        assert_ne!(content, tampered, "조작 전제: r0002 baseline이 N0001@r0001이어야");
+        std::fs::write(&r2, tampered).unwrap();
+
+        let result = run_all(dir.path()).unwrap(); // content Off
+        let chain_errs = result
+            .issues
+            .iter()
+            .filter(|i| {
+                i.kind == IssueKind::RevisionContent
+                    && i.severity == Severity::Error
+                    && i.message.contains("chain.head")
+            })
+            .count();
+        assert!(chain_errs > 0, "조작된 baseline은 chain.head Error여야");
+    }
+
+    /// content-shape는 default Off — 마커 없는 revision도 issue 0.
+    #[test]
+    fn content_shape_off_by_default() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Bare");
+        Revision::create(dir.path(), &EntryId::new(1), "그냥 자유 형식 메모, 마커 없음", "human")
+            .unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        assert!(
+            rev_content_issues(&result).is_empty(),
+            "Off면 content-shape 검사 안 함"
+        );
+    }
+
+    /// Warn: 마커 없으면 change/impact present Warning (비블로킹).
+    #[test]
+    fn content_shape_warn_flags_missing_markers() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Bare");
+        Revision::create(dir.path(), &EntryId::new(1), "마커 없는 자유 메모", "human").unwrap();
+
+        let result = run_all_with_severity(dir.path(), RevisionSeverity::Warn).unwrap();
+        let issues: Vec<_> = result
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::RevisionContent)
+            .collect();
+        assert!(
+            issues.iter().all(|i| i.severity == Severity::Warning),
+            "Warn 모드 content 위반은 Warning"
+        );
+        assert!(issues.iter().any(|i| i.message.contains("change.present")));
+        assert!(issues.iter().any(|i| i.message.contains("impact.present")));
+        assert_eq!(result.error_count(), 0, "Warn은 비블로킹");
+    }
+
+    /// Fail: 마커 없으면 Error (exit 1).
+    #[test]
+    fn content_shape_fail_is_error() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Bare");
+        Revision::create(dir.path(), &EntryId::new(1), "마커 없는 자유 메모", "human").unwrap();
+
+        let result = run_all_with_severity(dir.path(), RevisionSeverity::Fail).unwrap();
+        assert!(result.error_count() > 0, "Fail 모드 content 위반은 Error");
+    }
+
+    /// ⚠️ N0108 핵심 방어 — 역사적 3표기(`[Change]` 인라인 / `## [Change]` 헤더 / `## Change`
+    /// composer 정규형)를 matcher가 모두 인식해 Fail 모드에서도 false-positive 0이어야 한다.
+    #[test]
+    fn content_matcher_recognizes_all_three_notations() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Notations");
+        let eid = EntryId::new(1);
+        // 표기 1: 인라인 [Change]/[Impact]
+        Revision::create(
+            dir.path(),
+            &eid,
+            "[Change] 인라인 표기의 변경 내용입니다 [Impact] 인라인 표기의 영향 내용입니다",
+            "claude",
+        )
+        .unwrap();
+        // 표기 2: `## [Change]` 헤더
+        Revision::create(
+            dir.path(),
+            &eid,
+            "## [Change]\n헤더 대괄호 스타일 변경 내용\n\n## [Impact]\n헤더 대괄호 스타일 영향 내용",
+            "claude",
+        )
+        .unwrap();
+        // 표기 3: `## Change` composer 정규형
+        Revision::create(
+            dir.path(),
+            &eid,
+            "## Change\ncomposer 정규형 변경 내용입니다\n\n## Impact\ncomposer 정규형 영향 내용입니다",
+            "User",
+        )
+        .unwrap();
+
+        let result = run_all_with_severity(dir.path(), RevisionSeverity::Fail).unwrap();
+        let leftover = rev_content_issues(&result);
+        assert!(
+            leftover.is_empty(),
+            "3표기 모두 인식돼 content false-positive 0이어야: {leftover:?}"
         );
     }
 }

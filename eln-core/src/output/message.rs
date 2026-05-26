@@ -106,6 +106,7 @@ pub fn issue_kind_str(kind: &crate::schema::validate::IssueKind) -> &'static str
         IssueKind::Cycle => "validate:cycle",
         IssueKind::Orphan => "validate:orphan",
         IssueKind::Asset => "validate:asset",
+        IssueKind::RevisionContent => "validate:revision_content",
     }
 }
 
@@ -169,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn issue_kind_str_covers_all_7_kinds() {
+    fn issue_kind_str_covers_all_8_kinds() {
         for (k, expected) in [
             (IssueKind::Naming, "validate:naming"),
             (IssueKind::Schema, "validate:schema"),
@@ -178,6 +179,7 @@ mod tests {
             (IssueKind::Cycle, "validate:cycle"),
             (IssueKind::Orphan, "validate:orphan"),
             (IssueKind::Asset, "validate:asset"),
+            (IssueKind::RevisionContent, "validate:revision_content"),
         ] {
             assert_eq!(issue_kind_str(&k), expected);
         }

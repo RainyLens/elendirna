@@ -514,6 +514,7 @@ pub async fn validate(State(state): State<ApiState>) -> ApiResult<ValidateRespon
                 IssueKind::Cycle => "cycle",
                 IssueKind::Orphan => "orphan",
                 IssueKind::Asset => "asset",
+                IssueKind::RevisionContent => "revision",
             }
             .to_string(),
             path: issue.path.display().to_string(),

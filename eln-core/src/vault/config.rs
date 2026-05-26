@@ -6,6 +6,23 @@ use std::path::{Path, PathBuf};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
+/// revision의 구조화 content(Change/Impact present·length) 검사 강도. → see N0108
+///
+/// integrity 검사(chain.head·baseline.reach)는 이 토글 *밖* — 항상 Error. 토글이 지배하는
+/// 것은 content-shape 검사뿐인 단일 knob. default `Off`라 `#[serde(default)]`로 기존
+/// config.toml 무수정 (`vaults` 필드와 같은 backward-compat 패턴).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RevisionSeverity {
+    /// content-shape 검사 안 함 (default — 일상 validate 조용).
+    #[default]
+    Off,
+    /// content-shape 위반을 Warning으로 (비블로킹).
+    Warn,
+    /// content-shape 위반을 Error로 (exit 1 — owner opt-in 엄격 모드).
+    Fail,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VaultConfig {
     pub schema_version: u32,
@@ -16,6 +33,9 @@ pub struct VaultConfig {
     /// 등록된 vault alias → 절대경로 맵 (글로벌 config의 [vaults] 섹션, backward-compatible)
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub vaults: HashMap<String, String>,
+    /// revision content-shape 검사 강도 (→ see N0108). default Off — 기존 config 무수정.
+    #[serde(default)]
+    pub revision_severity: RevisionSeverity,
 }
 
 impl VaultConfig {
@@ -26,6 +46,7 @@ impl VaultConfig {
             created: Utc::now(),
             editor: "$EDITOR".to_string(),
             vaults: HashMap::new(),
+            revision_severity: RevisionSeverity::default(),
         }
     }
 

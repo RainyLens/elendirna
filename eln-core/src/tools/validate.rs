@@ -74,6 +74,7 @@ fn issue_kind_str(kind: &IssueKind) -> &'static str {
         IssueKind::Cycle => "cycle",
         IssueKind::Orphan => "orphan",
         IssueKind::Asset => "asset",
+        IssueKind::RevisionContent => "revision",
     }
 }
 

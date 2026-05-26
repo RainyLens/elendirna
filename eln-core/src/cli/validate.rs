@@ -1,6 +1,7 @@
 use crate::error::ElfError;
 use crate::output::message::{Message, MessageLevel, MessageScope, issue_kind_str, push_message};
 use crate::schema::validate::{self, IssueKind, Severity};
+use crate::vault::config::RevisionSeverity;
 use crate::vault::{self, VaultArgs};
 use clap::Args;
 
@@ -13,19 +14,40 @@ pub struct ValidateArgs {
     /// JSON 출력
     #[arg(long)]
     pub json: bool,
+
+    /// revision content-shape 위반을 Error로 강제 (exit 1). vault config보다 우선. → see N0108
+    #[arg(long, conflicts_with = "lenient")]
+    pub strict: bool,
+
+    /// revision content-shape 위반을 Warning으로만 (비블로킹). vault config보다 우선.
+    #[arg(long)]
+    pub lenient: bool,
 }
 
 pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let vault_root = vault::resolve_vault_root(&vault_args)?;
 
-    let mut result = validate::run_all(&vault_root)?;
+    // precedence: flag > config > Off. flag 부재 시 run_all이 config(default Off)를 읽음.
+    let severity_override = if args.strict {
+        Some(RevisionSeverity::Fail)
+    } else if args.lenient {
+        Some(RevisionSeverity::Warn)
+    } else {
+        None
+    };
+    let run = |root: &std::path::Path| match severity_override {
+        Some(s) => validate::run_all_with_severity(root, s),
+        None => validate::run_all(root),
+    };
+
+    let mut result = run(&vault_root)?;
 
     // --fix: 자동 수정 실행
     if args.fix {
         let fixed = validate::apply_fixes(&result.issues)?;
         if fixed > 0 {
             // 수정 후 재검사
-            result = validate::run_all(&vault_root)?;
+            result = run(&vault_root)?;
         }
         if !args.json {
             println!("  {fixed}개 항목 자동 수정됨");
@@ -93,6 +115,7 @@ pub fn run(args: ValidateArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
                 IssueKind::Cycle => "cycle",
                 IssueKind::Orphan => "orphan",
                 IssueKind::Asset => "asset",
+                IssueKind::RevisionContent => "revision",
             };
             let fixable = if issue.fix.is_some() {
                 " [--fix로 자동 수정 가능]"
