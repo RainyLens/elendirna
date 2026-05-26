@@ -53,6 +53,18 @@ fn vault_root_arg(dir: &TempDir) -> Value {
     Value::String(dir.path().to_string_lossy().into_owned())
 }
 
+/// sync.jsonl에서 마지막 `sync.record` 이벤트를 파싱 (operation log와 혼재하므로 필터). → see N0105
+fn last_sync_record(dir: &TempDir) -> Value {
+    let sync_path = dir.path().join(".elendirna").join("sync.jsonl");
+    let content = std::fs::read_to_string(&sync_path).expect("sync.jsonl exists");
+    content
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|event| event["event"] == "sync.record")
+        .next_back()
+        .expect("at least one sync.record event")
+}
+
 // ─── entry_list ──────────────────────────
 
 #[tokio::test]
@@ -574,6 +586,59 @@ async fn sync_record_writes_event() {
     let sync_path = dir.path().join(".elendirna").join("sync.jsonl");
     let content = std::fs::read_to_string(&sync_path).expect("sync.jsonl exists");
     assert!(content.contains("PoC-2 sync test"));
+}
+
+#[tokio::test]
+async fn sync_record_auto_injects_ctx_session_id() {
+    // args에 session_id 부재 시 ctx.session_id(session_start 발급분)로 자동 주입. → see N0105
+    let dir = setup_vault();
+    SyncRecordHandler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "summary":    "auto session inject",
+            }),
+        )
+        .await
+        .expect("sync_record ok");
+    assert_eq!(last_sync_record(&dir)["session_id"], "tools-test-session");
+}
+
+#[tokio::test]
+async fn sync_record_args_session_id_takes_precedence_over_ctx() {
+    // 명시 args.session_id가 ctx fallback보다 우선.
+    let dir = setup_vault();
+    SyncRecordHandler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root":  vault_root_arg(&dir),
+                "summary":     "explicit wins",
+                "session_id":  "explicit-sid",
+            }),
+        )
+        .await
+        .expect("sync_record ok");
+    assert_eq!(last_sync_record(&dir)["session_id"], "explicit-sid");
+}
+
+#[tokio::test]
+async fn sync_record_empty_ctx_session_id_stays_null() {
+    // current_session_id 부재(session_start 전) → 빈 ctx → null 유지. HTTP per-request 격리는 S3.
+    let dir = setup_vault();
+    let empty_ctx = CallContext::new(String::new(), Identity::Human, Permissions::WRITE);
+    SyncRecordHandler
+        .call(
+            &empty_ctx,
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "summary":    "no session",
+            }),
+        )
+        .await
+        .expect("sync_record ok");
+    assert_eq!(last_sync_record(&dir)["session_id"], Value::Null);
 }
 
 // ─── entry_attach / entry_detach ─────────

@@ -39,7 +39,16 @@ impl ToolHandler for SyncRecordHandler {
         let summary = require_string(&args, "summary")?;
         let agent = optional_string(&args, "agent")?;
         let entries = optional_string_array(&args, "entries")?;
-        let session_id = optional_string(&args, "session_id")?.map(|s| s.to_string());
+        // session_id: args 명시 > ctx.session_id (session_start가 발급한 값) fallback.
+        // build_call_context가 current_session_id를 ctx로 흘리므로 stdio 즉효 — args에
+        // 없어도 세션 라벨이 붙는다. current_session_id 부재 시 ctx.session_id는 빈 문자열
+        // 이라 None 유지 (null 기록). HTTP per-request session 격리는 S3 본체. → see N0105
+        let session_id = optional_string(&args, "session_id")?
+            .map(|s| s.to_string())
+            .or_else(|| {
+                let sid = ctx.session_id.trim();
+                (!sid.is_empty()).then(|| sid.to_string())
+            });
 
         ops::sync_record(vault_root, summary, agent, entries, session_id).map_err(map_ops_error)?;
 
