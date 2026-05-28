@@ -48,6 +48,37 @@ function headRev(revs) {
   return revs > 0 ? "r" + String(revs).padStart(4, "0") : null;
 }
 
+function parseFilter(raw) {
+  const facets = { terms: [], status: null, author: null };
+  for (const token of raw.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
+    const idx = token.indexOf(":");
+    if (idx > 0) {
+      const key = token.slice(0, idx);
+      const val = token.slice(idx + 1);
+      if (key === "status" && val) {
+        facets.status = val;
+        continue;
+      }
+      if (key === "author" && val) {
+        facets.author = val;
+        continue;
+      }
+    }
+    facets.terms.push(token);
+  }
+  return facets;
+}
+
+function matchesFilter(e, facets) {
+  if (facets.status && String(e.status || "").toLowerCase() !== facets.status) return false;
+  if (facets.author) {
+    if (String(e.author || "").toLowerCase() !== facets.author) return false;
+  }
+  return facets.terms.every((term) =>
+    e.title.toLowerCase().includes(term) || e.id.toLowerCase().includes(term)
+  );
+}
+
 // ─── atoms ───────────────────────────────────
 function StatusPill({ status }) {
   // 기본(active/stable)은 표시하지 않고 draft/archived만 라벨링.
@@ -116,7 +147,7 @@ function EntryRow({ e, focused }) {
         <span className="mono" style={{ fontSize: "var(--fs-11)", color: "var(--ink-3)", whiteSpace: "nowrap" }}>
           rev {e.revs}
         </span>
-        <RevTicks authors={e.rev_authors} />
+        <RevTicks authors={e.rev_authors} total={e.revs} />
         <StatusPill status={e.status} />
       </div>
 
@@ -183,7 +214,7 @@ function EntriesListHeader({ total, drafts, archived, q, onQ, sortDir, onToggleD
         ref={searchRef}
         value={q}
         onChange={(ev) => onQ(ev.target.value)}
-        placeholder="/ filter title · id"
+        placeholder="/ filter title · id · status:draft · author:codex"
         className="mono"
         style={{
           flex: "1 1 auto", maxWidth: 460, minWidth: 220,
@@ -326,10 +357,8 @@ export function EntriesLanding() {
   // 필터 + updated 정렬(평탄). cursor는 이 평탄 배열의 인덱스.
   const rows = useMemo(() => {
     if (!data) return [];
-    const needle = q.trim().toLowerCase();
-    const list = needle
-      ? data.filter((e) => e.title.toLowerCase().includes(needle) || e.id.toLowerCase().includes(needle))
-      : data;
+    const facets = parseFilter(q);
+    const list = q.trim() ? data.filter((e) => matchesFilter(e, facets)) : data;
     const sorted = [...list].sort((a, b) => {
       const av = a.updated || "", bv = b.updated || "";
       return av < bv ? -1 : av > bv ? 1 : 0;

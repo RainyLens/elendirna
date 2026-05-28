@@ -2,7 +2,7 @@
 
 > Model-independent context restoration for AI-assisted work. Inspired by [ELF (Eli's Lab Framework)](https://github.com/ProjectEli/ELF).
 
-![crates.io](https://img.shields.io/crates/v/elendirna.svg) [![Rust](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml/badge.svg)](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml)
+![crates.io](https://img.shields.io/crates/v/eln-cli.svg) [![Rust](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml/badge.svg)](https://github.com/elen-labs/elendirna/actions/workflows/rust.yml)
 
 Elendirna는 작업 맥락을 **Base-Delta** 구조로 기록해, 세션이 끊기거나 AI 모델이 바뀌어도 "왜 여기까지 왔는지"를 다시 복원할 수 있게 합니다. CLI는 vault 규칙을 강제하고, MCP 서버는 AI 에이전트가 필요한 entry, revision chain, linked context를 선택적으로 읽도록 돕습니다.
 
@@ -11,8 +11,16 @@ Elendirna는 ELF(Eli's Lab Framework)에서 영감을 받은 독립 프로젝트
 ## Install
 
 ```bash
-cargo install elendirna
+cargo install eln-cli
 ```
+
+The published Rust packages are now split into the `eln-*` family:
+`eln-cli` installs the `elf` binary, `eln-core` contains the vault and MCP
+runtime, and `eln-plugin-sdk` contains the Rust plugin interface. The older
+`elendirna` crate remains available for the pre-split 0.6.x line.
+
+An npm wrapper is planned as a separate distribution channel, but it is not
+published yet. Use the Rust install path above for current releases.
 
 ## Quick start
 

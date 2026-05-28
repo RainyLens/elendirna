@@ -249,6 +249,37 @@ async fn api_entries_list_includes_author_and_baseline() {
 }
 
 #[tokio::test]
+async fn api_entries_list_caps_revision_author_ticks_but_keeps_total_count() {
+    let dir = setup_populated_vault();
+    let root = dir.path();
+    let app = app_for(&dir);
+
+    for i in 0..12 {
+        ops::revision_add(root, "N0001", &format!("delta {i}"), &format!("a{i:02}")).unwrap();
+    }
+
+    let v = get_json(&app, "/api/entries").await;
+    let arr = v.as_array().unwrap();
+    let n0001 = arr.iter().find(|e| e["id"] == "N0001").unwrap();
+
+    assert_eq!(
+        n0001["revs"], 12,
+        "total revision count is preserved: {n0001}"
+    );
+    assert_eq!(
+        n0001["rev_authors"],
+        serde_json::json!([
+            "a02", "a03", "a04", "a05", "a06", "a07", "a08", "a09", "a10", "a11"
+        ]),
+        "only latest author ticks are sent: {n0001}"
+    );
+    assert_eq!(
+        n0001["author"], "a11",
+        "head author still comes from latest revision: {n0001}"
+    );
+}
+
+#[tokio::test]
 async fn api_meta_returns_vault_path_and_count() {
     let dir = setup_populated_vault();
     let app = app_for(&dir);

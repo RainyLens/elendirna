@@ -27,23 +27,53 @@ impl Revision {
 
     /// revisions/<entry_id>/ 하위 모든 revision 로드 (번호 오름차순)
     pub fn list(vault_root: &Path, entry_id: &EntryId) -> Vec<Revision> {
-        let dir = Self::rev_dir(vault_root, entry_id);
         let mut result = vec![];
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            return result;
-        };
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if let Some(rev_id) = RevisionId::from_file_name(&name) {
-                if let Ok(content) = std::fs::read_to_string(e.path()) {
-                    if let Some(rev) = parse_revision_file(entry_id.clone(), rev_id, &content) {
-                        result.push(rev);
-                    }
+        for (rev_id, path) in Self::revision_files(vault_root, entry_id) {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if let Some(rev) = parse_revision_file(entry_id.clone(), rev_id, &content) {
+                    result.push(rev);
                 }
             }
         }
-        result.sort_by(|a, b| a.rev_id.cmp(&b.rev_id));
         result
+    }
+
+    /// Return revision count plus authors for the latest `author_limit` revisions.
+    /// Dense list views only need recent author ticks, so this avoids reading every delta body.
+    pub fn list_summary(
+        vault_root: &Path,
+        entry_id: &EntryId,
+        author_limit: usize,
+    ) -> (usize, Vec<String>) {
+        let files = Self::revision_files(vault_root, entry_id);
+        let count = files.len();
+        if author_limit == 0 || count == 0 {
+            return (count, vec![]);
+        }
+
+        let start = count.saturating_sub(author_limit);
+        let authors = files[start..]
+            .iter()
+            .filter_map(|(_, path)| std::fs::read_to_string(path).ok())
+            .map(|content| parse_revision_author(&content))
+            .collect();
+        (count, authors)
+    }
+
+    fn revision_files(vault_root: &Path, entry_id: &EntryId) -> Vec<(RevisionId, PathBuf)> {
+        let dir = Self::rev_dir(vault_root, entry_id);
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return vec![];
+        };
+        let mut files: Vec<_> = rd
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                RevisionId::from_file_name(&name).map(|rev_id| (rev_id, e.path()))
+            })
+            .collect();
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        files
     }
 
     /// 가장 최근 revision ID 반환
@@ -109,6 +139,27 @@ impl Revision {
 // ─────────────────────────────────────────
 // revision 파일 포맷
 // ─────────────────────────────────────────
+
+fn parse_revision_author(content: &str) -> String {
+    let Some(content) = content
+        .strip_prefix("---\r\n")
+        .or_else(|| content.strip_prefix("---\n"))
+    else {
+        return DEFAULT_AUTHOR.to_string();
+    };
+    let Some(marker_idx) = content.find("\n---") else {
+        return DEFAULT_AUTHOR.to_string();
+    };
+    for line in content[..marker_idx].lines() {
+        if let Some(v) = line.strip_prefix("author:") {
+            let v = v.trim();
+            if !v.is_empty() {
+                return v.to_string();
+            }
+        }
+    }
+    DEFAULT_AUTHOR.to_string()
+}
 
 /// revision 파일 직렬화
 fn format_revision_file(

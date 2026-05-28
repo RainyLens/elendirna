@@ -141,12 +141,13 @@ export function AuthorTag({ author }) {
 
 // revision별 작성자 틱 — 리비전 하나당 세로 막대, 작성자 hue. 목록 row의 활동 신호. [[N0106]]
 // revision이 많을 수 있어 max개까지만 그리고 초과분은 `++`로 축약(실 vault는 10+ 흔함).
-export function RevTicks({ authors, max = 10 }) {
+export function RevTicks({ authors, total = null, max = 10 }) {
   if (!authors || !authors.length) return null;
   // 최신 max개를 보이고 오래된 초과분은 앞쪽 `++`로 축약 — head/updated 신호와 같은 방향.
-  const overflow = authors.length - max;
-  const start = overflow > 0 ? overflow : 0;
-  const shown = authors.slice(start);
+  const totalCount = total == null ? authors.length : total;
+  const shown = authors.slice(-max);
+  const start = Math.max(0, totalCount - shown.length);
+  const overflow = Math.max(0, totalCount - shown.length);
   return (
     <span style={{ display: "inline-flex", gap: 2, alignItems: "center", height: 12 }}>
       {overflow > 0 && (

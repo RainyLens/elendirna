@@ -114,10 +114,11 @@ pub async fn list_entries(State(state): State<ApiState>) -> ApiResult<Vec<EntryL
         .iter()
         .map(|e| {
             let m = &e.manifest;
-            // author 배열은 revision_list(파일 읽기)로 얻는다 — index revisions 테이블엔 author가
-            // 없다. 비용이 문제되면 index에 author 컬럼을 추가해 query로 승격. [[N0106]]
-            let revisions = ops::revision_list(vault_root, &m.id).unwrap_or_default();
-            let rev_authors: Vec<String> = revisions.iter().map(|r| r.author.clone()).collect();
+            // 목록 row는 최신 tick 10개만 그린다. 전체 revision body를 모두 읽지 않고
+            // 파일명 scan + 최신 frontmatter author만 읽어 N0106 확장성 비용을 줄인다.
+            let (rev_count, rev_authors) = EntryId::from_str(&m.id)
+                .map(|id| crate::vault::revision::Revision::list_summary(vault_root, &id, 10))
+                .unwrap_or((0, vec![]));
             let author = rev_authors.last().cloned();
             EntryListItem {
                 id: m.id.clone(),
@@ -128,7 +129,7 @@ pub async fn list_entries(State(state): State<ApiState>) -> ApiResult<Vec<EntryL
                 rev_authors,
                 created: m.created.to_rfc3339(),
                 updated: m.updated.to_rfc3339(),
-                revs: revisions.len() as u32,
+                revs: rev_count as u32,
                 out: ops::links_out_count(e),
                 linked_by: linked_by.get(&m.id).copied().unwrap_or(0),
             }
