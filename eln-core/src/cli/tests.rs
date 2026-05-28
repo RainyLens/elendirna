@@ -206,6 +206,7 @@ mod entry {
         run_new(
             NewArgs {
                 title: title.to_string(),
+                body: None,
                 baseline: None,
                 tags: vec![],
                 dry_run: false,
@@ -241,6 +242,7 @@ mod entry {
         run_new(
             NewArgs {
                 title: "Second".to_string(),
+                body: None,
                 baseline: Some("N0001".to_string()),
                 tags: vec![],
                 dry_run: false,
@@ -262,6 +264,7 @@ mod entry {
         let err = run_new(
             NewArgs {
                 title: "Second".to_string(),
+                body: None,
                 baseline: Some("N0099".to_string()),
                 tags: vec![],
                 dry_run: false,
@@ -311,6 +314,7 @@ mod entry {
         run_new(
             NewArgs {
                 title: "Dry Test".to_string(),
+                body: None,
                 baseline: None,
                 tags: vec![],
                 dry_run: true,
@@ -492,6 +496,7 @@ mod revision {
         run_new(
             NewArgs {
                 title: "Test".to_string(),
+                body: None,
                 baseline: None,
                 tags: vec![],
                 dry_run: false,
@@ -628,6 +633,7 @@ mod link {
             run_new(
                 NewArgs {
                     title: title.to_string(),
+                    body: None,
                     baseline: None,
                     tags: vec![],
                     dry_run: false,
@@ -719,6 +725,7 @@ mod link {
             run_new(
                 NewArgs {
                     title: t.to_string(),
+                    body: None,
                     baseline: None,
                     tags: vec![],
                     dry_run: false,

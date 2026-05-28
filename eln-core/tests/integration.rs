@@ -38,6 +38,7 @@ fn new_entry(dir: &TempDir, title: &str) -> String {
     run_new(
         NewArgs {
             title: title.to_string(),
+            body: None,
             baseline: None,
             tags: vec![],
             dry_run: false,
@@ -56,6 +57,7 @@ fn new_entry_with_baseline(dir: &TempDir, title: &str, baseline: &str) -> String
     run_new(
         NewArgs {
             title: title.to_string(),
+            body: None,
             baseline: Some(baseline.to_string()),
             tags: vec![],
             dry_run: false,
@@ -226,6 +228,7 @@ fn criterion_idempotent_entry_new() {
     let result = run_new(
         NewArgs {
             title: "Idempotent Test".to_string(),
+            body: None,
             baseline: None,
             tags: vec![],
             dry_run: false,

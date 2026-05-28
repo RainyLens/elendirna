@@ -83,6 +83,10 @@ pub struct NewArgs {
     /// entry 제목
     pub title: String,
 
+    /// 이 entry의 출발 상태(base, 선택). 이후 변화는 revision add로.
+    #[arg(long)]
+    pub body: Option<String>,
+
     /// baseline entry (예: N0001@r001)
     #[arg(long)]
     pub baseline: Option<String>,
@@ -131,9 +135,13 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     let dir_name = format!("{next_id}_{slug}");
 
     if args.dry_run {
+        let note_label = match args.body.as_deref().map(str::trim) {
+            Some(b) if !b.is_empty() => "note.md (with base body)",
+            _ => "note.md",
+        };
         println!("-- dry-run: 실제로 생성되지 않습니다 --");
         println!("  [create] entries/{dir_name}/manifest.toml");
-        println!("  [create] entries/{dir_name}/note.md");
+        println!("  [create] entries/{dir_name}/{note_label}");
         println!("  [create] entries/{dir_name}/attachments/.gitkeep");
         println!("  [append] .elendirna/sync.jsonl");
         return Ok(());
@@ -143,6 +151,7 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
         &vault_root,
         next_id.clone(),
         args.title.clone(),
+        args.body.clone(),
         args.baseline.clone(),
         args.tags.clone(),
     )?;

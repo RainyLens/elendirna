@@ -21,6 +21,7 @@ pub struct EntryNewResult {
 pub fn entry_new(
     vault_root: &Path,
     title: &str,
+    body: Option<&str>,
     baseline: Option<&str>,
     tags: Vec<String>,
 ) -> Result<EntryNewResult, ElfError> {
@@ -49,6 +50,7 @@ pub fn entry_new(
         vault_root,
         next_id,
         title.to_string(),
+        body.map(String::from),
         baseline.map(String::from),
         tags,
     )?;

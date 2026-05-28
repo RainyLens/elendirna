@@ -644,6 +644,7 @@ pub async fn create_revision(
 #[derive(Deserialize)]
 pub struct EntryReq {
     title: String,
+    body: Option<String>,
     baseline: Option<String>,
     tags: Option<Vec<String>>,
 }
@@ -661,6 +662,7 @@ pub async fn create_entry(
     let r = ops::entry_new(
         vault(&state),
         &req.title,
+        req.body.as_deref(),
         req.baseline.as_deref(),
         req.tags.unwrap_or_default(),
     )?;

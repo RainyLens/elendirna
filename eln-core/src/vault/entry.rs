@@ -82,6 +82,7 @@ impl Entry {
         vault_root: &Path,
         id: EntryId,
         title: impl Into<String>,
+        body: Option<String>,
         baseline: Option<String>,
         tags: Vec<String>,
     ) -> Result<Entry, ElfError> {
@@ -106,14 +107,18 @@ impl Entry {
         manifest.tags = tags.clone();
         manifest.write(&entry_dir)?;
 
-        // note.md — frontmatter + 빈 본문
+        // note.md — frontmatter + base 본문(t0 스냅샷, 선택)
+        // body가 비었거나 공백뿐이면 None으로 normalize (현행 빈 본문과 동일).
         let fm = NoteFrontmatter {
             id: id.to_string(),
             title: title.clone(),
             baseline,
             tags,
         };
-        let note_body = format!("# {title}\n\n");
+        let note_body = match body.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+            Some(b) => format!("# {title}\n\n{b}\n"),
+            None => format!("# {title}\n\n"),
+        };
         NoteFrontmatter::write(&entry_dir.join("note.md"), &fm, &note_body)?;
 
         // sync.jsonl (fix-013)

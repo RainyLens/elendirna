@@ -87,6 +87,7 @@ mod validate {
         run_new(
             NewArgs {
                 title: title.to_string(),
+                body: None,
                 baseline: None,
                 tags: vec![],
                 dry_run: false,

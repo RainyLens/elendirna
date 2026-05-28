@@ -34,9 +34,9 @@ fn setup_populated_vault() -> TempDir {
     })
     .unwrap();
 
-    ops::entry_new(root, "root entry", None, vec!["seed".to_string()]).unwrap();
-    ops::entry_new(root, "child entry", Some("N0001"), vec![]).unwrap();
-    ops::entry_new(root, "grandchild entry", Some("N0002"), vec![]).unwrap();
+    ops::entry_new(root, "root entry", None, None, vec!["seed".to_string()]).unwrap();
+    ops::entry_new(root, "child entry", None, Some("N0001"), vec![]).unwrap();
+    ops::entry_new(root, "grandchild entry", None, Some("N0002"), vec![]).unwrap();
 
     // cross-ref: known(N0001, N0003) + dangling(N9999)
     ops::revision_add(

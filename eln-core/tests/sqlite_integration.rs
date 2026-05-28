@@ -35,6 +35,7 @@ fn new_entry(dir: &TempDir, title: &str, tags: Vec<String>) -> String {
     run_new(
         NewArgs {
             title: title.to_string(),
+            body: None,
             baseline: None,
             tags,
             dry_run: false,

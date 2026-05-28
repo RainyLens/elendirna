@@ -35,6 +35,7 @@ fn new_entry_direct(dir: &TempDir, title: &str) -> String {
     run_new(
         NewArgs {
             title: title.to_string(),
+            body: None,
             baseline: None,
             tags: vec![],
             dry_run: false,
@@ -83,7 +84,7 @@ fn mcp_entry_show_unknown_id_returns_error() {
 #[test]
 fn mcp_entry_new_creates_entry() {
     let (dir, _guard) = setup_vault();
-    let result = ops::entry_new(dir.path(), "MCP 생성 테스트", None, vec![]).unwrap();
+    let result = ops::entry_new(dir.path(), "MCP 생성 테스트", None, None, vec![]).unwrap();
     assert_eq!(result.entry.manifest.id, "N0001");
     assert_eq!(result.entry.manifest.title, "MCP 생성 테스트");
 }
@@ -91,8 +92,8 @@ fn mcp_entry_new_creates_entry() {
 #[test]
 fn mcp_entry_new_duplicate_title_returns_error() {
     let (dir, _guard) = setup_vault();
-    ops::entry_new(dir.path(), "중복 항목", None, vec![]).unwrap();
-    let err = ops::entry_new(dir.path(), "중복 항목", None, vec![])
+    ops::entry_new(dir.path(), "중복 항목", None, None, vec![]).unwrap();
+    let err = ops::entry_new(dir.path(), "중복 항목", None, None, vec![])
         .err()
         .unwrap();
     assert_eq!(err.exit_code(), 3); // AlreadyExists
@@ -547,8 +548,8 @@ use eln_core::tools::query::QueryHandler;
 async fn mcp_query_filters_by_tag() {
     let (dir, _guard) = setup_vault();
     // 두 entry 생성 — alpha tag 하나, beta tag 하나
-    ops::entry_new(dir.path(), "알파 항목", None, vec!["alpha".into()]).unwrap();
-    ops::entry_new(dir.path(), "베타 항목", None, vec!["beta".into()]).unwrap();
+    ops::entry_new(dir.path(), "알파 항목", None, None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "베타 항목", None, None, vec!["beta".into()]).unwrap();
     // query는 sqlite index 기반 — rebuild 한 번
     eln_core::vault::index::rebuild(dir.path()).unwrap();
 
@@ -573,8 +574,8 @@ async fn mcp_bundle_cost_hint_emitted_when_default_depth_and_links() {
     use eln_core::schema::manifest::Manifest;
 
     let (dir, _guard) = setup_vault();
-    ops::entry_new(dir.path(), "타겟 entry", None, vec![]).unwrap();
-    let linker = ops::entry_new(dir.path(), "링커 entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "타겟 entry", None, None, vec![]).unwrap();
+    let linker = ops::entry_new(dir.path(), "링커 entry", None, None, vec![]).unwrap();
     // manifest.links에 직접 link 박음 — test fixture (vault 규칙은 production 한정).
     let mut m = Manifest::read(&linker.entry.dir).unwrap();
     m.links.push("N0001".into());
@@ -607,7 +608,7 @@ async fn mcp_bundle_invalid_since_returns_invalid_argument() {
     use eln_plugin_sdk::ToolError;
 
     let (dir, _guard) = setup_vault();
-    ops::entry_new(dir.path(), "since cross-layer", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "since cross-layer", None, None, vec![]).unwrap();
     let err = BundleHandler
         .call(
             &admin_ctx(),

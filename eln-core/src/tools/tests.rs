@@ -85,8 +85,8 @@ async fn entry_list_empty_vault() {
 #[tokio::test]
 async fn entry_list_returns_meta_fields() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "첫 항목", None, vec!["alpha".into()]).unwrap();
-    ops::entry_new(dir.path(), "두번째 항목", None, vec!["beta".into()]).unwrap();
+    ops::entry_new(dir.path(), "첫 항목", None, None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "두번째 항목", None, None, vec!["beta".into()]).unwrap();
 
     let handler = EntryListHandler;
     let result = handler
@@ -123,8 +123,8 @@ async fn entry_list_returns_meta_fields() {
 #[tokio::test]
 async fn entry_list_filters_by_tag() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "알파 항목", None, vec!["alpha".into()]).unwrap();
-    ops::entry_new(dir.path(), "베타 항목", None, vec!["beta".into()]).unwrap();
+    ops::entry_new(dir.path(), "알파 항목", None, None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "베타 항목", None, None, vec!["beta".into()]).unwrap();
 
     let handler = EntryListHandler;
     let result = handler
@@ -246,7 +246,7 @@ async fn entry_new_missing_baseline_returns_invalid_argument() {
 #[tokio::test]
 async fn entry_new_with_baseline_and_tags_creates() {
     let dir = setup_vault();
-    let parent = ops::entry_new(dir.path(), "부모 항목", None, vec![]).unwrap();
+    let parent = ops::entry_new(dir.path(), "부모 항목", None, None, vec![]).unwrap();
     let parent_id = parent.entry.manifest.id;
 
     let handler = EntryNewHandler;
@@ -272,7 +272,7 @@ async fn entry_new_with_baseline_and_tags_creates() {
 #[tokio::test]
 async fn entry_new_slug_collision_returns_invalid_argument() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "충돌 항목", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "충돌 항목", None, None, vec![]).unwrap();
 
     let handler = EntryNewHandler;
     let err = handler
@@ -293,12 +293,76 @@ async fn entry_new_slug_collision_returns_invalid_argument() {
     }
 }
 
+#[tokio::test]
+async fn entry_new_with_body_writes_base() {
+    let dir = setup_vault();
+    let handler = EntryNewHandler;
+    handler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "title":      "base 있는 항목",
+                "body":       "출발 상태 한 줄.",
+            }),
+        )
+        .await
+        .expect("WRITE ctx with body should create entry");
+    let shown = ops::entry_show(dir.path(), "N0001").unwrap();
+    assert!(
+        shown.note_body.starts_with("# base 있는 항목"),
+        "title header preserved: {:?}",
+        shown.note_body
+    );
+    assert!(
+        shown.note_body.contains("출발 상태 한 줄."),
+        "note body must carry base: {:?}",
+        shown.note_body
+    );
+}
+
+#[tokio::test]
+async fn entry_new_without_body_keeps_title_only() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "본문 없는 항목", None, None, vec![]).unwrap();
+    let shown = ops::entry_show(dir.path(), "N0001").unwrap();
+    assert_eq!(shown.note_body, "# 본문 없는 항목\n\n");
+}
+
+#[tokio::test]
+async fn entry_new_blank_body_normalizes_to_empty() {
+    let dir = setup_vault();
+    // 공백/개행뿐인 body는 None과 동일하게 빈 본문으로 normalize
+    ops::entry_new(dir.path(), "공백 본문 항목", Some("   \n  "), None, vec![]).unwrap();
+    let shown = ops::entry_show(dir.path(), "N0001").unwrap();
+    assert_eq!(shown.note_body, "# 공백 본문 항목\n\n");
+}
+
+#[tokio::test]
+async fn entry_new_body_starting_with_dashes_roundtrips() {
+    let dir = setup_vault();
+    // body가 "---"로 시작해도 frontmatter 파서가 첫 경계만 잡으므로 본문으로 보존
+    let base = "---\n경계처럼 보이는 본문\n---";
+    ops::entry_new(dir.path(), "대시 본문 항목", Some(base), None, vec![]).unwrap();
+    let shown = ops::entry_show(dir.path(), "N0001").unwrap();
+    assert!(
+        shown.note_body.starts_with("# 대시 본문 항목"),
+        "title header still first: {:?}",
+        shown.note_body
+    );
+    assert!(
+        shown.note_body.contains("경계처럼 보이는 본문"),
+        "body with --- preserved: {:?}",
+        shown.note_body
+    );
+}
+
 // ─── entry_status ────────────────────────
 
 #[tokio::test]
 async fn entry_status_rejects_without_write_perm() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "상태 entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "상태 entry", None, None, vec![]).unwrap();
     let err = EntryStatusHandler
         .call(
             &ctx(Permissions::READ),
@@ -322,7 +386,7 @@ async fn entry_status_rejects_without_write_perm() {
 #[tokio::test]
 async fn entry_status_round_trip_draft_to_stable() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "상태 entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "상태 entry", None, None, vec![]).unwrap();
     let result = EntryStatusHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -342,7 +406,7 @@ async fn entry_status_round_trip_draft_to_stable() {
 #[tokio::test]
 async fn entry_status_invalid_status_returns_invalid_argument() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "상태 entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "상태 entry", None, None, vec![]).unwrap();
     let err = EntryStatusHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -365,7 +429,7 @@ async fn entry_status_invalid_status_returns_invalid_argument() {
 #[tokio::test]
 async fn entry_tag_add_adds_and_is_idempotent() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "tag entry", None, None, vec![]).unwrap();
     let result = EntryTagAddHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -398,7 +462,7 @@ async fn entry_tag_add_adds_and_is_idempotent() {
 #[tokio::test]
 async fn entry_tag_add_empty_tag_returns_invalid_argument() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "tag entry", None, None, vec![]).unwrap();
     let err = EntryTagAddHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -424,6 +488,7 @@ async fn entry_tag_remove_existing_and_missing() {
     ops::entry_new(
         dir.path(),
         "tag entry",
+        None,
         None,
         vec!["alpha".into(), "beta".into()],
     )
@@ -462,7 +527,7 @@ async fn entry_tag_remove_existing_and_missing() {
 #[tokio::test]
 async fn entry_tag_set_replaces_tags() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec!["old".into()]).unwrap();
+    ops::entry_new(dir.path(), "tag entry", None, None, vec!["old".into()]).unwrap();
     let result = EntryTagSetHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -481,7 +546,7 @@ async fn entry_tag_set_replaces_tags() {
 #[tokio::test]
 async fn entry_tag_set_dedupes_and_trims_preserving_order() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "tag entry", None, None, vec![]).unwrap();
     let result = EntryTagSetHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -504,7 +569,7 @@ async fn entry_tag_set_missing_tags_returns_invalid_argument() {
     // optional_string_array로 받으면 null/missing tags가 빈 array가 되어 모든 tag를
     // silently 삭제하는 사고가 발생할 수 있음. require_string_array helper로 가드.
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "tag entry", None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "tag entry", None, None, vec!["alpha".into()]).unwrap();
     let err = EntryTagSetHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -527,7 +592,7 @@ async fn entry_tag_set_missing_tags_returns_invalid_argument() {
 #[tokio::test]
 async fn revision_add_appends_revision() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "rev entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "rev entry", None, None, vec![]).unwrap();
     let result = RevisionAddHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -547,7 +612,7 @@ async fn revision_add_appends_revision() {
 #[tokio::test]
 async fn revision_add_empty_delta_returns_invalid_argument() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "rev entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "rev entry", None, None, vec![]).unwrap();
     let err = RevisionAddHandler
         .call(
             &ctx(Permissions::WRITE),
@@ -646,7 +711,7 @@ async fn sync_record_empty_ctx_session_id_stays_null() {
 #[tokio::test]
 async fn entry_attach_then_detach_round_trip() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "asset entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "asset entry", None, None, vec![]).unwrap();
 
     // 첨부할 임시 파일
     let asset_src = dir.path().join("asset.txt");
@@ -706,7 +771,7 @@ async fn validate_clean_vault_returns_ok() {
 #[tokio::test]
 async fn entry_show_rejects_without_read_perm() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "show entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "show entry", None, None, vec![]).unwrap();
     let err = EntryShowHandler
         .call(
             &ctx(Permissions::empty()),
@@ -726,7 +791,7 @@ async fn entry_show_rejects_without_read_perm() {
 #[tokio::test]
 async fn entry_show_returns_manifest_and_note() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "show entry", None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "show entry", None, None, vec!["alpha".into()]).unwrap();
     let result = EntryShowHandler
         .call(
             &ctx(Permissions::READ),
@@ -764,7 +829,7 @@ async fn entry_show_unknown_id_returns_invalid_argument() {
 #[tokio::test]
 async fn bundle_returns_entry_with_revisions() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "bundle entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "bundle entry", None, None, vec![]).unwrap();
     ops::revision_add(dir.path(), "N0001", "[Change] r1\n[Impact] test", "User").unwrap();
 
     let result = BundleHandler
@@ -796,9 +861,9 @@ fn push_link_to_manifest(entry_dir: &std::path::Path, link_id: &str) {
 #[tokio::test]
 async fn bundle_emits_cost_hint_when_default_depth_and_links() {
     let dir = setup_vault();
-    let parent = ops::entry_new(dir.path(), "parent entry", None, vec![]).unwrap();
+    let parent = ops::entry_new(dir.path(), "parent entry", None, None, vec![]).unwrap();
     let parent_id = parent.entry.manifest.id.clone();
-    let linker = ops::entry_new(dir.path(), "linker entry", None, vec![]).unwrap();
+    let linker = ops::entry_new(dir.path(), "linker entry", None, None, vec![]).unwrap();
     push_link_to_manifest(&linker.entry.dir, &parent_id);
 
     let result = BundleHandler
@@ -824,9 +889,9 @@ async fn bundle_emits_cost_hint_when_default_depth_and_links() {
 #[tokio::test]
 async fn bundle_no_cost_hint_when_depth_explicit() {
     let dir = setup_vault();
-    let parent = ops::entry_new(dir.path(), "parent", None, vec![]).unwrap();
+    let parent = ops::entry_new(dir.path(), "parent", None, None, vec![]).unwrap();
     let parent_id = parent.entry.manifest.id.clone();
-    let linker = ops::entry_new(dir.path(), "linker", None, vec![]).unwrap();
+    let linker = ops::entry_new(dir.path(), "linker", None, None, vec![]).unwrap();
     push_link_to_manifest(&linker.entry.dir, &parent_id);
 
     let result = BundleHandler
@@ -850,7 +915,7 @@ async fn bundle_no_cost_hint_when_depth_explicit() {
 #[tokio::test]
 async fn bundle_invalid_since_returns_invalid_argument() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "since entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "since entry", None, None, vec![]).unwrap();
     let err = BundleHandler
         .call(
             &ctx(Permissions::READ),
@@ -875,8 +940,8 @@ async fn bundle_invalid_since_returns_invalid_argument() {
 #[tokio::test]
 async fn query_filters_by_tag() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "alpha entry", None, vec!["alpha".into()]).unwrap();
-    ops::entry_new(dir.path(), "beta entry", None, vec!["beta".into()]).unwrap();
+    ops::entry_new(dir.path(), "alpha entry", None, None, vec!["alpha".into()]).unwrap();
+    ops::entry_new(dir.path(), "beta entry", None, None, vec!["beta".into()]).unwrap();
     // query는 sqlite index 기반 — rebuild 한 번 필요.
     crate::vault::index::rebuild(dir.path()).unwrap();
 
@@ -898,7 +963,7 @@ async fn query_filters_by_tag() {
 #[tokio::test]
 async fn entry_assets_lists_attached_files() {
     let dir = setup_vault();
-    ops::entry_new(dir.path(), "asset entry", None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "asset entry", None, None, vec![]).unwrap();
     let asset_src = dir.path().join("asset.txt");
     std::fs::write(&asset_src, b"hello").unwrap();
     EntryAttachHandler

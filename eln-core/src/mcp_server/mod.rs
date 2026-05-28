@@ -642,7 +642,7 @@ impl ElfMcpServer {
                     "situation": "vault가 비어 있습니다. 사용자가 아직 아이디어를 입력하지 않은 상태입니다.",
                     "next_action": "사용자에게 어떤 주제든 자유롭게 말해달라고 유도하세요. 발화를 들은 즉시 entry_new로 기록하고, 대화를 이어가며 revision_add로 보완하세요.",
                     "tools": {
-                        "capture":  "entry_new(title, tags?) — 주제 하나당 entry 하나",
+                        "capture":  "entry_new(title, body?, tags?) — 주제 하나당 entry 하나 (body=출발 상태)",
                         "evolve":   "revision_add(id, delta) — [Change]/[Impact] 중심의 증분 기록",
                         "close":    "sync_record(summary, entries) — 다음 에이전트를 위한 인수인계"
                     },

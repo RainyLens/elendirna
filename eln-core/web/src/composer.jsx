@@ -413,6 +413,7 @@ export function EntryCompose({ id }) {
 // ─── 새 entry ────────────────────────────────
 export function NewEntry() {
   const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
   const [baseline, setBaseline] = useState("");
   const [tags, setTags] = useState("");
   const [busy, setBusy] = useState(false);
@@ -423,11 +424,12 @@ export function NewEntry() {
     setSubErr(null);
     setBusy(true);
     try {
-      const body = { title: title.trim() };
-      if (baseline.trim()) body.baseline = baseline.trim();
+      const payload = { title: title.trim() };
+      if (body.trim()) payload.body = body.trim();
+      if (baseline.trim()) payload.baseline = baseline.trim();
       const t = tags.split(",").map((s) => s.trim()).filter(Boolean);
-      if (t.length) body.tags = t;
-      const r = await api.createEntry(body);
+      if (t.length) payload.tags = t;
+      const r = await api.createEntry(payload);
       go("#/entry/" + r.id);
     } catch (e) {
       setSubErr(e);
@@ -443,6 +445,10 @@ export function NewEntry() {
       <div style={{ marginBottom: 16 }}>
         <FieldLabel sub="required">title</FieldLabel>
         <TextInput value={title} onChange={setTitle} placeholder="entry 제목" />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <FieldLabel sub="optional · 이후 변화는 revision으로">base (출발 상태)</FieldLabel>
+        <Area value={body} onChange={setBody} rows={6} placeholder="이 entry의 출발 상태(base). 비우면 제목만 기록됩니다." />
       </div>
       <div style={{ marginBottom: 16 }}>
         <FieldLabel sub="optional · N#### 또는 N####@r####">baseline (derived from)</FieldLabel>

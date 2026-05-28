@@ -16,6 +16,7 @@ use crate::vault::ops;
 pub const NAME: &str = "entry_new";
 pub const DESCRIPTION: &str = "새 entry 생성. \
     새로운 아이디어, 결정, 기록을 남길 때 사용. \
+    body로 이 entry의 출발 상태(base)를 함께 기록할 수 있음 (선택). \
     기존 entry 내용 변경은 revision_add를 사용할 것.";
 
 pub struct EntryNewHandler;
@@ -39,10 +40,12 @@ impl ToolHandler for EntryNewHandler {
         let vault_root = Path::new(vault_root);
 
         let title = require_string(&args, "title")?;
+        let body = optional_string(&args, "body")?;
         let baseline = optional_string(&args, "baseline")?;
         let tags = optional_string_array(&args, "tags")?;
 
-        let result = ops::entry_new(vault_root, title, baseline, tags).map_err(map_ops_error)?;
+        let result =
+            ops::entry_new(vault_root, title, body, baseline, tags).map_err(map_ops_error)?;
 
         Ok(json!({
             "ok":    true,
@@ -58,6 +61,7 @@ pub fn input_schema() -> Value {
         "type": "object",
         "properties": {
             "title":    { "type": "string", "description": "entry 제목" },
+            "body":     { "type": "string", "description": "이 entry의 출발 상태(base, 선택). 생성 시 1회 기록되며 이후 변화는 revision_add로." },
             "baseline": { "type": "string", "description": "baseline entry ID (선택, 예: N0001)" },
             "tags":     { "type": "array", "items": { "type": "string" }, "description": "태그 목록 (선택)" },
             "vault":    { "type": "string", "description": "대상 vault: 'local', 'global', 또는 alias (선택)" },
