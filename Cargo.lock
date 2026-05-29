@@ -441,6 +441,8 @@ dependencies = [
 [[package]]
 name = "eln-plugin-sdk"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a11b9559115371b865f3d90fd00f8ab3626f3e396fdc0b34172f64d40304835"
 dependencies = [
  "async-trait",
  "bitflags",

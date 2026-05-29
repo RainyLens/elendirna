@@ -30,9 +30,9 @@ rusqlite        = { workspace = true }
 uuid            = { workspace = true }
 pulldown-cmark  = { workspace = true, features = ["html"] }
 rust-embed      = { workspace = true }
-# eln-plugin-sdk: crates.io version + 로컬 path 병행. registry resolve 가능 +
-# workbench 로컬 빌드 유지 (N0097 High 1 — publish 단계 dep 전환 완료).
-eln-plugin-sdk  = { version = "0.1.0", path = "../../eln-plugins" }
+# eln-plugin-sdk: crates.io registry only (별 repo — CI/로컬 일관 resolve).
+# 로컬 SDK 수정 즉시반영이 필요하면 임시로 path를 다시 붙이거나 재publish.
+eln-plugin-sdk  = "0.1.0"
 async-trait     = "0.1"
 
 [dev-dependencies]
