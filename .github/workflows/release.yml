@@ -116,9 +116,30 @@ jobs:
             echo "::notice::confirm != PUBLISH → dry-run only (게시 없음)."
           fi
 
+          # 멱등 게시: 이미 올라간 버전은 skip(부분 게시 복구·재실행 안전) + 게시 사이 지연 +
+          # 재시도. npm 스팸 탐지(유사 이름 다수를 수 초 내 급속 생성 시 rate 기반 false-positive,
+          # E403 "Package name triggered spam detection")를 지연으로 회피하고 일시적이면 재시도로 흡수.
+          publish_one() {
+            local dir="$1" name attempt
+            name="$(node -p "require('./$dir/package.json').name")"
+            if [ -z "$DRY" ] && npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "skip $name@$VERSION (이미 게시됨)"; return 0
+            fi
+            for attempt in 1 2 3; do
+              if ( cd "$dir" && npm publish --access public $DRY ); then
+                [ -z "$DRY" ] && sleep 20 || true
+                return 0
+              fi
+              echo "::warning::$name 게시 attempt $attempt 실패 — 45s 후 재시도 (스팸 탐지면 지연으로 해소 가능)."
+              sleep 45
+            done
+            echo "::error::$name 게시가 재시도 후에도 실패."
+            return 1
+          }
+
           # 1) 플랫폼 패키지 먼저 — main의 optionalDependencies가 resolve되려면 선행돼야 함.
           for d in npm/dist/elendirna-cli-*; do
-            ( cd "$d" && npm publish --access public $DRY )
+            publish_one "$d"
           done
 
           # 2) (실게시 한정) 레지스트리에 6종이 모두 보일 때까지 대기 — main publish 전 propagation race 방지.
@@ -134,5 +155,5 @@ jobs:
           fi
 
           # 3) main → alias.
-          ( cd npm/elendirna && npm publish --access public $DRY )
-          ( cd npm/eln       && npm publish --access public $DRY )
+          publish_one npm/elendirna
+          publish_one npm/eln
