@@ -7,3 +7,8 @@
 # diverged over time; the policy is "latest wins, older lines can be pruned
 # manually after the auto-union."
 *.jsonl merge=union
+
+# npm launcher/scripts: force LF regardless of platform — CRLF would break the
+# `#!/usr/bin/env node` shebang when the bin is executed directly on Unix.
+*.js  text eol=lf
+*.mjs text eol=lf

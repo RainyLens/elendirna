@@ -10,17 +10,28 @@ Elendirna는 ELF(Eli's Lab Framework)에서 영감을 받은 독립 프로젝트
 
 ## Install
 
+### npm (prebuilt binary, no Rust toolchain)
+
+```bash
+npx -y elendirna --help    # one-off, no install
+npm i -g elendirna         # global — provides both `elendirna` and `eln`
+```
+
+The npm package is a thin Node launcher; the `elf` binary ships per-platform via
+`optionalDependencies` (`elendirna-cli-<os>-<cpu>`) — no `postinstall` script and
+no run-time network. Supported: linux / macOS / Windows × x64 / arm64. Linux
+targets glibc ≥ 2.35; on musl/Alpine use the cargo path below.
+
+### Cargo (crates.io)
+
 ```bash
 cargo install eln-cli
 ```
 
-The published Rust packages are now split into the `eln-*` family:
-`eln-cli` installs the `elf` binary, `eln-core` contains the vault and MCP
-runtime, and `eln-plugin-sdk` contains the Rust plugin interface. The older
-`elendirna` crate remains available for the pre-split 0.6.x line.
-
-An npm wrapper is planned as a separate distribution channel, but it is not
-published yet. Use the Rust install path above for current releases.
+The published Rust packages are split into the `eln-*` family: `eln-cli`
+installs the `elf` binary, `eln-core` contains the vault and MCP runtime, and
+`eln-plugin-sdk` contains the Rust plugin interface. The older `elendirna` crate
+remains available for the pre-split 0.6.x line.
 
 ## Quick start
 

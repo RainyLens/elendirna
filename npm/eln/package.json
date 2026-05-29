@@ -1,0 +1,31 @@
+{
+  "name": "eln",
+  "version": "0.8.0",
+  "description": "Alias for elendirna — installs and runs the elendirna CLI / MCP server.",
+  "keywords": [
+    "elendirna",
+    "eln",
+    "mcp",
+    "vault",
+    "cli"
+  ],
+  "homepage": "https://github.com/elen-labs/elendirna",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elen-labs/elendirna.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "eln": "bin/eln.js"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "dependencies": {
+    "elendirna": "0.8.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

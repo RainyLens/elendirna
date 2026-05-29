@@ -1,0 +1,38 @@
+{
+  "name": "elendirna",
+  "version": "0.8.0",
+  "description": "elendirna — AI-friendly knowledge vault CLI & MCP server (elf binary, npm-wrapped)",
+  "keywords": [
+    "elendirna",
+    "elf",
+    "mcp",
+    "vault",
+    "knowledge-base",
+    "cli"
+  ],
+  "homepage": "https://github.com/elen-labs/elendirna",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elen-labs/elendirna.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "elendirna": "bin/elendirna.js",
+    "eln": "bin/elendirna.js"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "elendirna-cli-linux-x64": "0.8.0",
+    "elendirna-cli-linux-arm64": "0.8.0",
+    "elendirna-cli-darwin-x64": "0.8.0",
+    "elendirna-cli-darwin-arm64": "0.8.0",
+    "elendirna-cli-win32-x64": "0.8.0",
+    "elendirna-cli-win32-arm64": "0.8.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

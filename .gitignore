@@ -5,3 +5,7 @@
 elf_graph.html
 elf_ui.py
 graph_data.json
+
+# npm distribution — CI-generated platform packages + downloaded binaries + node deps
+/npm/dist/
+node_modules/

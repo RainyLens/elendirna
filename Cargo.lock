@@ -400,7 +400,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "eln-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "eln-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "assert_cmd",

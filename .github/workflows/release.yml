@@ -1,0 +1,135 @@
+name: Release (npm)
+
+# npm 채널 배포 — N0097 v0.8 cut. 비가역(이름·버전 영구 점유)이라 tag push가 아닌
+# workflow_dispatch 전용 + confirm 입력으로만 실제 publish. confirm != PUBLISH면 build +
+# assemble + `npm publish --dry-run`까지만 (게시 없음).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version — Cargo.toml [workspace.package] version와 일치해야 함 (예: 0.8.0)"
+        required: true
+        type: string
+      confirm:
+        description: "실제 npm 게시는 정확히 PUBLISH 입력 시에만. 그 외 값 = build + dry-run만."
+        required: true
+        default: "DRYRUN"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.os }}-${{ matrix.cpu }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux,  cpu: x64,   triple: x86_64-unknown-linux-gnu,  runner: ubuntu-22.04 }
+          - { os: linux,  cpu: arm64, triple: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
+          - { os: darwin, cpu: x64,   triple: x86_64-apple-darwin,       runner: macos-13 }
+          - { os: darwin, cpu: arm64, triple: aarch64-apple-darwin,      runner: macos-14 }
+          - { os: win32,  cpu: x64,   triple: x86_64-pc-windows-msvc,    runner: windows-latest }
+          - { os: win32,  cpu: arm64, triple: aarch64-pc-windows-msvc,   runner: windows-11-arm }
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      - name: Build release binary
+        # web/dist 는 커밋된 빌드 아티팩트라 Node 선행 빌드 불필요. bundled sqlite는 네이티브
+        # 러너의 C 툴체인으로 컴파일된다 (arch별 네이티브 러너라 크로스 sysroot 문제 없음).
+        run: cargo build --release --target ${{ matrix.triple }} -p eln-cli
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staged
+          if [ "${{ matrix.os }}" = "win32" ]; then
+            cp "target/${{ matrix.triple }}/release/elf.exe" staged/
+          else
+            cp "target/${{ matrix.triple }}/release/elf" staged/
+          fi
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.cpu }}
+          path: staged/
+          if-no-files-found: error
+
+  publish:
+    name: assemble + publish (npm)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Assert version matches Cargo.toml
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=$(node -e "const fs=require('fs');const t=fs.readFileSync('Cargo.toml','utf8');console.log(t.match(/\[workspace\.package\][\s\S]*?version\s*=\s*\"([^\"]+)\"/)[1])")
+          if [ "$EXPECTED" != "${{ inputs.version }}" ]; then
+            echo "::error::dispatch version '${{ inputs.version }}' != Cargo.toml version '$EXPECTED'"
+            exit 1
+          fi
+          node npm/scripts/sync-version.mjs --check
+          echo "VERSION=$EXPECTED" >> "$GITHUB_ENV"
+      - name: Assemble platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          a() { node npm/scripts/assemble-platform.mjs "$1" "$2" "$3" "artifacts/binary-$1-$2/$4"; }
+          a linux  x64   x86_64-unknown-linux-gnu  elf
+          a linux  arm64 aarch64-unknown-linux-gnu elf
+          a darwin x64   x86_64-apple-darwin       elf
+          a darwin arm64 aarch64-apple-darwin      elf
+          a win32  x64   x86_64-pc-windows-msvc    elf.exe
+          a win32  arm64 aarch64-pc-windows-msvc   elf.exe
+      - name: Publish DAG (platform → main → eln)
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" = "PUBLISH" ]; then
+            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "::error::confirm=PUBLISH 인데 NPM_TOKEN 시크릿이 없음. repo Settings → Secrets → Actions에 NPM_TOKEN 추가 필요."
+              exit 1
+            fi
+            DRY=""
+            echo "::warning::실제 npm 게시 진행 — 비가역(이름·버전 영구 점유)."
+          else
+            DRY="--dry-run"
+            echo "::notice::confirm != PUBLISH → dry-run only (게시 없음)."
+          fi
+
+          # 1) 플랫폼 패키지 먼저 — main의 optionalDependencies가 resolve되려면 선행돼야 함.
+          for d in npm/dist/elendirna-cli-*; do
+            ( cd "$d" && npm publish --access public $DRY )
+          done
+
+          # 2) (실게시 한정) 레지스트리에 6종이 모두 보일 때까지 대기 — main publish 전 propagation race 방지.
+          if [ -z "$DRY" ]; then
+            for p in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
+              for i in $(seq 1 40); do
+                if npm view "elendirna-cli-$p@$VERSION" version >/dev/null 2>&1; then
+                  echo "resolved elendirna-cli-$p@$VERSION"; break
+                fi
+                echo "waiting elendirna-cli-$p@$VERSION ($i) …"; sleep 5
+              done
+            done
+          fi
+
+          # 3) main → alias.
+          ( cd npm/elendirna && npm publish --access public $DRY )
+          ( cd npm/eln       && npm publish --access public $DRY )
