@@ -115,7 +115,7 @@ jobs:
           PACKED=$( (cd npm/elendirna && npm pack --dry-run --json) | node -e "const a=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(a[0].files.map(x=>x.path).filter(p=>/^binaries\/.+\/elf(\.exe)?$/.test(p)).length)")
           if [ "$PACKED" != "6" ]; then echo "::error::tarball lists $PACKED/6 binaries — files glob broken"; exit 1; fi
           echo "bundle OK: 6 binaries on disk + 6 in tarball"
-      - name: Publish (elendirna → eln) + deprecate prerelease shards
+      - name: Publish (elendirna) + deprecate prerelease shards
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -153,25 +153,11 @@ jobs:
             return 1
           }
 
-          # 1) main 단일 패키지 (전 바이너리 동봉).
+          # 단일 패키지 (전 바이너리 동봉). `eln` unscoped 이름은 npm name-similarity로 사용 불가 →
+          # elendirna 단독 게시(eln 명령은 향후 elendirna bin alias로 재고). (N0097 r0020)
           publish_one npm/elendirna
 
-          # 2) eln alias는 elendirna에 의존 → 레지스트리에 보일 때까지 대기 후 게시.
-          if [ -z "$DRY" ]; then
-            resolved=""
-            for i in $(seq 1 40); do
-              if npm view "elendirna@$VERSION" version >/dev/null 2>&1; then
-                echo "resolved elendirna@$VERSION"; resolved=1; break
-              fi
-              echo "waiting elendirna@$VERSION ($i) …"; sleep 5
-            done
-            if [ -z "$resolved" ]; then
-              echo "::error::elendirna@$VERSION가 레지스트리에 안 보임(propagation 실패) — eln 게시 중단"; exit 1
-            fi
-          fi
-          publish_one npm/eln
-
-          # 3) 구 split 설계에서 먼저 게시됐던 플랫폼 shard 5종을 deprecate(있으면). 비가역 아님(되돌림 가능).
+          # 구 split 설계에서 먼저 게시됐던 플랫폼 shard 5종을 deprecate(있으면). 비가역 아님(되돌림 가능).
           if [ -z "$DRY" ]; then
             for p in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
               if npm deprecate "elendirna-cli-$p@$VERSION" \

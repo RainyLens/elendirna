@@ -8,10 +8,9 @@ AI-friendly knowledge vault — `elf` CLI + MCP server, distributed as a prebuil
 # one-off, no install
 npx -y elendirna --help
 
-# or install globally (provides both `elendirna` and `eln` commands)
+# or install globally (the `elendirna` command)
 npm i -g elendirna
 elendirna --help
-eln --help
 ```
 
 The npm package bundles prebuilt `elf` binaries for all supported platforms and a

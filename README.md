@@ -20,8 +20,7 @@ npm i -g elendirna         # global — the `elendirna` command
 The npm package bundles prebuilt `elf` binaries for all supported platforms and a
 thin Node launcher that picks the right one at run time — no `postinstall` script
 and no install/run-time network. Supported: linux / macOS / Windows × x64 / arm64.
-Linux targets glibc ≥ 2.35; on musl/Alpine use the cargo path below. (`npx eln` /
-`npm i -g eln` install the `eln` alias of the same tool.)
+Linux targets glibc ≥ 2.35; on musl/Alpine use the cargo path below.
 
 ### Cargo (crates.io)
 

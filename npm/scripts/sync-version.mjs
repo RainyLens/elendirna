@@ -26,11 +26,7 @@ let drift = false;
 
 // 의미 단위로 검증/수정 — 파일 포매팅에 의존하지 않는다.
 function expectVersions(relPath, pkg) {
-  const found = [["version", pkg.version]];
-  if (relPath.startsWith("eln/")) {
-    found.push(["dependencies.elendirna", pkg.dependencies?.elendirna]);
-  }
-  return found;
+  return [["version", pkg.version]];
 }
 
 function apply(relPath, mutate) {
@@ -55,11 +51,6 @@ function apply(relPath, mutate) {
 
 apply("elendirna/package.json", (p) => {
   p.version = version;
-});
-
-apply("eln/package.json", (p) => {
-  p.version = version;
-  p.dependencies = { ...(p.dependencies || {}), elendirna: version };
 });
 
 if (check && drift) {
