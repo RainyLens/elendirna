@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.2] — 2026-05-30
+
+### production hardening (N0111)
+
+vault write 동시성 + 글로벌 config 청결성 2건 hardening. **공개 API·동작 무변경** (시그니처 그대로, edge case만 안전화).
+
+- **`atomic_write` 동일 프로세스 병렬 write race**: 임시 파일명이 `{pid}.{ext}.tmp`뿐이라 같은 대상 경로로 동시 호출 시 tmp 경로가 충돌(interleaved write + 이중 rename). 프로세스 전역 `AtomicU64` nonce를 더해 `{pid}.{nonce}.{ext}.tmp`로 유일화. rename 실패 시 임시 파일 best-effort 정리 후 원본 에러 전파. (0.8.1에서 테스트 직렬화 lock 제거로 병렬성이 회복되며 드러난 표면.)
+- **`register_vault_alias` home(글로벌) vault 자기-alias 등록**: `--vault <home>`로 글로벌 vault에 접근할 때 vault_name을 글로벌 config에 중복 self-alias로 기록하던 것을 skip(`is_home_vault_root` 재사용 — 글로벌 vault는 `"global"` 예약어로 이미 도달 가능)
+- 테스트 +3 (201 → 204): `unique_tmp_path` 유일성 단위 테스트 2 + `register_vault_alias` home-skip 통합 테스트 1
+
+### 내부 변경
+
+- 워크스페이스 버전 0.8.1 → 0.8.2 (crates.io `eln-core`/`eln-cli` ↔ npm 정렬). `eln-plugin-sdk`는 독립 버전 라인(0.1.0) 유지
+
+---
+
 ## [0.8.1] — 2026-05-30
 
 ### clippy lint baseline 청결화 (N0099)

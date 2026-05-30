@@ -104,9 +104,14 @@ impl VaultConfig {
 
     /// vault alias를 글로벌 config [vaults]에 등록. 이미 있으면 no-op.
     /// `global` / `local` 은 예약어 — 등록 거부.
+    /// 대상이 home(글로벌) vault면 skip — `"global"` 예약어로 이미 도달 가능하므로
+    /// 자기 자신을 가리키는 중복 alias를 글로벌 config에 쓰지 않는다.
     pub fn register_vault_alias(vault_root: &Path, alias: &str) -> Result<(), ElfError> {
         if alias == "global" || alias == "local" {
             return Ok(()); // 예약어 — 무시
+        }
+        if crate::vault::is_home_vault_root(vault_root) {
+            return Ok(()); // home(글로벌) vault — "global"로 이미 도달 가능, 중복 등록 skip
         }
         let Some(cfg_path) = Self::global_config_path() else {
             return Ok(());

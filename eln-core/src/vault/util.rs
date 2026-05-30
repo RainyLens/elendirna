@@ -1,8 +1,27 @@
 use crate::error::ElfError;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 동일 프로세스 내 [`atomic_write`] 호출들이 서로 다른 임시 파일명을 갖도록 보장하는 카운터.
+/// PID(프로세스 간 구분) + 단조 증가 nonce(프로세스 내 구분)의 조합으로,
+/// 같은 대상 경로에 대한 병렬 write가 같은 tmp 경로를 공유하지 않게 한다.
+static TMP_NONCE: AtomicU64 = AtomicU64::new(0);
+
+/// `path`에 대한 프로세스-유일 임시 파일 경로를 생성한다.
+/// 형식: `<stem>.<pid>.<nonce>.<ext>.tmp` — 같은 경로로 동시에 호출돼도 충돌하지 않는다.
+fn unique_tmp_path(path: &Path) -> PathBuf {
+    let nonce = TMP_NONCE.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!(
+        "{}.{}.{}.tmp",
+        std::process::id(),
+        nonce,
+        path.extension().and_then(|e| e.to_str()).unwrap_or("tmp")
+    ))
+}
 
 /// 원자적 파일 쓰기 (fix-004)
-/// 임시 파일에 먼저 쓰고 rename하여 중간 상태 방지
+/// 임시 파일에 먼저 쓰고 rename하여 중간 상태 방지.
+/// 임시 파일명은 PID + 프로세스 전역 nonce로 유일화하여 동일 프로세스 병렬 write race를 막는다.
 pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ElfError> {
     let parent = path.parent().ok_or_else(|| {
         ElfError::Io(std::io::Error::new(
@@ -12,13 +31,13 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ElfError> {
     })?;
     std::fs::create_dir_all(parent)?;
 
-    let tmp_path = path.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        path.extension().and_then(|e| e.to_str()).unwrap_or("tmp")
-    ));
+    let tmp_path = unique_tmp_path(path);
     std::fs::write(&tmp_path, content)?;
-    std::fs::rename(&tmp_path, path)?;
+    if let Err(e) = std::fs::rename(&tmp_path, path) {
+        // rename 실패 시 임시 파일을 best-effort 정리하고 원본 에러를 전파한다.
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e.into());
+    }
     Ok(())
 }
 
@@ -45,4 +64,23 @@ pub fn append_sync_event(
         .open(&path)?;
     file.write_all(line.as_bytes())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_tmp_path_differs_across_calls() {
+        // 동일 경로에 대한 연속 호출이 같은 tmp 경로를 반환하면 병렬 write가 interleave된다.
+        let p = Path::new("/vault/.elendirna/config.toml");
+        assert_ne!(unique_tmp_path(p), unique_tmp_path(p));
+    }
+
+    #[test]
+    fn unique_tmp_path_keeps_tmp_suffix() {
+        let p = Path::new("/vault/.elendirna/config.toml");
+        let tmp = unique_tmp_path(p);
+        assert_eq!(tmp.extension().and_then(|e| e.to_str()), Some("tmp"));
+    }
 }
