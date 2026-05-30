@@ -24,12 +24,11 @@ impl EntryId {
         if entries_dir.exists() {
             for entry in std::fs::read_dir(entries_dir)? {
                 let entry = entry?;
-                if entry.file_type()?.is_dir() {
-                    if let Some(id) = Self::from_dir_name(&entry.file_name().to_string_lossy()) {
-                        if id.0 > max {
-                            max = id.0;
-                        }
-                    }
+                if entry.file_type()?.is_dir()
+                    && let Some(id) = Self::from_dir_name(&entry.file_name().to_string_lossy())
+                    && id.0 > max
+                {
+                    max = id.0;
                 }
             }
         }
@@ -47,7 +46,10 @@ impl EntryId {
         digits.parse::<u32>().ok().map(Self)
     }
 
-    /// "N0042" 문자열에서 파싱
+    /// "N0042" 문자열에서 파싱.
+    /// 의도적으로 `Option`을 반환 (FromStr의 `Result`와 다른 시그니처) — trait 흡수 시
+    /// 호출자 ripple이 생기므로 inherent method를 유지한다.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         let s = s.strip_prefix('N')?;
         s.parse::<u32>().ok().map(Self)
@@ -83,10 +85,10 @@ impl RevisionId {
             for e in std::fs::read_dir(rev_dir)? {
                 let e = e?;
                 let name = e.file_name().to_string_lossy().to_string();
-                if let Some(id) = Self::from_file_name(&name) {
-                    if id.0 > max {
-                        max = id.0;
-                    }
+                if let Some(id) = Self::from_file_name(&name)
+                    && id.0 > max
+                {
+                    max = id.0;
                 }
             }
         }
@@ -100,7 +102,9 @@ impl RevisionId {
         digits.parse::<u32>().ok().map(Self)
     }
 
-    /// "r001" → Some(RevisionId(1))
+    /// "r001" → Some(RevisionId(1)).
+    /// `EntryId::from_str`와 같은 이유로 `Option` 반환 inherent method 유지.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         let digits = s.strip_prefix('r')?;
         digits.parse::<u32>().ok().map(Self)

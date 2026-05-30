@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.1] — 2026-05-30
+
+### clippy lint baseline 청결화 (N0099)
+
+마이그레이션(S4/S5/N0102 `#[tool]` 제거)·viewer(N0106)·clippy 1.96 엄격화 누적으로 회귀한 clippy 경고 30건을 0으로 정리. **코드 동작 무변경** — released code lint 청결.
+
+- **mcp_integration 테스트 `await_holding_lock` 7건**: `CWD_LOCK`(`std::sync::Mutex`) + `set_current_dir` 직렬화 패턴을 제거하고, 모든 핸들러·CLI 경로에 vault 경로를 `VaultArgs`(`--vault`)로 명시 전달. CWD를 mutate하지 않으므로 lock이 불필요해지고 테스트가 병렬 실행 가능. (production 코드 무변경 — 테스트 픽스처만.) `--vault` 경로가 production `resolve_vault_root`에서 글로벌 vault alias를 등록하므로, 테스트는 임시 HOME으로 격리해 호스트 `~/.elendirna/config.toml` 오염을 막는다
+- **cosmetic 자동 fix** (`cargo clippy --fix`): collapsible if(let-chains)·`#[derive(Default)]`·`rfind`·format args inline·doc lazy continuation 등 ~22건
+- **API lint**: `EntryId`/`RevisionId::from_str`는 `Option` 반환 의도를 `#[allow(clippy::should_implement_trait)]`로 명시(트레이트 흡수 시 호출자 ripple 회피). `NoteFrontmatter`의 inherent `to_string` → `impl Display` 전환(`ToString`이 자동 제공, 호출부 무변경)
+
+### 내부 변경
+
+- 워크스페이스 버전 0.8.0 → 0.8.1 (crates.io `eln-core`/`eln-cli` ↔ npm 정렬). `eln-plugin-sdk`는 독립 버전 라인(0.1.0) 유지
+
+---
+
 ## [0.8.0] — 2026-05-30
 
 ### npm 배포 채널 (N0097)

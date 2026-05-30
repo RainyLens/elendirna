@@ -140,8 +140,7 @@ mod revision {
         let (dir, eid) = setup(1);
         let rev_dir = Revision::rev_dir(dir.path(), &eid);
         std::fs::create_dir_all(&rev_dir).unwrap();
-        let legacy =
-            "---\nbaseline: N0001@r0000\ncreated: 2026-01-01T00:00:00+09:00\n---\n\n## Delta\n\nlegacy delta";
+        let legacy = "---\nbaseline: N0001@r0000\ncreated: 2026-01-01T00:00:00+09:00\n---\n\n## Delta\n\nlegacy delta";
         std::fs::write(rev_dir.join("r0001.md"), legacy).unwrap();
 
         let list = Revision::list(dir.path(), &eid);

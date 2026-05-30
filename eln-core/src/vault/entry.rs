@@ -22,13 +22,13 @@ impl Entry {
             return result;
         };
         for e in rd.flatten() {
-            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Ok(m) = Manifest::read(&e.path()) {
-                    result.push(Entry {
-                        dir: e.path(),
-                        manifest: m,
-                    });
-                }
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && let Ok(m) = Manifest::read(&e.path())
+            {
+                result.push(Entry {
+                    dir: e.path(),
+                    manifest: m,
+                });
             }
         }
         result.sort_by(|a, b| a.manifest.id.cmp(&b.manifest.id));
@@ -42,13 +42,14 @@ impl Entry {
         let rd = std::fs::read_dir(&entries_dir).ok()?;
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with(&id_str) && e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Ok(m) = Manifest::read(&e.path()) {
-                    return Some(Entry {
-                        dir: e.path(),
-                        manifest: m,
-                    });
-                }
+            if name.starts_with(&id_str)
+                && e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && let Ok(m) = Manifest::read(&e.path())
+            {
+                return Some(Entry {
+                    dir: e.path(),
+                    manifest: m,
+                });
             }
         }
         None
@@ -63,15 +64,14 @@ impl Entry {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             // 디렉터리명에서 slug 부분 추출: N####_<slug>
-            if let Some((_id_part, dir_slug)) = name.split_once('_') {
-                if dir_slug == slug {
-                    if let Ok(m) = Manifest::read(&e.path()) {
-                        return Some(Entry {
-                            dir: e.path(),
-                            manifest: m,
-                        });
-                    }
-                }
+            if let Some((_id_part, dir_slug)) = name.split_once('_')
+                && dir_slug == slug
+                && let Ok(m) = Manifest::read(&e.path())
+            {
+                return Some(Entry {
+                    dir: e.path(),
+                    manifest: m,
+                });
             }
         }
         None

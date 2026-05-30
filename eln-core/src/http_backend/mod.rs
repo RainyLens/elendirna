@@ -66,7 +66,9 @@ pub fn viewer_app(vault_root: Arc<PathBuf>) -> Router {
 pub async fn run_viewer(vault_root: PathBuf, addr: SocketAddr) -> anyhow::Result<()> {
     let app = viewer_app(Arc::new(vault_root));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    eprintln!("[elf] viewer listening on http://{addr}/ (API: /api, read+write) — loopback only, MCP 없음");
+    eprintln!(
+        "[elf] viewer listening on http://{addr}/ (API: /api, read+write) — loopback only, MCP 없음"
+    );
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -124,6 +126,7 @@ async fn host_guard(req: Request, next: Next) -> Response {
 ///  - `Sec-Fetch-Site: cross-site`/`cross-origin` → 거부
 ///  - `Origin`이 있으면 요청 Host와 동일 origin일 때만 허용(다른 사이트의 fetch 차단)
 ///  - `Origin` 부재(curl/CLI 등 비-브라우저) → 허용
+///
 /// GET 등 read는 통과(기존 Host 가드만). DNS rebinding은 Host 가드가, 브라우저발 CSRF는 여기서 막는다.
 async fn write_guard(req: Request, next: Next) -> Response {
     let is_write = matches!(req.method().as_str(), "POST" | "PUT" | "PATCH" | "DELETE");
@@ -132,10 +135,10 @@ async fn write_guard(req: Request, next: Next) -> Response {
     }
     let headers = req.headers();
 
-    if let Some(sfs) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
-        if sfs.eq_ignore_ascii_case("cross-site") || sfs.eq_ignore_ascii_case("cross-origin") {
-            return (StatusCode::FORBIDDEN, "cross-site write blocked").into_response();
-        }
+    if let Some(sfs) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok())
+        && (sfs.eq_ignore_ascii_case("cross-site") || sfs.eq_ignore_ascii_case("cross-origin"))
+    {
+        return (StatusCode::FORBIDDEN, "cross-site write blocked").into_response();
     }
 
     if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {

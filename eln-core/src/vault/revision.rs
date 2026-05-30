@@ -29,10 +29,10 @@ impl Revision {
     pub fn list(vault_root: &Path, entry_id: &EntryId) -> Vec<Revision> {
         let mut result = vec![];
         for (rev_id, path) in Self::revision_files(vault_root, entry_id) {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                if let Some(rev) = parse_revision_file(entry_id.clone(), rev_id, &content) {
-                    result.push(rev);
-                }
+            if let Ok(content) = std::fs::read_to_string(path)
+                && let Some(rev) = parse_revision_file(entry_id.clone(), rev_id, &content)
+            {
+                result.push(rev);
             }
         }
         result

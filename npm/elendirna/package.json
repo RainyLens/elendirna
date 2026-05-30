@@ -1,6 +1,6 @@
 {
   "name": "elendirna",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "elendirna — AI-friendly knowledge vault CLI & MCP server (elf binary, npm-wrapped)",
   "keywords": [
     "elendirna",

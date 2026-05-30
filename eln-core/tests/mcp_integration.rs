@@ -3,18 +3,39 @@
 /// ElfMcpServer가 의존하는 vault::ops 함수들을 직접 호출하여
 /// MCP tool surface의 핵심 경로를 검증한다.
 /// (바이너리 없이 cargo test로 실행 가능)
+///
+/// vault_root는 모든 핸들러/CLI 경로에 `VaultArgs`로 명시 전달한다 —
+/// CWD를 mutate하지 않으므로 테스트 간 직렬화 lock이 불필요하고 병렬 실행이 가능하다.
 use eln_core::cli::entry::{NewArgs, run_new};
 use eln_core::cli::init::{InitArgs, run as init_run};
-use eln_core::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
+use eln_core::cli::revision::{AddArgs, run_add};
 use eln_core::vault::VaultArgs;
 use eln_core::vault::ops;
 
 use tempfile::TempDir;
 
-static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// 모든 테스트가 공유하는 격리된 HOME(USERPROFILE).
+///
+/// `vault_at`의 `--vault` 경로는 production `resolve_vault_root`에서 `register_vault_alias`를
+/// 타 글로벌 config(`~/.elendirna/config.toml`)에 vault alias를 기록한다. HOME/USERPROFILE을
+/// 임시 디렉터리로 돌려 그 write가 호스트가 아닌 temp로 향하게 한다 — 호스트 글로벌 vault
+/// 오염 방지 + 테스트 격리. (vault는 여전히 테스트별 tempdir이므로 격리는 그대로다.)
+fn isolate_home() {
+    static HOME: std::sync::OnceLock<TempDir> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| {
+        let home = tempfile::tempdir().unwrap();
+        // SAFETY: get_or_init이 이 클로저를 프로세스당 1회만 실행하므로 set_var는 단 한 번이며,
+        // 모든 테스트가 setup_vault 첫 단계에서 이를 거쳐 이후 env::var read와 happens-before가 성립한다.
+        unsafe {
+            std::env::set_var("USERPROFILE", home.path());
+            std::env::set_var("HOME", home.path());
+        }
+        home
+    });
+}
 
-fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
-    let guard = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+fn setup_vault() -> TempDir {
+    isolate_home();
     let dir = tempfile::tempdir().unwrap();
     init_run(InitArgs {
         path: dir.path().to_path_buf(),
@@ -23,15 +44,18 @@ fn setup_vault() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
         global: false,
     })
     .unwrap();
-    (dir, guard)
+    dir
 }
 
-fn cd(dir: &TempDir) {
-    std::env::set_current_dir(dir.path()).unwrap();
+/// 임시 vault를 `--vault <path>` 명시 인자로 가리킨다 (CWD 비의존).
+fn vault_at(dir: &TempDir) -> VaultArgs {
+    VaultArgs {
+        vault: Some(dir.path().to_path_buf()),
+        global: false,
+    }
 }
 
 fn new_entry_direct(dir: &TempDir, title: &str) -> String {
-    cd(dir);
     run_new(
         NewArgs {
             title: title.to_string(),
@@ -41,7 +65,7 @@ fn new_entry_direct(dir: &TempDir, title: &str) -> String {
             dry_run: false,
             json: false,
         },
-        VaultArgs::default(),
+        vault_at(dir),
     )
     .unwrap();
     let entries = eln_core::vault::entry::Entry::find_all(dir.path());
@@ -52,7 +76,7 @@ fn new_entry_direct(dir: &TempDir, title: &str) -> String {
 
 #[test]
 fn mcp_entry_list_returns_all_entries() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "첫 번째 항목");
     new_entry_direct(&dir, "두 번째 항목");
 
@@ -62,7 +86,7 @@ fn mcp_entry_list_returns_all_entries() {
 
 #[test]
 fn mcp_entry_show_returns_manifest_and_body() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "표시 테스트");
 
     let result = ops::entry_show(dir.path(), "N0001").unwrap();
@@ -74,7 +98,7 @@ fn mcp_entry_show_returns_manifest_and_body() {
 
 #[test]
 fn mcp_entry_show_unknown_id_returns_error() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let err = ops::entry_show(dir.path(), "N9999").err().unwrap();
     assert_eq!(err.exit_code(), 2); // NotFound
 }
@@ -83,7 +107,7 @@ fn mcp_entry_show_unknown_id_returns_error() {
 
 #[test]
 fn mcp_entry_new_creates_entry() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let result = ops::entry_new(dir.path(), "MCP 생성 테스트", None, None, vec![]).unwrap();
     assert_eq!(result.entry.manifest.id, "N0001");
     assert_eq!(result.entry.manifest.title, "MCP 생성 테스트");
@@ -91,7 +115,7 @@ fn mcp_entry_new_creates_entry() {
 
 #[test]
 fn mcp_entry_new_duplicate_title_returns_error() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "중복 항목", None, None, vec![]).unwrap();
     let err = ops::entry_new(dir.path(), "중복 항목", None, None, vec![])
         .err()
@@ -103,11 +127,10 @@ fn mcp_entry_new_duplicate_title_returns_error() {
 
 #[test]
 fn mcp_bundle_includes_revisions_and_linked() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "번들 루트");
     new_entry_direct(&dir, "링크된 항목");
 
-    cd(&dir);
     eln_core::cli::link::run(
         eln_core::cli::link::LinkArgs {
             from: "N0001".into(),
@@ -115,19 +138,20 @@ fn mcp_bundle_includes_revisions_and_linked() {
             dry_run: false,
             json: false,
         },
-        VaultArgs::default(),
+        vault_at(&dir),
     )
     .unwrap();
 
-    rev_run(RevisionArgs {
-        command: RevisionCommand::Add(AddArgs {
+    run_add(
+        AddArgs {
             id: "N0001".into(),
             delta: Some("번들 델타".into()),
             author: "User".to_string(),
             dry_run: false,
             json: false,
-        }),
-    })
+        },
+        vault_at(&dir),
+    )
     .unwrap();
 
     let bundle = ops::bundle(dir.path(), "N0001").unwrap();
@@ -144,7 +168,7 @@ fn mcp_bundle_includes_revisions_and_linked() {
 
 #[test]
 fn mcp_bundle_unknown_id_returns_error() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     let err = ops::bundle(dir.path(), "N9999").err().unwrap();
     assert_eq!(err.exit_code(), 2); // NotFound
 }
@@ -153,7 +177,7 @@ fn mcp_bundle_unknown_id_returns_error() {
 
 #[test]
 fn mcp_sync_record_writes_and_log_reads_back() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
 
     ops::sync_record(
         dir.path(),
@@ -184,7 +208,7 @@ fn mcp_sync_record_writes_and_log_reads_back() {
 
 #[test]
 fn mcp_sync_log_tail_limits_results() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
 
     for i in 0..5 {
         ops::sync_record(
@@ -207,7 +231,7 @@ fn mcp_sync_log_tail_limits_results() {
 
 #[test]
 fn mcp_sync_log_agent_filter_isolates_events() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
 
     ops::sync_record(
         dir.path(),
@@ -228,7 +252,7 @@ fn mcp_sync_log_agent_filter_isolates_events() {
 
 #[test]
 fn mcp_validate_clean_vault_returns_zero_errors() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "검증 항목");
 
     let result = eln_core::schema::validate::run_all(dir.path()).unwrap();
@@ -243,7 +267,7 @@ fn mcp_validate_clean_vault_returns_zero_errors() {
 
 #[test]
 fn mcp_entry_attach_creates_asset_and_registers_source() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "첨부 테스트");
 
     let tmp_file = dir.path().join("sample.txt");
@@ -264,7 +288,7 @@ fn mcp_entry_attach_creates_asset_and_registers_source() {
 
 #[test]
 fn mcp_entry_attach_collision_adds_affix_and_sets_warning() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "충돌 테스트");
 
     let tmp_file = dir.path().join("diagram.png");
@@ -286,7 +310,7 @@ fn mcp_entry_attach_collision_adds_affix_and_sets_warning() {
 
 #[test]
 fn mcp_entry_attach_collision_checks_manifest_sources_even_if_file_missing() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "manifest collision test");
 
     let tmp_file = dir.path().join("diagram.png");
@@ -302,7 +326,7 @@ fn mcp_entry_attach_collision_checks_manifest_sources_even_if_file_missing() {
 
 #[test]
 fn mcp_entry_attach_copy_name_uses_filename_only() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "copy name sanitization test");
 
     let tmp_file = dir.path().join("source.txt");
@@ -315,7 +339,7 @@ fn mcp_entry_attach_copy_name_uses_filename_only() {
 
 #[test]
 fn mcp_entry_detach_removes_key_from_manifest() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "해제 테스트");
 
     let tmp_file = dir.path().join("detach_me.txt");
@@ -337,7 +361,7 @@ fn mcp_entry_detach_removes_key_from_manifest() {
 
 #[test]
 fn mcp_entry_detach_nonexistent_key_returns_false() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "없는 키 테스트");
 
     let removed = ops::entry_detach(dir.path(), "N0001", "N0001_ghost.txt").unwrap();
@@ -346,7 +370,7 @@ fn mcp_entry_detach_nonexistent_key_returns_false() {
 
 #[test]
 fn mcp_entry_assets_empty_for_fresh_entry() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "빈 자산 테스트");
 
     let assets = ops::entry_assets(dir.path(), "N0001").unwrap();
@@ -355,7 +379,7 @@ fn mcp_entry_assets_empty_for_fresh_entry() {
 
 #[test]
 fn mcp_entry_assets_unknown_id_returns_error() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
 
     let err = ops::entry_assets(dir.path(), "N9999").err().unwrap();
     assert_eq!(err.exit_code(), 2); // NotFound
@@ -386,7 +410,7 @@ fn admin_ctx() -> CallContext {
 
 #[tokio::test]
 async fn mcp_entry_status_round_trip_records_sync_event() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "상태 round-trip");
 
     let to_stable = EntryStatusHandler
@@ -425,7 +449,7 @@ async fn mcp_entry_status_round_trip_records_sync_event() {
 
 #[tokio::test]
 async fn mcp_entry_tag_add_is_idempotent_on_second_call() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "tag idempotent");
 
     let first = EntryTagAddHandler
@@ -459,7 +483,7 @@ async fn mcp_entry_tag_add_is_idempotent_on_second_call() {
 
 #[tokio::test]
 async fn mcp_entry_tag_remove_missing_is_noop() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "tag remove noop");
 
     let result = EntryTagRemoveHandler
@@ -479,7 +503,7 @@ async fn mcp_entry_tag_remove_missing_is_noop() {
 
 #[tokio::test]
 async fn mcp_entry_tag_set_dedupes_and_trims() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "tag set dedupe");
 
     let result = EntryTagSetHandler
@@ -499,7 +523,7 @@ async fn mcp_entry_tag_set_dedupes_and_trims() {
 
 #[test]
 fn mcp_revision_add_appends_and_touches_manifest() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     new_entry_direct(&dir, "revision add");
 
     let manifest_path = eln_core::vault::entry::Entry::find_by_id(
@@ -546,7 +570,7 @@ use eln_core::tools::query::QueryHandler;
 
 #[tokio::test]
 async fn mcp_query_filters_by_tag() {
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     // 두 entry 생성 — alpha tag 하나, beta tag 하나
     ops::entry_new(dir.path(), "알파 항목", None, None, vec!["alpha".into()]).unwrap();
     ops::entry_new(dir.path(), "베타 항목", None, None, vec!["beta".into()]).unwrap();
@@ -573,7 +597,7 @@ async fn mcp_query_filters_by_tag() {
 async fn mcp_bundle_cost_hint_emitted_when_default_depth_and_links() {
     use eln_core::schema::manifest::Manifest;
 
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "타겟 entry", None, None, vec![]).unwrap();
     let linker = ops::entry_new(dir.path(), "링커 entry", None, None, vec![]).unwrap();
     // manifest.links에 직접 link 박음 — test fixture (vault 규칙은 production 한정).
@@ -607,7 +631,7 @@ async fn mcp_bundle_cost_hint_emitted_when_default_depth_and_links() {
 async fn mcp_bundle_invalid_since_returns_invalid_argument() {
     use eln_plugin_sdk::ToolError;
 
-    let (dir, _guard) = setup_vault();
+    let dir = setup_vault();
     ops::entry_new(dir.path(), "since cross-layer", None, None, vec![]).unwrap();
     let err = BundleHandler
         .call(

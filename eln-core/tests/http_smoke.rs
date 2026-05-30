@@ -46,10 +46,10 @@ fn parse_rpc_payload(body: &str, content_type: &str) -> Value {
     }
     // SSE: `data: ` 줄들을 모아서 JSON 파싱
     for line in body.lines() {
-        if let Some(rest) = line.strip_prefix("data: ") {
-            if let Ok(v) = serde_json::from_str::<Value>(rest) {
-                return v;
-            }
+        if let Some(rest) = line.strip_prefix("data: ")
+            && let Ok(v) = serde_json::from_str::<Value>(rest)
+        {
+            return v;
         }
     }
     panic!("no JSON payload found in SSE body: {body:?}");

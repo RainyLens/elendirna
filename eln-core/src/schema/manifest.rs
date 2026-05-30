@@ -2,22 +2,18 @@ use crate::error::ElfError;
 use crate::vault::util::atomic_write;
 use chrono::{DateTime, FixedOffset, Local};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::Path;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EntryStatus {
+    #[default]
     Draft,
     Stable,
     Archived,
-}
-
-impl Default for EntryStatus {
-    fn default() -> Self {
-        Self::Draft
-    }
 }
 
 impl std::fmt::Display for EntryStatus {
@@ -234,8 +230,16 @@ impl NoteFrontmatter {
             })
     }
 
-    /// frontmatter를 직렬화
-    pub fn to_string(&self) -> String {
+    /// frontmatter 교체, 본문 보존 — note.md에 쓰기
+    pub fn write(note_path: &Path, fm: &NoteFrontmatter, body: &str) -> Result<(), ElfError> {
+        let content = format!("---\n{fm}\n---\n{body}");
+        atomic_write(note_path, content.as_bytes())
+    }
+}
+
+impl fmt::Display for NoteFrontmatter {
+    /// frontmatter를 YAML로 직렬화한다.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let baseline_str = match &self.baseline {
             Some(b) => format!("baseline: {}", yaml_quote(b)),
             None => "baseline: null".to_string(),
@@ -250,16 +254,11 @@ impl NoteFrontmatter {
                 .collect();
             format!("tags:\n{}", items.join("\n"))
         };
-        format!(
+        write!(
+            f,
             "id: {}\ntitle: {}\n{baseline_str}\n{tags_str}",
             yaml_quote(&self.id),
             yaml_quote(&self.title)
         )
-    }
-
-    /// frontmatter 교체, 본문 보존 — note.md에 쓰기
-    pub fn write(note_path: &Path, fm: &NoteFrontmatter, body: &str) -> Result<(), ElfError> {
-        let content = format!("---\n{}\n---\n{}", fm.to_string(), body);
-        atomic_write(note_path, content.as_bytes())
     }
 }

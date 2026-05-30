@@ -47,7 +47,7 @@ mod manifest {
             tags: vec!["release-note".to_string(), r#"with"quote"#.to_string()],
         };
 
-        let serialized = format!("---\n{}\n---\nbody", original.to_string());
+        let serialized = format!("---\n{}\n---\nbody", original);
         let (parsed, _body) = NoteFrontmatter::parse(&serialized).unwrap();
 
         assert_eq!(parsed.id, original.id);
@@ -290,9 +290,7 @@ mod validate {
         result
             .issues
             .iter()
-            .filter(|i| {
-                i.kind == IssueKind::RevisionContent && !i.message.contains("chain.head")
-            })
+            .filter(|i| i.kind == IssueKind::RevisionContent && !i.message.contains("chain.head"))
             .map(|i| i.message.as_str())
             .collect()
     }
@@ -303,8 +301,20 @@ mod validate {
         let (dir, _guard) = setup();
         new_entry(&dir, "Chained");
         let eid = EntryId::new(1);
-        Revision::create(dir.path(), &eid, "[Change] 첫 변경 [Impact] 첫 영향", "claude").unwrap();
-        Revision::create(dir.path(), &eid, "[Change] 둘째 변경 [Impact] 둘째 영향", "claude").unwrap();
+        Revision::create(
+            dir.path(),
+            &eid,
+            "[Change] 첫 변경 [Impact] 첫 영향",
+            "claude",
+        )
+        .unwrap();
+        Revision::create(
+            dir.path(),
+            &eid,
+            "[Change] 둘째 변경 [Impact] 둘째 영향",
+            "claude",
+        )
+        .unwrap();
 
         let result = run_all(dir.path()).unwrap();
         let rev_issues = result
@@ -328,7 +338,10 @@ mod validate {
         let r2 = dir.path().join(".elendirna/revisions/N0001/r0002.md");
         let content = std::fs::read_to_string(&r2).unwrap();
         let tampered = content.replace("baseline: N0001@r0001", "baseline: N0001@r0000");
-        assert_ne!(content, tampered, "조작 전제: r0002 baseline이 N0001@r0001이어야");
+        assert_ne!(
+            content, tampered,
+            "조작 전제: r0002 baseline이 N0001@r0001이어야"
+        );
         std::fs::write(&r2, tampered).unwrap();
 
         let result = run_all(dir.path()).unwrap(); // content Off
@@ -349,8 +362,13 @@ mod validate {
     fn content_shape_off_by_default() {
         let (dir, _guard) = setup();
         new_entry(&dir, "Bare");
-        Revision::create(dir.path(), &EntryId::new(1), "그냥 자유 형식 메모, 마커 없음", "human")
-            .unwrap();
+        Revision::create(
+            dir.path(),
+            &EntryId::new(1),
+            "그냥 자유 형식 메모, 마커 없음",
+            "human",
+        )
+        .unwrap();
 
         let result = run_all(dir.path()).unwrap();
         assert!(

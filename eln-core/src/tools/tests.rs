@@ -60,8 +60,7 @@ fn last_sync_record(dir: &TempDir) -> Value {
     content
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter(|event| event["event"] == "sync.record")
-        .next_back()
+        .rfind(|event| event["event"] == "sync.record")
         .expect("at least one sync.record event")
 }
 
@@ -151,7 +150,9 @@ async fn entry_list_rejects_without_read_perm() {
         .await
         .expect_err("empty perms must be denied for entry_list");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
+        ToolError::PermissionDenied(PermissionDenied {
+            required, granted, ..
+        }) => {
             assert_eq!(required, Permissions::READ);
             assert_eq!(granted, Permissions::empty());
         }
@@ -192,7 +193,9 @@ async fn entry_new_rejects_without_write_perm() {
         .await
         .expect_err("READ ctx must be denied for entry_new");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
+        ToolError::PermissionDenied(PermissionDenied {
+            required, granted, ..
+        }) => {
             assert_eq!(required, Permissions::WRITE);
             assert_eq!(granted, Permissions::READ);
         }
@@ -375,7 +378,9 @@ async fn entry_status_rejects_without_write_perm() {
         .await
         .expect_err("READ ctx must be denied for entry_status");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
+        ToolError::PermissionDenied(PermissionDenied {
+            required, granted, ..
+        }) => {
             assert_eq!(required, Permissions::WRITE);
             assert_eq!(granted, Permissions::READ);
         }
@@ -780,7 +785,9 @@ async fn entry_show_rejects_without_read_perm() {
         .await
         .expect_err("empty perms must be denied for entry_show");
     match err {
-        ToolError::PermissionDenied(PermissionDenied { required, granted, .. }) => {
+        ToolError::PermissionDenied(PermissionDenied {
+            required, granted, ..
+        }) => {
             assert_eq!(required, Permissions::READ);
             assert_eq!(granted, Permissions::empty());
         }

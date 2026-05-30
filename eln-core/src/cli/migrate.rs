@@ -96,15 +96,15 @@ pub fn run(args: MigrateArgs) -> Result<(), ElfError> {
 pub fn auto_migrate_silent(vault_root: &std::path::Path) {
     if vault_root.join(".elendirna").join("entries").exists() {
         // 이미 v2 — schema_version만 조용히 맞춘다
-        if let Ok(mut config) = VaultConfig::read(vault_root) {
-            if config.schema_version < crate::vault::config::CURRENT_SCHEMA_VERSION {
-                config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
-                let _ = config.write(vault_root);
-                eprintln!(
-                    "[elf] schema_version → {} 업데이트",
-                    crate::vault::config::CURRENT_SCHEMA_VERSION
-                );
-            }
+        if let Ok(mut config) = VaultConfig::read(vault_root)
+            && config.schema_version < crate::vault::config::CURRENT_SCHEMA_VERSION
+        {
+            config.schema_version = crate::vault::config::CURRENT_SCHEMA_VERSION;
+            let _ = config.write(vault_root);
+            eprintln!(
+                "[elf] schema_version → {} 업데이트",
+                crate::vault::config::CURRENT_SCHEMA_VERSION
+            );
         }
         return;
     }

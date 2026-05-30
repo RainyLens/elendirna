@@ -174,10 +174,10 @@ fn index_is_stale(vault_root: &Path) -> bool {
     };
     for entry in rd.flatten() {
         let manifest = entry.path().join("manifest.toml");
-        if let Ok(m) = std::fs::metadata(&manifest).and_then(|md| md.modified()) {
-            if m > idx_mtime {
-                return true;
-            }
+        if let Ok(m) = std::fs::metadata(&manifest).and_then(|md| md.modified())
+            && m > idx_mtime
+        {
+            return true;
         }
     }
     false

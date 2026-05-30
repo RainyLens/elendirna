@@ -252,10 +252,10 @@ fn print_mcp_snippet_http(vault_path: Option<&std::path::Path>, addr: &str) {
 fn resolve_elf_bin() -> String {
     // npm wrapper로 기동된 경우(launcher가 ELN_LAUNCHER_CMD 주입), node_modules 내부
     // 절대경로 대신 PATH상의 안정 명령(`elendirna`/`eln`)을 emit — 재설치·버전 bump에도 불변.
-    if let Ok(cmd) = std::env::var("ELN_LAUNCHER_CMD") {
-        if !cmd.is_empty() {
-            return cmd;
-        }
+    if let Ok(cmd) = std::env::var("ELN_LAUNCHER_CMD")
+        && !cmd.is_empty()
+    {
+        return cmd;
     }
     std::env::current_exe()
         .map(|p| p.display().to_string())

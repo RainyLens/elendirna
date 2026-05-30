@@ -431,8 +431,10 @@ pub async fn lineage(
     let focus_title = ops::entry_show(vault_root, &id)?.entry.manifest.title;
 
     let entries = ops::entry_list(vault_root);
-    let by_id: HashMap<String, &Manifest> =
-        entries.iter().map(|e| (e.manifest.id.clone(), &e.manifest)).collect();
+    let by_id: HashMap<String, &Manifest> = entries
+        .iter()
+        .map(|e| (e.manifest.id.clone(), &e.manifest))
+        .collect();
     let title_of = |eid: &str| by_id.get(eid).map(|m| m.title.clone()).unwrap_or_default();
 
     // 직접 부모(baseline) + 조상 체인 walk.
@@ -441,26 +443,29 @@ pub async fn lineage(
     let mut visited: HashSet<String> = HashSet::new();
     visited.insert(id.clone());
 
-    if let Some(parent_id) = by_id.get(&id).and_then(|m| baseline_entry_id(&m.baseline)) {
-        if by_id.contains_key(&parent_id) {
-            parents.push(LineageNode {
-                id: parent_id.clone(),
-                title: title_of(&parent_id),
-            });
-            // 부모의 baseline부터 위로 — 각 ancestor는 직전 노드(child)를 parent로 가리킨다.
-            let mut child = parent_id.clone();
-            visited.insert(parent_id.clone());
-            while let Some(next) = by_id.get(&child).and_then(|m| baseline_entry_id(&m.baseline)) {
-                if !by_id.contains_key(&next) || !visited.insert(next.clone()) {
-                    break; // 미발견 또는 cycle
-                }
-                ancestors.push(AncestorNode {
-                    id: next.clone(),
-                    title: title_of(&next),
-                    parent: child.clone(),
-                });
-                child = next;
+    if let Some(parent_id) = by_id.get(&id).and_then(|m| baseline_entry_id(&m.baseline))
+        && by_id.contains_key(&parent_id)
+    {
+        parents.push(LineageNode {
+            id: parent_id.clone(),
+            title: title_of(&parent_id),
+        });
+        // 부모의 baseline부터 위로 — 각 ancestor는 직전 노드(child)를 parent로 가리킨다.
+        let mut child = parent_id.clone();
+        visited.insert(parent_id.clone());
+        while let Some(next) = by_id
+            .get(&child)
+            .and_then(|m| baseline_entry_id(&m.baseline))
+        {
+            if !by_id.contains_key(&next) || !visited.insert(next.clone()) {
+                break; // 미발견 또는 cycle
             }
+            ancestors.push(AncestorNode {
+                id: next.clone(),
+                title: title_of(&next),
+                parent: child.clone(),
+            });
+            child = next;
         }
     }
 
@@ -611,7 +616,12 @@ pub struct RevisionCreated {
 
 /// 구조화 입력(change+impact)이면 `## Change/## Impact` 마크다운으로 합성, free-form(delta)이면 그대로.
 fn compose_delta(req: &RevisionReq) -> Result<String, ApiError> {
-    if let Some(d) = req.delta.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(d) = req
+        .delta
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         return Ok(d.to_string());
     }
     let change = req.change.as_deref().unwrap_or("").trim();

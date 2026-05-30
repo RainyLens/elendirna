@@ -4,8 +4,8 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     model::{
         CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult,
-        Implementation, ListPromptsResult, ListToolsResult, PaginatedRequestParams,
-        PromptMessage, PromptMessageRole, ServerCapabilities, ServerInfo, Tool,
+        Implementation, ListPromptsResult, ListToolsResult, PaginatedRequestParams, PromptMessage,
+        PromptMessageRole, ServerCapabilities, ServerInfo, Tool,
     },
     prompt, prompt_router,
     service::RequestContext,
@@ -467,7 +467,9 @@ impl ElfMcpServer {
         let res = self.resolve_tool_vault(vault_alias)?;
 
         // write 권한 + confirm gate (vault origin axis — handler 도달 전 가드)
-        let is_write = descriptor.required_permissions().contains(Permissions::WRITE);
+        let is_write = descriptor
+            .required_permissions()
+            .contains(Permissions::WRITE);
         let confirm = args_obj
             .remove("confirm")
             .and_then(|v| v.as_bool())
@@ -477,14 +479,14 @@ impl ElfMcpServer {
         }
 
         // sync_record entries 정규화 (FlexibleEntries 표면을 transport-layer에서 흡수).
-        if name == "sync_record" {
-            if let Some(entries_val) = args_obj.remove("entries") {
-                let normalized = normalize_entry_ids(entries_val);
-                args_obj.insert(
-                    "entries".into(),
-                    serde_json::to_value(normalized).unwrap_or(serde_json::Value::Null),
-                );
-            }
+        if name == "sync_record"
+            && let Some(entries_val) = args_obj.remove("entries")
+        {
+            let normalized = normalize_entry_ids(entries_val);
+            args_obj.insert(
+                "entries".into(),
+                serde_json::to_value(normalized).unwrap_or(serde_json::Value::Null),
+            );
         }
 
         // handler-level vault_root inject
@@ -786,7 +788,9 @@ impl ServerHandler for ElfMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let CallToolRequestParams { name, arguments, .. } = request;
+        let CallToolRequestParams {
+            name, arguments, ..
+        } = request;
         let args = arguments
             .map(serde_json::Value::Object)
             .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));

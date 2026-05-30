@@ -142,10 +142,10 @@ pub fn find_vault_root(start: &Path) -> Result<PathBuf, ElfError> {
         .or_else(|_| std::env::var("HOME"))
         .map(PathBuf::from)
         .ok();
-    if let Some(home) = home {
-        if home.join(".elendirna").join("config.toml").exists() {
-            return Ok(home);
-        }
+    if let Some(home) = home
+        && home.join(".elendirna").join("config.toml").exists()
+    {
+        return Ok(home);
     }
     Err(ElfError::NotAVault)
 }

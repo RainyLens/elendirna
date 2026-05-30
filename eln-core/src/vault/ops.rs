@@ -143,7 +143,11 @@ pub fn links_out_count(entry: &Entry) -> u32 {
 
 /// entry status 변경 ([[N0106]] P2 write). `status_str`: draft / stable / archived.
 /// CLI `run_status`와 동일 동작을 ops로 추출 — 뷰어·CLI 공유.
-pub fn entry_set_status(vault_root: &Path, id_str: &str, status_str: &str) -> Result<Entry, ElfError> {
+pub fn entry_set_status(
+    vault_root: &Path,
+    id_str: &str,
+    status_str: &str,
+) -> Result<Entry, ElfError> {
     use crate::schema::manifest::EntryStatus;
     let status = match status_str {
         "draft" => EntryStatus::Draft,
@@ -169,7 +173,11 @@ pub fn entry_set_status(vault_root: &Path, id_str: &str, status_str: &str) -> Re
 }
 
 /// entry tags 일괄 설정(전체 교체). trim + 빈 항목 제거 + sort/dedup. [[N0106]] P2 write.
-pub fn entry_set_tags(vault_root: &Path, id_str: &str, tags: Vec<String>) -> Result<Entry, ElfError> {
+pub fn entry_set_tags(
+    vault_root: &Path,
+    id_str: &str,
+    tags: Vec<String>,
+) -> Result<Entry, ElfError> {
     let id = EntryId::from_str(id_str).ok_or_else(|| ElfError::InvalidInput {
         message: format!("'{id_str}' 는 유효한 entry ID가 아닙니다"),
     })?;

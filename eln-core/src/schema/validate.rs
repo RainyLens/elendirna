@@ -335,19 +335,19 @@ fn check_dangling(
         }
 
         // baseline
-        if let Some(ref b) = m.baseline {
-            if !EntryRevRef::is_virtual_baseline(b) {
-                // N####@r#### 형식에서 entry ID 추출
-                let entry_part = b.split('@').next().unwrap_or(b);
-                if !entry_ids.contains(entry_part) {
-                    issues.push(Issue {
-                        severity: Severity::Error,
-                        kind: IssueKind::Dangling,
-                        path: entry.dir.join("manifest.toml"),
-                        message: format!("dangling baseline: '{b}'가 존재하지 않음"),
-                        fix: None,
-                    });
-                }
+        if let Some(ref b) = m.baseline
+            && !EntryRevRef::is_virtual_baseline(b)
+        {
+            // N####@r#### 형식에서 entry ID 추출
+            let entry_part = b.split('@').next().unwrap_or(b);
+            if !entry_ids.contains(entry_part) {
+                issues.push(Issue {
+                    severity: Severity::Error,
+                    kind: IssueKind::Dangling,
+                    path: entry.dir.join("manifest.toml"),
+                    message: format!("dangling baseline: '{b}'가 존재하지 않음"),
+                    fix: None,
+                });
             }
         }
 
@@ -384,22 +384,22 @@ fn check_dangling(
         // revision 파일 내 `→ see` 스캔
         let eid = entry_id_from_manifest(entry);
         let rev_dir = Revision::rev_dir(vault_root, &eid);
-        if rev_dir.exists() {
-            if let Ok(rd) = std::fs::read_dir(&rev_dir) {
-                for e in rd.flatten() {
-                    if let Ok(content) = std::fs::read_to_string(e.path()) {
-                        for ref_id in scan_inline_refs(&content, &see_re) {
-                            if !entry_ids.contains(&ref_id) {
-                                issues.push(Issue {
-                                    severity: Severity::Warning,
-                                    kind: IssueKind::Dangling,
-                                    path: e.path(),
-                                    message: format!(
-                                        "dangling inline ref: '→ see {ref_id}'가 존재하지 않음"
-                                    ),
-                                    fix: None,
-                                });
-                            }
+        if rev_dir.exists()
+            && let Ok(rd) = std::fs::read_dir(&rev_dir)
+        {
+            for e in rd.flatten() {
+                if let Ok(content) = std::fs::read_to_string(e.path()) {
+                    for ref_id in scan_inline_refs(&content, &see_re) {
+                        if !entry_ids.contains(&ref_id) {
+                            issues.push(Issue {
+                                severity: Severity::Warning,
+                                kind: IssueKind::Dangling,
+                                path: e.path(),
+                                message: format!(
+                                    "dangling inline ref: '→ see {ref_id}'가 존재하지 않음"
+                                ),
+                                fix: None,
+                            });
                         }
                     }
                 }
