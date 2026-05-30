@@ -6,11 +6,11 @@
 
 elendirna를 Rust 툴체인 없이 설치할 수 있는 npm 채널 추가. crates.io `eln-cli`(v0.7.0 eln 패밀리 분리)에 이은 두 번째 배포 표면.
 
-- **`elendirna`** (+ alias **`eln`**) npm 패키지 — `npx -y elendirna` 또는 `npm i -g elendirna`로 `elf` 바이너리 사용
-- 매커니즘: 플랫폼별 prebuilt 바이너리를 `optionalDependencies`(`elendirna-cli-<os>-<cpu>`)로 배포 — npm이 os/cpu 매칭 1개만 설치. postinstall download 없음 → `--ignore-scripts`/오프라인/사설 레지스트리/읽기전용 FS에서도 안전
-- Node launcher가 설치된 플랫폼 바이너리를 resolve해 spawn — stdin/stdout/stderr·exit code·종료 시그널 전달 (장수명 stdio MCP 서버 모드 포함)
+- **`elendirna`** npm 패키지 (+ `eln` thin alias) — `npx -y elendirna` 또는 `npm i -g elendirna`로 `elf` 바이너리 사용
+- 매커니즘: **단일 패키지에 6 플랫폼 prebuilt 바이너리를 전부 동봉**(`binaries/<os>-<cpu>/elf[.exe]`), Node launcher가 런타임에 호스트 맞는 1개를 선택. postinstall 없음·설치 시 네트워크 없음 → `--ignore-scripts`/오프라인/사설 레지스트리/읽기전용 FS 안전. (초기엔 플랫폼별 `optionalDependencies` 분할을 시도했으나, 유사 unscoped 이름 다수의 급속 publish가 npm 스팸 탐지 E403에 걸려 단일 패키지로 전환.)
+- Node launcher: stdin/stdout/stderr·exit code·종료 시그널 전달 (장수명 stdio MCP 서버 모드 포함)
 - 지원: linux/darwin/win32 × x64/arm64. Linux는 glibc ≥ 2.35(Ubuntu 22.04 베이스라인) — musl/Alpine 미지원 시 `cargo install eln-cli`
-- 신규 GitHub Actions `release.yml` — arch별 네이티브 러너 크로스 빌드 매트릭스 + publish DAG(플랫폼 → main → eln). `workflow_dispatch` + `confirm` 게이트로 비가역 publish 보호
+- 신규 GitHub Actions `release.yml` — arch별 네이티브 러너 크로스 빌드 매트릭스 → 단일 `elendirna` 패키지에 동봉 → publish(`elendirna` → `eln`). `workflow_dispatch` + `confirm` 게이트로 비가역 publish 보호
 
 ### serve MCP 스니펫 — npm wrapper 인식
 
@@ -20,7 +20,7 @@ elendirna를 Rust 툴체인 없이 설치할 수 있는 npm 채널 추가. crate
 
 - 워크스페이스 버전 0.7.0 → 0.8.0 (crates.io `eln-core`/`eln-cli` ↔ npm 정렬). `eln-plugin-sdk`는 독립 버전 라인(0.1.0) 유지
 - `[profile.release]`: `strip = "symbols"`, `lto = "thin"`, `codegen-units = 1` — npm 동봉 바이너리 축소
-- `npm/` 스캐폴딩: 메인 wrapper(launcher) + `eln` thin alias + 플랫폼 패키지 템플릿 + `sync-version`/`assemble-platform` 스크립트
+- `npm/` 스캐폴딩: 메인 wrapper(launcher + 동봉 binaries) + `eln` thin alias + `sync-version`/`assemble-bundle` 스크립트
 
 ---
 

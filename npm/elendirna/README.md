@@ -14,9 +14,9 @@ elendirna --help
 eln --help
 ```
 
-The npm package is a thin Node launcher. The actual binary ships in a per-platform
-optional dependency (`elendirna-cli-<os>-<cpu>`); npm installs only the one matching
-your OS/CPU. No `postinstall` script and no network access at run time.
+The npm package bundles prebuilt `elf` binaries for all supported platforms and a
+thin Node launcher that selects the right one at run time. No `postinstall` script,
+and no network access at install or run time.
 
 **Supported platforms:** linux / macOS / Windows × x64 / arm64. Linux builds target
 glibc ≥ 2.35 (Ubuntu 22.04 baseline); musl/Alpine is not yet shipped — use

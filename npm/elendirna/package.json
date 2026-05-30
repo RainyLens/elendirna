@@ -17,21 +17,13 @@
   },
   "license": "MIT",
   "bin": {
-    "elendirna": "bin/elendirna.js",
-    "eln": "bin/elendirna.js"
+    "elendirna": "bin/elendirna.js"
   },
   "files": [
     "bin/",
+    "binaries/",
     "README.md"
   ],
-  "optionalDependencies": {
-    "elendirna-cli-linux-x64": "0.8.0",
-    "elendirna-cli-linux-arm64": "0.8.0",
-    "elendirna-cli-darwin-x64": "0.8.0",
-    "elendirna-cli-darwin-arm64": "0.8.0",
-    "elendirna-cli-win32-x64": "0.8.0",
-    "elendirna-cli-win32-arm64": "0.8.0"
-  },
   "engines": {
     "node": ">=16"
   }

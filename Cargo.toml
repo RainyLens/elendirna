@@ -8,7 +8,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/elen-labs/elendirna"
 
-# release 바이너리 축소 (npm 플랫폼 패키지 동봉 페이로드) — N0097 v0.8 cut.
+# release 바이너리 축소 (npm 단일 패키지 동봉 페이로드 — 6 바이너리 전부 동봉) — N0097 v0.8 cut.
 # panic은 기본 unwind 유지 (rmcp/tokio·테스트 호환).
 [profile.release]
 strip = "symbols"

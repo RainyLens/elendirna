@@ -55,6 +55,21 @@ jobs:
           else
             cp "target/${{ matrix.triple }}/release/elf" staged/
           fi
+      - name: Smoke / arch check
+        # 비가역 publish 전 깨진 크로스/네이티브 빌드를 잡는다.
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="staged/$([ "${{ matrix.os }}" = "win32" ] && echo elf.exe || echo elf)"
+          if [ "${{ matrix.os }}-${{ matrix.cpu }}" = "darwin-x64" ]; then
+            # arm64 러너에서 x86_64 크로스 빌드 → 네이티브 실행 불가. arch만 검증.
+            file "$BIN"
+            file "$BIN" | grep -qi "x86_64" || { echo "::error::darwin-x64 arch mismatch"; exit 1; }
+          else
+            # 나머지 5종은 네이티브 러너 → 직접 실행 스모크.
+            chmod +x "$BIN" 2>/dev/null || true
+            "$BIN" --version
+          fi
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
@@ -87,18 +102,20 @@ jobs:
           fi
           node npm/scripts/sync-version.mjs --check
           echo "VERSION=$EXPECTED" >> "$GITHUB_ENV"
-      - name: Assemble platform packages
+      - name: Assemble bundle (6 binaries → single package)
+        shell: bash
+        run: node npm/scripts/assemble-bundle.mjs artifacts
+      - name: Verify bundle (6 binaries present + in tarball)
+        # 비가역 publish 직전 마지막 가드 — 빈/부분 번들이 영구 게시되는 것 차단.
         shell: bash
         run: |
           set -euo pipefail
-          a() { node npm/scripts/assemble-platform.mjs "$1" "$2" "$3" "artifacts/binary-$1-$2/$4"; }
-          a linux  x64   x86_64-unknown-linux-gnu  elf
-          a linux  arm64 aarch64-unknown-linux-gnu elf
-          a darwin x64   x86_64-apple-darwin       elf
-          a darwin arm64 aarch64-apple-darwin      elf
-          a win32  x64   x86_64-pc-windows-msvc    elf.exe
-          a win32  arm64 aarch64-pc-windows-msvc   elf.exe
-      - name: Publish DAG (platform → main → eln)
+          N=$(find npm/elendirna/binaries -type f \( -name elf -o -name elf.exe \) | wc -l | tr -d ' ')
+          if [ "$N" != "6" ]; then echo "::error::bundle has $N/6 binaries — refusing to publish"; exit 1; fi
+          PACKED=$( (cd npm/elendirna && npm pack --dry-run --json) | node -e "const a=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(a[0].files.map(x=>x.path).filter(p=>/^binaries\/.+\/elf(\.exe)?$/.test(p)).length)")
+          if [ "$PACKED" != "6" ]; then echo "::error::tarball lists $PACKED/6 binaries — files glob broken"; exit 1; fi
+          echo "bundle OK: 6 binaries on disk + 6 in tarball"
+      - name: Publish (elendirna → eln) + deprecate prerelease shards
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -116,9 +133,8 @@ jobs:
             echo "::notice::confirm != PUBLISH → dry-run only (게시 없음)."
           fi
 
-          # 멱등 게시: 이미 올라간 버전은 skip(부분 게시 복구·재실행 안전) + 게시 사이 지연 +
-          # 재시도. npm 스팸 탐지(유사 이름 다수를 수 초 내 급속 생성 시 rate 기반 false-positive,
-          # E403 "Package name triggered spam detection")를 지연으로 회피하고 일시적이면 재시도로 흡수.
+          # 멱등 게시: 이미 올라간 버전은 skip(재실행 안전) + 일시 실패 시 재시도.
+          # (단일 패키지 매커니즘이라 다중 유사 이름 급속 생성이 없어 스팸 탐지 표면이 사라짐.)
           publish_one() {
             local dir="$1" name attempt
             name="$(node -p "require('./$dir/package.json').name")"
@@ -127,33 +143,42 @@ jobs:
             fi
             for attempt in 1 2 3; do
               if ( cd "$dir" && npm publish --access public $DRY ); then
-                [ -z "$DRY" ] && sleep 20 || true
+                [ -z "$DRY" ] && sleep 15 || true
                 return 0
               fi
-              echo "::warning::$name 게시 attempt $attempt 실패 — 45s 후 재시도 (스팸 탐지면 지연으로 해소 가능)."
-              sleep 45
+              echo "::warning::$name 게시 attempt $attempt 실패 — 30s 후 재시도."
+              sleep 30
             done
             echo "::error::$name 게시가 재시도 후에도 실패."
             return 1
           }
 
-          # 1) 플랫폼 패키지 먼저 — main의 optionalDependencies가 resolve되려면 선행돼야 함.
-          for d in npm/dist/elendirna-cli-*; do
-            publish_one "$d"
-          done
+          # 1) main 단일 패키지 (전 바이너리 동봉).
+          publish_one npm/elendirna
 
-          # 2) (실게시 한정) 레지스트리에 6종이 모두 보일 때까지 대기 — main publish 전 propagation race 방지.
+          # 2) eln alias는 elendirna에 의존 → 레지스트리에 보일 때까지 대기 후 게시.
+          if [ -z "$DRY" ]; then
+            resolved=""
+            for i in $(seq 1 40); do
+              if npm view "elendirna@$VERSION" version >/dev/null 2>&1; then
+                echo "resolved elendirna@$VERSION"; resolved=1; break
+              fi
+              echo "waiting elendirna@$VERSION ($i) …"; sleep 5
+            done
+            if [ -z "$resolved" ]; then
+              echo "::error::elendirna@$VERSION가 레지스트리에 안 보임(propagation 실패) — eln 게시 중단"; exit 1
+            fi
+          fi
+          publish_one npm/eln
+
+          # 3) 구 split 설계에서 먼저 게시됐던 플랫폼 shard 5종을 deprecate(있으면). 비가역 아님(되돌림 가능).
           if [ -z "$DRY" ]; then
             for p in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
-              for i in $(seq 1 40); do
-                if npm view "elendirna-cli-$p@$VERSION" version >/dev/null 2>&1; then
-                  echo "resolved elendirna-cli-$p@$VERSION"; break
-                fi
-                echo "waiting elendirna-cli-$p@$VERSION ($i) …"; sleep 5
-              done
+              if npm deprecate "elendirna-cli-$p@$VERSION" \
+                   "unused prerelease distribution shard — install 'elendirna' (binaries are bundled)" 2>/dev/null; then
+                echo "deprecated elendirna-cli-$p@$VERSION"
+              else
+                echo "skip deprecate elendirna-cli-$p (미게시 또는 권한 없음)"
+              fi
             done
           fi
-
-          # 3) main → alias.
-          publish_one npm/elendirna
-          publish_one npm/eln

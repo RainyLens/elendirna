@@ -14,13 +14,14 @@ Elendirna는 ELF(Eli's Lab Framework)에서 영감을 받은 독립 프로젝트
 
 ```bash
 npx -y elendirna --help    # one-off, no install
-npm i -g elendirna         # global — provides both `elendirna` and `eln`
+npm i -g elendirna         # global — the `elendirna` command
 ```
 
-The npm package is a thin Node launcher; the `elf` binary ships per-platform via
-`optionalDependencies` (`elendirna-cli-<os>-<cpu>`) — no `postinstall` script and
-no run-time network. Supported: linux / macOS / Windows × x64 / arm64. Linux
-targets glibc ≥ 2.35; on musl/Alpine use the cargo path below.
+The npm package bundles prebuilt `elf` binaries for all supported platforms and a
+thin Node launcher that picks the right one at run time — no `postinstall` script
+and no install/run-time network. Supported: linux / macOS / Windows × x64 / arm64.
+Linux targets glibc ≥ 2.35; on musl/Alpine use the cargo path below. (`npx eln` /
+`npm i -g eln` install the `eln` alias of the same tool.)
 
 ### Cargo (crates.io)
 
