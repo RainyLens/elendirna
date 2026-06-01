@@ -402,6 +402,71 @@ impl ElfMcpServer {
         let _ = crate::vault::util::append_audit_event(&self.launch_resolution.path, &event);
     }
 
+    /// 대상 vault가 이 서버가 **서비스하도록 선언한 vault 집합**에 속하는지 ([[N0115]] P2#4).
+    ///
+    /// 현재 선언 집합 = launch vault 단일(HTTP 서버 기본은 'local' 하나 — `vault='local'`은
+    /// launch로 매핑됨). **확장 지점**: 미래에 서버 launch 옵션/옵션 파일이 추가 vault(alias+경로)를
+    /// 명시 선언하면 이 술어가 그 집합으로 넓어진다. 서버 설정에 명시적으로 지정된 vault 노출은
+    /// operator opt-in이므로 누출이 아니다 — 막아야 할 것은 *선언되지 않은* host-global vault나
+    /// 임의 host alias로의 피벗뿐. (빈 vault 자동 init 아이디어도 이 "서버가 1개 이상의 vault를
+    /// 명백히 가진다" 전제와 같은 계보 — [[N0116]].)
+    ///
+    /// 비교는 canonical path — launch path는 비-canonical일 수 있고 alias/'global' 해석은
+    /// canonical을 내므로, 같은 vault를 다른 addressing으로 가리켜도 통과해야 한다(addressing 무관).
+    fn is_served_vault(&self, res: &VaultResolution) -> bool {
+        // canonicalize 실패(존재하지 않는 등)는 normalize fallback — 둘 다 실존 vault root라 정상 경로.
+        let to_canon = |p: std::path::PathBuf| -> std::path::PathBuf {
+            let n = crate::vault::normalize_vault_root(p);
+            n.canonicalize().unwrap_or(n)
+        };
+        to_canon(res.path.clone()) == to_canon(self.launch_resolution.path.clone())
+    }
+
+    /// HTTP MCP transport 호출을 서버가 선언한 vault 집합(`is_served_vault`)으로 confine한다
+    /// ([[N0115]] findings P2#4). HTTP(`/mcp`)는 노출 가능 표면이므로 호출자가 `vault=` 파라미터나
+    /// `session_start(vault=..)`로 **선언되지 않은** vault(host-global/임의 alias)에 피벗하지 못하게
+    /// 막는다 — **인증 여부 무관**(키 인증·익명 loopback 모두).
+    ///
+    /// stdio(`is_http=false`)는 의도적으로 **미적용**: in-process 로컬 신뢰 경계이고, 문서화된
+    /// multi-vault UX(Claude Desktop `session_start(vault='local'|'global')`, `get_info`
+    /// instructions)가 cross-vault 전환에 의존한다. stdio는 네트워크 표면이 아니라 confine 동인이
+    /// 없다 — 여기를 "막아야 할 구멍"으로 오인해 제한하면 그 UX가 깨진다.
+    ///
+    /// `key_id`는 audit용(키 인증=Some, 익명=None).
+    fn ensure_vault_confined(
+        &self,
+        is_http: bool,
+        key_id: Option<&str>,
+        session_id: &str,
+        res: &VaultResolution,
+    ) -> Result<(), ErrorData> {
+        if !is_http || self.is_served_vault(res) {
+            return Ok(());
+        }
+        self.audit_scope_denied(session_id, key_id, &res.path);
+        Err(ErrorData::new(
+            rmcp::model::ErrorCode(-32001),
+            "MCP HTTP transport is confined to the vault(s) this server declares — undeclared cross-vault access denied",
+            None,
+        ))
+    }
+
+    /// cross-vault 피벗 거부를 audit.jsonl에 기록 ([[N0104]] identity 축 — `scope_denied`
+    /// outcome). 막힌 시도는 외부 노출 시 가장 보고 싶은 이벤트라 흔적을 남긴다. 거부는 vault 해석
+    /// 결과(launch 밖)에 대한 것이므로 `audit_auth_failure`와 같이 launch vault에 기록. best-effort.
+    fn audit_scope_denied(&self, session_id: &str, key_id: Option<&str>, attempted: &std::path::Path) {
+        let event = serde_json::json!({
+            "ts": chrono::Local::now().to_rfc3339(),
+            "event": "audit",
+            "outcome": "scope_denied",
+            "reason": "cross_vault",
+            "key_id": key_id,
+            "attempted_vault": attempted.to_string_lossy(),
+            "session_id": session_id,
+        });
+        let _ = crate::vault::util::append_audit_event(&self.launch_resolution.path, &event);
+    }
+
     /// Handler 응답에 `vault_meta` 키 그룹을 merge한다 (어댑터 공통 책임).
     fn merge_vault_meta(&self, result: &mut serde_json::Value, res: &VaultResolution) {
         if let Some(map) = result.as_object_mut() {
@@ -576,6 +641,7 @@ impl ElfMcpServer {
         name: &str,
         mut args: serde_json::Value,
         ctx: eln_plugin_sdk::CallContext,
+        is_http: bool,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
         use eln_plugin_sdk::Permissions;
         let descriptor = self
@@ -595,6 +661,10 @@ impl ElfMcpServer {
             .remove("vault")
             .and_then(|v| v.as_str().map(String::from));
         let res = self.resolve_tool_vault(vault_alias)?;
+
+        // vault confine ([[N0115]] P2#4) — HTTP 호출은 launch vault만. resolved res 기준이라
+        // 직접 vault= 파라미터와 session_start로 박힌 local_vault 피벗을 모두 차단.
+        self.ensure_vault_confined(is_http, ctx.key_id.as_deref(), &ctx.session_id, &res)?;
 
         // write 권한 + confirm gate (vault origin axis — handler 도달 전 가드)
         let is_write = descriptor
@@ -717,7 +787,7 @@ impl ElfMcpServer {
         // session_start은 dispatch_tool을 우회하므로 auth gate를 여기서 직접 적용한다 —
         // 그러지 않으면 auth 모드에서 미인증 호출자가 entry_count/recent_sessions(vault data)를
         // 읽을 수 있다([[N0115]] — session_start도 vault-data 반환 경로).
-        self.authorize(parts)?;
+        let (_, _, key_id) = self.authorize(parts)?;
         let vault = args
             .as_object()
             .and_then(|m| m.get("vault"))
@@ -727,6 +797,16 @@ impl ElfMcpServer {
             .and_then(|parts| parts.headers.get("mcp-session-id"))
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
+        // vault confine ([[N0115]] P2#4): session_start_impl이 dispatch_tool을 우회해 target
+        // vault data(entry_count/recent_sessions)를 직접 반환하므로 독립 게이트. 상태 mutate 전,
+        // vault= 파라미터가 다른 vault를 가리키면 HTTP 호출은 거부. 무파라미터는 launch로 풀려 통과.
+        if parts.is_some()
+            && let Some(alias) = vault.as_deref()
+        {
+            let target = self.resolve_named_vault(alias)?;
+            let audit_sid = http_session_id.as_deref().unwrap_or("");
+            self.ensure_vault_confined(true, key_id.as_deref(), audit_sid, &target)?;
+        }
         let value = self.session_start_impl(SessionStartParams { vault }, http_session_id)?;
         Ok(rmcp::model::CallToolResult::structured(value))
     }
@@ -944,7 +1024,9 @@ impl ServerHandler for ElfMcpServer {
         }
         // 권한/identity 유도(Bearer 등)는 RequestContext에서 1회 — dispatch는 CallContext만 받음.
         let call_ctx = self.build_call_context(&context)?;
-        self.dispatch_tool(name.as_ref(), args, call_ctx).await
+        // transport 축([[N0115]] P2#4): Parts 존재 = HTTP, 부재 = stdio. vault confine 게이트용.
+        let is_http = context.extensions.get::<::http::request::Parts>().is_some();
+        self.dispatch_tool(name.as_ref(), args, call_ctx, is_http).await
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -1108,6 +1190,45 @@ mod tests {
     fn ensure_vault_root_rejects_non_vault_path() {
         let dir = tempfile::tempdir().unwrap();
         assert!(ElfMcpServer::ensure_vault_root(dir.path().to_path_buf(), "bad").is_err());
+    }
+
+    /// [[N0115]] P2#4 — HTTP 호출은 launch vault로 confine, stdio는 무제한.
+    #[test]
+    fn vault_confine_blocks_http_cross_vault_only() {
+        let launch = temp_vault("launch");
+        let other = temp_vault("other");
+        let server = ElfMcpServer::new(VaultResolution {
+            path: launch.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        });
+        // resolve_named_vault가 만드는 것과 같은 canonical 형태로 구성.
+        let res_launch = VaultResolution {
+            path: canonical(launch.path()),
+            // 다른 addressing(Alias)으로 같은 vault를 가리켜도 통과해야 함 (canonical 비교).
+            origin: VaultOrigin::Alias("launch".to_string()),
+        };
+        let res_other = VaultResolution {
+            path: canonical(other.path()),
+            origin: VaultOrigin::ExplicitGlobal,
+        };
+
+        // HTTP + 같은 vault(다른 origin) → 통과.
+        assert!(
+            server
+                .ensure_vault_confined(true, Some("k_x"), "sid", &res_launch)
+                .is_ok(),
+            "같은 vault는 addressing 무관 통과"
+        );
+        // HTTP + 다른 vault → 거부.
+        let denied = server.ensure_vault_confined(true, Some("k_x"), "sid", &res_other);
+        assert!(denied.is_err(), "HTTP cross-vault 피벗은 거부");
+        // stdio(is_http=false) + 다른 vault → 통과 (로컬 신뢰 경계, multi-vault UX 유지).
+        assert!(
+            server
+                .ensure_vault_confined(false, None, "sid", &res_other)
+                .is_ok(),
+            "stdio는 confine 미적용"
+        );
     }
 
     #[test]
