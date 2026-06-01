@@ -159,6 +159,7 @@ mod init {
         run(args).unwrap();
         let content = std::fs::read_to_string(dir.path().join(".gitignore")).unwrap();
         assert!(content.contains(".elendirna/index.sqlite"));
+        assert!(content.contains(".elendirna/audit.jsonl"));
         assert!(content.contains("target/"));
     }
 
