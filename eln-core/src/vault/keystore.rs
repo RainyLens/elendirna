@@ -198,12 +198,14 @@ impl KeyRegistry {
         Self { by_hash }
     }
 
-    /// keys.toml에서 활성 키만 로드. 파일 부재/파싱 실패 시 빈 registry.
-    pub fn load_from_disk() -> Self {
-        match load_file() {
-            Ok(store) => Self::from_records(store.keys),
-            Err(_) => Self::empty(),
-        }
+    /// keys.toml에서 활성 키만 로드. **파일 부재**는 미초기화(빈 registry)로 정상 처리하나
+    /// (`load_file`이 부재를 `Ok(default)`로 줌), 파일이 **존재하나 읽기/파싱 실패**면 `Err`를
+    /// 전파한다(fail-closed). 손상/권한 오류를 빈 registry로 삼키면 보호되던 배포가 무인증
+    /// anonymous READ로 강등되므로([[N0115]] findings P2#3) — "부재=익명 허용"과
+    /// "존재하나 깨짐=기동 거부"를 가른다.
+    pub fn load_from_disk() -> Result<Self, ElfError> {
+        let store = load_file()?;
+        Ok(Self::from_records(store.keys))
     }
 
     /// 활성 키가 하나라도 있으면 true = "auth 초기화됨" 상태.

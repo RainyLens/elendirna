@@ -79,7 +79,15 @@ pub fn build_app_with_registry(
 /// - `/`   : 임베드된 휴먼 뷰어 FE.
 pub async fn run_http(resolution: VaultResolution, addr: SocketAddr) -> anyhow::Result<()> {
     // keystore를 1회 로드 — 활성 키 존재 = auth 초기화됨([[N0115]] 게이팅 모델).
-    let key_registry = Arc::new(KeyRegistry::load_from_disk());
+    // 파일이 존재하나 손상/권한 오류면 기동 거부(fail-closed) — 빈 registry로 삼켜 무인증
+    // 강등되는 것을 막는다([[N0115]] findings P2#3). 파일 부재는 정상(익명 미초기화).
+    let key_registry = Arc::new(KeyRegistry::load_from_disk().map_err(|e| {
+        anyhow::anyhow!(
+            "keys.toml 로드 실패({e}). 파일이 존재하나 파싱/접근에 실패했습니다 — \
+             손상된 keystore로 무인증 강등되는 것을 막기 위해 기동을 거부합니다. \
+             ~/.elendirna/keys.toml의 손상/권한을 확인하세요."
+        )
+    })?);
     let auth_initialized = key_registry.is_initialized();
 
     // 외부 노출(non-loopback bind) 의도인데 auth 미초기화 → 익명 노출 거부 + first-run init 안내.
