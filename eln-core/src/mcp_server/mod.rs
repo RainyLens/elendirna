@@ -422,17 +422,19 @@ impl ElfMcpServer {
         to_canon(res.path.clone()) == to_canon(self.launch_resolution.path.clone())
     }
 
-    /// HTTP MCP transport 호출을 서버가 선언한 vault 집합(`is_served_vault`)으로 confine한다
-    /// ([[N0115]] findings P2#4). HTTP(`/mcp`)는 노출 가능 표면이므로 호출자가 `vault=` 파라미터나
-    /// `session_start(vault=..)`로 **선언되지 않은** vault(host-global/임의 alias)에 피벗하지 못하게
-    /// 막는다 — **인증 여부 무관**(키 인증·익명 loopback 모두).
+    /// **모든** MCP 호출(transport 무관)을 서버가 선언한 vault 집합(`is_served_vault`)으로
+    /// confine한다 ([[N0115]] findings P2#4). 호출자가 `vault=` 파라미터나 `session_start(vault=..)`로
+    /// **선언되지 않은** vault(host-global/임의 alias)에 피벗하면 거부 — 인증 여부·transport 무관.
     ///
-    /// stdio(`is_http=false`)는 의도적으로 **미적용**: in-process 로컬 신뢰 경계이고, 문서화된
-    /// multi-vault UX(Claude Desktop `session_start(vault='local'|'global')`, `get_info`
-    /// instructions)가 cross-vault 전환에 의존한다. stdio는 네트워크 표면이 아니라 confine 동인이
-    /// 없다 — 여기를 "막아야 할 구멍"으로 오인해 제한하면 그 UX가 깨진다.
+    /// stdio도 예외를 두지 않는다(사용자 결정, 견고함 우선): "MCP 서버는 띄울 때 선언한 것만
+    /// 서비스한다"는 단일 규칙이 transport 예외보다 견고하고 설명 가능하다. cross-vault는 MCP 서버의
+    /// ad-hoc 피벗이 아니라 **명시적 경로**로만 처리한다 — (1) elf CLI(로컬 배전판), (2) 대상 vault용
+    /// 서버를 따로 띄움, (3) [미래] 엔트리 tree import(transplant/분재, [[N0064]]). vault 공유는 로컬 PC
+    /// 환경의 일이지 web Claude/GPT가 물린 HTTP MCP 서버가 관할할 표면이 아니다. (일반 사용자 "왜
+    /// MCP와 CLI가 scope가 다른가" → CLI는 사용자가 직접 vault를 고르는 행위, 서버는 선언분만.)
     ///
-    /// `key_id`는 audit용(키 인증=Some, 익명=None).
+    /// `is_http`는 거부 메시지 tailoring용(게이트 판정엔 무관) — stdio(로컬 사용자 곁)는 CLI 사용을
+    /// 추천한다. `key_id`는 audit용(키 인증=Some, 익명=None).
     fn ensure_vault_confined(
         &self,
         is_http: bool,
@@ -440,13 +442,20 @@ impl ElfMcpServer {
         session_id: &str,
         res: &VaultResolution,
     ) -> Result<(), ErrorData> {
-        if !is_http || self.is_served_vault(res) {
+        if self.is_served_vault(res) {
             return Ok(());
         }
         self.audit_scope_denied(session_id, key_id, &res.path);
+        // stdio는 로컬 사용자 곁이라 CLI를 권한다(사용자 요청 affordance). HTTP(원격)는 CLI 접근이
+        // 없을 수 있으므로 대상 vault용 서버 안내.
+        let remedy = if is_http {
+            "이 서버는 선언된 vault만 서비스합니다 — 대상 vault용 서버를 따로 띄우세요"
+        } else {
+            "cross-vault 작업은 elf CLI를 사용하거나 대상 vault용 서버를 따로 띄우세요"
+        };
         Err(ErrorData::new(
             rmcp::model::ErrorCode(-32001),
-            "MCP HTTP transport is confined to the vault(s) this server declares — undeclared cross-vault access denied",
+            format!("MCP 서버가 선언하지 않은 vault로의 접근은 거부됩니다. {remedy}."),
             None,
         ))
     }
@@ -662,8 +671,8 @@ impl ElfMcpServer {
             .and_then(|v| v.as_str().map(String::from));
         let res = self.resolve_tool_vault(vault_alias)?;
 
-        // vault confine ([[N0115]] P2#4) — HTTP 호출은 launch vault만. resolved res 기준이라
-        // 직접 vault= 파라미터와 session_start로 박힌 local_vault 피벗을 모두 차단.
+        // vault confine ([[N0115]] P2#4) — MCP 호출(transport 무관)은 선언된 vault만. resolved res
+        // 기준이라 직접 vault= 파라미터와 session_start로 박힌 local_vault 피벗을 모두 차단.
         self.ensure_vault_confined(is_http, ctx.key_id.as_deref(), &ctx.session_id, &res)?;
 
         // write 권한 + confirm gate (vault origin axis — handler 도달 전 가드)
@@ -798,14 +807,12 @@ impl ElfMcpServer {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
         // vault confine ([[N0115]] P2#4): session_start_impl이 dispatch_tool을 우회해 target
-        // vault data(entry_count/recent_sessions)를 직접 반환하므로 독립 게이트. 상태 mutate 전,
-        // vault= 파라미터가 다른 vault를 가리키면 HTTP 호출은 거부. 무파라미터는 launch로 풀려 통과.
-        if parts.is_some()
-            && let Some(alias) = vault.as_deref()
-        {
+        // vault data(entry_count/recent_sessions)를 직접 반환하므로 독립 게이트. transport 무관 —
+        // stdio도 선언 밖 vault면 거부. 상태 mutate 전 검사. 무파라미터는 launch로 풀려 통과.
+        if let Some(alias) = vault.as_deref() {
             let target = self.resolve_named_vault(alias)?;
             let audit_sid = http_session_id.as_deref().unwrap_or("");
-            self.ensure_vault_confined(true, key_id.as_deref(), audit_sid, &target)?;
+            self.ensure_vault_confined(parts.is_some(), key_id.as_deref(), audit_sid, &target)?;
         }
         let value = self.session_start_impl(SessionStartParams { vault }, http_session_id)?;
         Ok(rmcp::model::CallToolResult::structured(value))
@@ -883,9 +890,9 @@ impl ElfMcpServer {
             return Ok(result);
         }
         let hint = if is_global {
-            "현재 글로벌 vault가 활성화되어 있습니다. 로컬 프로젝트 vault를 참조하려면 session_start(vault='local') 또는 도구 호출 시 vault 파라미터를 지정하세요."
+            "현재 글로벌 vault가 활성화되어 있습니다. 이 서버는 이 vault를 서비스합니다 — 다른 vault는 해당 vault용 서버를 따로 띄우거나 elf CLI를 사용하세요(선언 밖 vault 접근은 거부됩니다)."
         } else {
-            "현재 로컬 vault가 활성화되어 있습니다. 글로벌 vault를 참조하려면 session_start(vault='global') 또는 도구 호출 시 vault='global'을 지정하세요."
+            "현재 로컬 vault가 활성화되어 있습니다. 이 서버는 이 vault를 서비스합니다 — global 등 다른 vault는 해당 vault용 서버를 따로 띄우거나 elf CLI를 사용하세요(선언 밖 vault 접근은 거부됩니다)."
         };
         let mut result = serde_json::json!({
             "ok": true,
@@ -1024,7 +1031,8 @@ impl ServerHandler for ElfMcpServer {
         }
         // 권한/identity 유도(Bearer 등)는 RequestContext에서 1회 — dispatch는 CallContext만 받음.
         let call_ctx = self.build_call_context(&context)?;
-        // transport 축([[N0115]] P2#4): Parts 존재 = HTTP, 부재 = stdio. vault confine 게이트용.
+        // Parts 존재 = HTTP(원격), 부재 = stdio(로컬). confine은 transport 무관 적용 — is_http는
+        // 거부 메시지 tailoring용([[N0115]] P2#4: stdio는 CLI 추천).
         let is_http = context.extensions.get::<::http::request::Parts>().is_some();
         self.dispatch_tool(name.as_ref(), args, call_ctx, is_http).await
     }
@@ -1055,10 +1063,10 @@ impl ServerHandler for ElfMcpServer {
                 2. query(tag=...): 작업 범위 파악\n\
                 3. bundle(id): 핵심 entry 컨텍스트 복원\n\
                 \n\
-                ## Multi-vault 지원\n\
-                - 모든 도구는 vault 파라미터를 지원합니다: 'local', 'global', 또는 alias\n\
-                - session_start(vault='local'): 세션 기본 vault 변경\n\
-                - 개별 도구에 vault를 지정하면 해당 호출에만 적용됩니다\n\
+                ## Vault scope\n\
+                - 이 서버는 띄울 때 선언한 vault만 서비스합니다 — `vault='local'`은 그 vault를 가리킵니다\n\
+                - 선언되지 않은 vault(global/임의 alias)로의 `vault=`·session_start 접근은 거부됩니다\n\
+                - cross-vault가 필요하면: 대상 vault용 서버를 따로 띄우거나 elf CLI를 사용하세요\n\
                 \n\
                 ## 세션 종료 프로토콜\n\
                 - sync_record(summary='다음 에이전트를 위한 핵심 인수인계', entries=[...]): 반드시 호출\n\
@@ -1192,9 +1200,9 @@ mod tests {
         assert!(ElfMcpServer::ensure_vault_root(dir.path().to_path_buf(), "bad").is_err());
     }
 
-    /// [[N0115]] P2#4 — HTTP 호출은 launch vault로 confine, stdio는 무제한.
+    /// [[N0115]] P2#4 — confine은 transport 무관(C 결정): 선언된 vault만 통과, stdio·HTTP 동일.
     #[test]
-    fn vault_confine_blocks_http_cross_vault_only() {
+    fn vault_confine_applies_to_all_mcp_transports() {
         let launch = temp_vault("launch");
         let other = temp_vault("other");
         let server = ElfMcpServer::new(VaultResolution {
@@ -1212,22 +1220,31 @@ mod tests {
             origin: VaultOrigin::ExplicitGlobal,
         };
 
-        // HTTP + 같은 vault(다른 origin) → 통과.
+        // 선언된 vault(launch)는 addressing 무관 통과 — transport 양쪽.
         assert!(
             server
                 .ensure_vault_confined(true, Some("k_x"), "sid", &res_launch)
                 .is_ok(),
-            "같은 vault는 addressing 무관 통과"
+            "HTTP: 선언된 vault 통과"
         );
-        // HTTP + 다른 vault → 거부.
-        let denied = server.ensure_vault_confined(true, Some("k_x"), "sid", &res_other);
-        assert!(denied.is_err(), "HTTP cross-vault 피벗은 거부");
-        // stdio(is_http=false) + 다른 vault → 통과 (로컬 신뢰 경계, multi-vault UX 유지).
+        assert!(
+            server
+                .ensure_vault_confined(false, None, "sid", &res_launch)
+                .is_ok(),
+            "stdio: 선언된 vault 통과"
+        );
+        // 선언 밖 vault는 transport 무관 거부 (stdio도 예외 없음 — C).
+        assert!(
+            server
+                .ensure_vault_confined(true, Some("k_x"), "sid", &res_other)
+                .is_err(),
+            "HTTP cross-vault 거부"
+        );
         assert!(
             server
                 .ensure_vault_confined(false, None, "sid", &res_other)
-                .is_ok(),
-            "stdio는 confine 미적용"
+                .is_err(),
+            "stdio cross-vault도 거부 (CLI-only 정책)"
         );
     }
 
