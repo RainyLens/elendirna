@@ -55,8 +55,11 @@ pub struct ElfMcpServer {
     current_session_id: std::sync::RwLock<Option<String>>,
     /// transport-level default permissions ([[N0033]] r0006 S2.4 Step 4.6).
     /// stdio = `ADMIN` (hard-code). HTTP = `READ` (외부 write 차단, S2 한정 가드).
-    /// transport-level grant derivation (ApiKey → Permissions)은 S3 scope.
+    /// auth 미초기화 HTTP의 anonymous READ fallback으로도 쓰임 — Bearer 유도(S3)는 별도.
     default_permissions: eln_plugin_sdk::Permissions,
+    /// API key registry ([[N0115]] S3a). 서버 생성 시 1회 로드되어 `Arc`로 공유.
+    /// empty = auth 미초기화(anonymous READ). 활성 키 존재 = auth 모드(Bearer 필수).
+    key_registry: std::sync::Arc<crate::vault::keystore::KeyRegistry>,
     /// 14 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
     /// session_start은 별도 dispatch path (transport-special, RequestContext 필요).
     descriptors: Vec<eln_plugin_sdk::ToolDescriptor>,
@@ -66,19 +69,29 @@ pub struct ElfMcpServer {
 
 impl ElfMcpServer {
     /// stdio transport용 server 인스턴스. `Permissions::ADMIN` 자동 부여.
+    /// stdio = 로컬 프로세스 신뢰 경계 안 → key registry는 empty (인증 무관).
     pub fn new(resolution: VaultResolution) -> Self {
-        Self::with_permissions(resolution, eln_plugin_sdk::Permissions::ADMIN)
+        Self::with_permissions(
+            resolution,
+            eln_plugin_sdk::Permissions::ADMIN,
+            std::sync::Arc::new(crate::vault::keystore::KeyRegistry::empty()),
+        )
     }
 
     /// HTTP transport용 server 인스턴스 ([[N0033]] r0006 Step 4.6).
-    /// `Permissions::READ`만 부여 — S3 ApiKey auth 도착 전까지 외부 write 차단.
-    pub fn new_http(resolution: VaultResolution) -> Self {
-        Self::with_permissions(resolution, eln_plugin_sdk::Permissions::READ)
+    /// `Permissions::READ`를 anonymous fallback으로 부여 — auth 미초기화 시 외부 write 차단.
+    /// `key_registry`는 build_app이 1회 로드해 `Arc`로 주입(매 연결 factory가 clone).
+    pub fn new_http(
+        resolution: VaultResolution,
+        key_registry: std::sync::Arc<crate::vault::keystore::KeyRegistry>,
+    ) -> Self {
+        Self::with_permissions(resolution, eln_plugin_sdk::Permissions::READ, key_registry)
     }
 
     fn with_permissions(
         resolution: VaultResolution,
         default_permissions: eln_plugin_sdk::Permissions,
+        key_registry: std::sync::Arc<crate::vault::keystore::KeyRegistry>,
     ) -> Self {
         let path = crate::vault::normalize_vault_root(resolution.path);
         Self {
@@ -90,6 +103,7 @@ impl ElfMcpServer {
             sessions: std::sync::RwLock::new(std::collections::HashMap::new()),
             current_session_id: std::sync::RwLock::new(None),
             default_permissions,
+            key_registry,
             descriptors: Self::build_descriptors(),
             prompt_router: Self::prompt_router(),
         }
@@ -257,20 +271,135 @@ impl ElfMcpServer {
     /// tool이 호출되는 경우도 있어 `unwrap_or_default()` fallback이 필요. 현재 두 handler 모두
     /// `ctx.session_id`를 사용하지 않으며, audit hook 도입 시점에 어댑터 시그니처가 갱신될 자리.
     ///
-    /// `identity`: `Identity::Human` 고정. ApiKey-derived identity는 별 phase.
-    /// `permissions`: `default_permissions` 그대로 — *transport caller capability axis*.
-    fn build_call_context(&self) -> eln_plugin_sdk::CallContext {
-        let session_id = self
-            .current_session_id
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
+    /// per-request `RequestContext`에서 CallContext(session_id / identity / permissions)를 유도한다.
+    /// session_start이 `ctx.extensions`의 `http::request::Parts`에서 `Mcp-Session-Id`를 읽는 것과
+    /// 동일한 통로를 일반 tool에도 적용 — 통로가 dispatch까지 닿게 한 것이 Phase 1 리팩토링.
+    ///
+    /// 권한/identity 유도 ([[N0115]] 게이팅 모델):
+    /// - **stdio** (HTTP Parts 부재): `default_permissions`(ADMIN) + `Human`. 로컬 신뢰 경계.
+    /// - **HTTP, auth 미초기화** (`key_registry` empty): `default_permissions`(READ) anonymous.
+    ///   loopback default 동작 보존(회귀 0).
+    /// - **HTTP, auth 초기화됨**: `Authorization: Bearer <key>` **필수**. 키 검증 →
+    ///   레코드의 identity/permissions 유도. 누락/invalid/revoked는 `-32001` reject
+    ///   (silent READ degrade 금지). "Bearer 필수" 트리거는 bind addr이 아니라 registry 상태 —
+    ///   reverse-proxy(loopback bind + 외부 도달)도 인증됨.
+    ///
+    /// `session_id`: HTTP는 per-call `Mcp-Session-Id` 우선([[N0104]] r0003 — audit source of
+    /// truth), 없으면 stdio `current_session_id`, 그것도 없으면 빈 문자열.
+    fn build_call_context(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+    ) -> Result<eln_plugin_sdk::CallContext, ErrorData> {
+        let parts = ctx.extensions.get::<::http::request::Parts>();
+
+        // session_id: HTTP per-call Mcp-Session-Id → stdio current_session_id → "".
+        let session_id = parts
+            .and_then(|p| p.headers.get("mcp-session-id"))
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .or_else(|| {
+                self.current_session_id
+                    .read()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+            })
             .unwrap_or_default();
-        eln_plugin_sdk::CallContext::new(
-            session_id,
-            eln_plugin_sdk::Identity::Human,
-            self.default_permissions,
-        )
+
+        let (identity, permissions) = self.authorize(parts)?;
+        Ok(eln_plugin_sdk::CallContext::new(
+            session_id, identity, permissions,
+        ))
+    }
+
+    /// Bearer 인증 → (identity, permissions) 유도 ([[N0115]] 게이팅 모델). **모든 vault-data
+    /// 반환 경로의 단일 auth gate** — dispatch_tool(`build_call_context` 경유)과 session_start이
+    /// 공유한다. session_start이 이 게이트를 우회하면 미인증 호출자가 entry_count/recent_sessions를
+    /// 읽을 수 있으므로(advisor catch), 두 경로 모두 여기서 막는다.
+    ///
+    /// - stdio (Parts 부재): `default_permissions`(ADMIN) + Human. 로컬 신뢰 경계.
+    /// - HTTP, auth 미초기화 (registry empty): anonymous `default_permissions`(READ). 회귀 0.
+    /// - HTTP, auth 초기화됨: `Authorization: Bearer <key>` 필수. 누락/invalid/revoked → `-32001`
+    ///   reject + auth_failed audit. 트리거는 addr이 아니라 registry 상태.
+    fn authorize(
+        &self,
+        parts: Option<&::http::request::Parts>,
+    ) -> Result<(eln_plugin_sdk::Identity, eln_plugin_sdk::Permissions), ErrorData> {
+        use eln_plugin_sdk::Identity;
+
+        // stdio (HTTP Parts 부재) → transport default(ADMIN) + Human.
+        let Some(parts) = parts else {
+            return Ok((Identity::Human, self.default_permissions));
+        };
+
+        // auth 미초기화 HTTP → anonymous, transport default(READ). loopback default 동작 보존.
+        if !self.key_registry.is_initialized() {
+            return Ok((Identity::Human, self.default_permissions));
+        }
+
+        // auth 초기화됨 → Bearer 필수.
+        let bearer = parts
+            .headers
+            .get(::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(str::trim);
+        let audit_sid = parts
+            .headers
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let Some(raw) = bearer else {
+            self.audit_auth_failure(audit_sid, "missing_bearer");
+            return Err(ErrorData::new(
+                rmcp::model::ErrorCode(-32001),
+                "missing Bearer API key (auth가 활성화된 HTTP transport)",
+                None,
+            ));
+        };
+        match self.key_registry.lookup(raw) {
+            Some(rec) => Ok((rec.identity(), rec.permissions())),
+            None => {
+                self.audit_auth_failure(audit_sid, "invalid_key");
+                Err(ErrorData::new(
+                    rmcp::model::ErrorCode(-32001),
+                    "invalid or revoked API key",
+                    None,
+                ))
+            }
+        }
+    }
+
+    /// write tool의 허용/거부를 audit.jsonl에 기록 ([[N0104]]). best-effort — 실패해도 무시.
+    fn audit_tool(
+        &self,
+        vault_root: &std::path::Path,
+        tool: &str,
+        ctx: &eln_plugin_sdk::CallContext,
+        outcome: &str,
+    ) {
+        let event = serde_json::json!({
+            "ts": chrono::Local::now().to_rfc3339(),
+            "event": "audit",
+            "tool": tool,
+            "identity": serde_json::to_value(&ctx.identity).unwrap_or(serde_json::Value::Null),
+            "permissions": ctx.permissions.bits(),
+            "outcome": outcome,
+            "session_id": ctx.session_id,
+        });
+        let _ = crate::vault::util::append_audit_event(vault_root, &event);
+    }
+
+    /// 인증 실패(Bearer 누락/invalid)를 audit.jsonl에 기록 ([[N0104]]). vault 해석 *전*이라
+    /// launch vault에 기록. best-effort.
+    fn audit_auth_failure(&self, session_id: &str, reason: &str) {
+        let event = serde_json::json!({
+            "ts": chrono::Local::now().to_rfc3339(),
+            "event": "audit",
+            "outcome": "auth_failed",
+            "reason": reason,
+            "session_id": session_id,
+        });
+        let _ = crate::vault::util::append_audit_event(&self.launch_resolution.path, &event);
     }
 
     /// Handler 응답에 `vault_meta` 키 그룹을 merge한다 (어댑터 공통 책임).
@@ -446,6 +575,7 @@ impl ElfMcpServer {
         &self,
         name: &str,
         mut args: serde_json::Value,
+        ctx: eln_plugin_sdk::CallContext,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
         use eln_plugin_sdk::Permissions;
         let descriptor = self
@@ -495,13 +625,25 @@ impl ElfMcpServer {
             serde_json::Value::String(res.path.to_string_lossy().into_owned()),
         );
 
-        // handler call
-        let ctx = self.build_call_context();
-        let mut result = descriptor
+        // handler call — CallContext는 call_tool이 RequestContext에서 빌드해 전달.
+        let call_result = descriptor
             .handler()
             .call(&ctx, serde_json::Value::Object(args_obj.clone()))
-            .await
-            .map_err(Self::map_tool_error)?;
+            .await;
+
+        // audit hook ([[N0104]]): write tool의 허용/거부를 audit.jsonl에 기록.
+        // dispatch_tool이 tool명·call_ctx(identity/perms/session)·해석된 vault·결과를 모두
+        // 가진 유일 choke point. read는 noise 회피로 생략.
+        if is_write {
+            let outcome = match &call_result {
+                Ok(_) => "allowed",
+                Err(eln_plugin_sdk::ToolError::PermissionDenied(_)) => "denied",
+                Err(_) => "error",
+            };
+            self.audit_tool(&res.path, name, &ctx, outcome);
+        }
+
+        let mut result = call_result.map_err(Self::map_tool_error)?;
 
         // vault_meta merge (어댑터 공통 책임)
         self.merge_vault_meta(&mut result, &res);
@@ -571,14 +713,17 @@ impl ElfMcpServer {
         args: serde_json::Value,
         ctx: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let parts = ctx.extensions.get::<::http::request::Parts>();
+        // session_start은 dispatch_tool을 우회하므로 auth gate를 여기서 직접 적용한다 —
+        // 그러지 않으면 auth 모드에서 미인증 호출자가 entry_count/recent_sessions(vault data)를
+        // 읽을 수 있다([[N0115]] — session_start도 vault-data 반환 경로).
+        self.authorize(parts)?;
         let vault = args
             .as_object()
             .and_then(|m| m.get("vault"))
             .and_then(|v| v.as_str())
             .map(String::from);
-        let http_session_id = ctx
-            .extensions
-            .get::<::http::request::Parts>()
+        let http_session_id = parts
             .and_then(|parts| parts.headers.get("mcp-session-id"))
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
@@ -797,7 +942,9 @@ impl ServerHandler for ElfMcpServer {
         if name.as_ref() == "session_start" {
             return self.call_session_start(args, context).await;
         }
-        self.dispatch_tool(name.as_ref(), args).await
+        // 권한/identity 유도(Bearer 등)는 RequestContext에서 1회 — dispatch는 CallContext만 받음.
+        let call_ctx = self.build_call_context(&context)?;
+        self.dispatch_tool(name.as_ref(), args, call_ctx).await
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {

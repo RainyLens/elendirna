@@ -66,6 +66,22 @@ pub fn append_sync_event(
     Ok(())
 }
 
+/// audit.jsonl에 보안 감사 이벤트 append ([[N0104]] — handover 의미의 sync.jsonl과 분리).
+///
+/// 호출자가 event(ts 포함)를 구성하고, 본 함수는 한 줄 append만. append 실패는 호출자가
+/// best-effort로 무시(`let _ =`) — audit 기록 실패가 tool 호출 자체를 막지 않는다.
+pub fn append_audit_event(vault_root: &Path, event: &serde_json::Value) -> Result<(), ElfError> {
+    let line = format!("{event}\n");
+    let path = crate::vault::metadata_root(vault_root).join("audit.jsonl");
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    file.write_all(line.as_bytes())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

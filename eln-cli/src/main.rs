@@ -60,6 +60,9 @@ enum Commands {
     /// sync.jsonl 세션 핸드오프 로그 관리 (v0.2)
     Sync(cli::sync::SyncArgs),
 
+    /// MCP 외부 노출용 API key 관리 (new / list / revoke) — N0115 S3a
+    Key(cli::key::KeyArgs),
+
     /// v1 vault를 v2 compact layout으로 이관 (v0.3)
     Migrate(cli::migrate::MigrateArgs),
 
@@ -85,6 +88,7 @@ fn main() {
         Commands::Graph(args) => cli::graph::run(args, vault_args),
         Commands::Serve(args) => cli::serve::run(args),
         Commands::Sync(args) => cli::sync::run(args, vault_args),
+        Commands::Key(args) => cli::key::run(args),
         Commands::Migrate(args) => cli::migrate::run(args),
         Commands::Help(args) => cli::help::run(args),
     };

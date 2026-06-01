@@ -163,6 +163,29 @@ fn command_surface() -> serde_json::Value {
                 ],
                 "trigger": "두 entry가 관련될 때"
             },
+            {
+                "name": "key new",
+                "about": "MCP 외부 노출용 API key 발급 (raw 키는 1회만 출력)",
+                "args": [
+                    { "name": "--label",       "required": true,  "description": "키 식별용 라벨" },
+                    { "name": "--permissions", "required": false, "description": "read | write | admin (기본 read)" },
+                    { "name": "--identity",    "required": false, "description": "agent identity 이름 (생략 시 human)" },
+                ],
+                "trigger": "HTTP transport를 외부에 노출(non-loopback)하려 할 때 — 키 없이는 노출 거부"
+            },
+            {
+                "name": "key list",
+                "about": "발급된 API key 목록 (raw 비노출 — id/메타만)",
+                "trigger": "키 id 확인 / revoke 대상 조회"
+            },
+            {
+                "name": "key revoke",
+                "about": "API key revoke",
+                "args": [
+                    { "name": "id", "required": true, "description": "revoke할 키 id (key list로 확인)" },
+                ],
+                "trigger": "키 폐기 (다음 서버 재시작부터 반영)"
+            },
         ],
         "workflow": {
             "session_start": [

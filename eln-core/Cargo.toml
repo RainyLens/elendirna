@@ -34,6 +34,8 @@ rust-embed      = { workspace = true }
 # 로컬 SDK 수정 즉시반영이 필요하면 임시로 path를 다시 붙이거나 재publish.
 eln-plugin-sdk  = "0.1.0"
 async-trait     = "0.1"
+sha2            = { workspace = true }
+rand            = { workspace = true }
 
 [dev-dependencies]
 insta       = { workspace = true }

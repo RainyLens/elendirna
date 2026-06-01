@@ -18,9 +18,11 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode};
 use eln_core::cli::init::{InitArgs, run as init_run};
-use eln_core::mcp_server::http::build_app;
+use eln_core::mcp_server::http::{build_app, build_app_with_registry};
+use eln_core::vault::keystore::{ApiKeyRecord, KeyRegistry, hash_key};
 use eln_core::vault::{VaultOrigin, VaultResolution};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
@@ -60,16 +62,30 @@ async fn post_mcp(
     rpc: Value,
     session_id: Option<&str>,
 ) -> (StatusCode, Option<String>, String, String) {
+    post_mcp_full(app, rpc, session_id, None, "localhost").await
+}
+
+/// `post_mcp`의 auth/Host 변형 — Bearer 토큰과 Host header를 명시할 수 있다 ([[N0115]] S3a).
+async fn post_mcp_full(
+    app: &axum::Router,
+    rpc: Value,
+    session_id: Option<&str>,
+    bearer: Option<&str>,
+    host: &str,
+) -> (StatusCode, Option<String>, String, String) {
     let mut builder = Request::builder()
         .method(Method::POST)
         .uri("/mcp")
         // rmcp Streamable HTTP는 default allowed_hosts에 localhost/127.0.0.1이 들어 있어
         // Host header 필수 (DNS rebinding 방어). in-process test도 명시 필요.
-        .header("host", "localhost")
+        .header("host", host)
         .header("content-type", "application/json")
         .header("accept", "application/json, text/event-stream");
     if let Some(sid) = session_id {
         builder = builder.header("mcp-session-id", sid);
+    }
+    if let Some(token) = bearer {
+        builder = builder.header("authorization", format!("Bearer {token}"));
     }
     let req = builder
         .body(Body::from(rpc.to_string()))
@@ -443,4 +459,215 @@ async fn http_smoke_global_fallback_initialize_health_and_entry_list() {
         Some(true),
         "entry_list ok=true (READ 통과): {inner}"
     );
+}
+
+/// READ|WRITE 권한 키 하나를 가진 registry (디스크/USERPROFILE 없이 주입).
+fn write_key_registry(raw: &str) -> KeyRegistry {
+    KeyRegistry::from_records(vec![ApiKeyRecord {
+        id: "k_test".into(),
+        key_hash: hash_key(raw),
+        identity: "claude".into(),
+        permission_bits: 0b011, // READ | WRITE
+        label: "test".into(),
+        created: "2026-01-01T00:00:00+09:00".into(),
+        revoked_at: None,
+    }])
+}
+
+fn key_record(id: &str, raw: &str, bits: u32) -> ApiKeyRecord {
+    ApiKeyRecord {
+        id: id.into(),
+        key_hash: hash_key(raw),
+        identity: "claude".into(),
+        permission_bits: bits,
+        label: "test".into(),
+        created: "2026-01-01T00:00:00+09:00".into(),
+        revoked_at: None,
+    }
+}
+
+/// MCP 핸드셰이크(initialize + initialized) → sid 반환. tools/call만 build_call_context의
+/// auth gate를 타므로 핸드셰이크 자체엔 Bearer가 필요 없다.
+async fn handshake(app: &axum::Router, host: &str) -> String {
+    let initialize = json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": { "name": "http-auth", "version": "0.0.0" }
+        }
+    });
+    let (status, sid, _, body) = post_mcp_full(app, initialize, None, None, host).await;
+    assert_eq!(status, StatusCode::OK, "initialize (body={body})");
+    let sid = sid.expect("Mcp-Session-Id on initialize");
+    let initialized = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
+    let _ = post_mcp_full(app, initialized, Some(&sid), None, host).await;
+    sid
+}
+
+/// [[N0115]] S3a — auth 모드(registry 초기화됨): `/mcp`는 Bearer 필수 + per-request 권한 유도,
+/// 그러나 `/api`는 여전히 loopback host_guard로 잠겨 외부 노출 안 됨(route scope).
+#[tokio::test]
+async fn http_smoke_auth_mode_bearer_gates_and_api_stays_loopback() {
+    let dir = setup_vault();
+    let raw = "eln_testwritekey0000000000000000000000000000000000000000000000";
+    let app = build_app_with_registry(
+        VaultResolution {
+            path: dir.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        },
+        Arc::new(write_key_registry(raw)),
+    );
+
+    // auth 모드에선 /mcp가 non-loopback Host도 수락(disable_allowed_hosts) — Bearer가 게이트.
+    let sid = handshake(&app, "elf.example.com").await;
+
+    // (d) Bearer 누락 → tools/call 거절 (-32001 missing). auth 모드는 anonymous READ도 불허.
+    let entry_list = json!({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": { "name": "entry_list", "arguments": {} }
+    });
+    let (_, _, ct, body) =
+        post_mcp_full(&app, entry_list.clone(), Some(&sid), None, "elf.example.com").await;
+    let payload = parse_rpc_payload(&body, &ct);
+    assert_eq!(
+        payload["error"]["code"].as_i64(),
+        Some(-32001),
+        "Bearer 누락은 auth 모드에서 거절돼야 함: {payload}"
+    );
+
+    // (d2) invalid Bearer → -32001.
+    let (_, _, ct, body) = post_mcp_full(
+        &app,
+        entry_list,
+        Some(&sid),
+        Some("eln_wrongkey"),
+        "elf.example.com",
+    )
+    .await;
+    let payload = parse_rpc_payload(&body, &ct);
+    assert_eq!(
+        payload["error"]["code"].as_i64(),
+        Some(-32001),
+        "invalid key 거절: {payload}"
+    );
+
+    // session_start은 dispatch_tool을 우회하지만 vault data(entry_count/recent_sessions)를
+    // 반환하므로 auth 모드에서 Bearer 없이는 거절돼야 한다 (advisor catch).
+    let session_start = json!({
+        "jsonrpc": "2.0", "id": 10, "method": "tools/call",
+        "params": { "name": "session_start", "arguments": {} }
+    });
+    let (_, _, ct, body) =
+        post_mcp_full(&app, session_start.clone(), Some(&sid), None, "elf.example.com").await;
+    let payload = parse_rpc_payload(&body, &ct);
+    assert_eq!(
+        payload["error"]["code"].as_i64(),
+        Some(-32001),
+        "session_start Bearer 누락 거절 (vault data 누출 차단): {payload}"
+    );
+    // 유효 키로는 session_start 통과.
+    let (status, _, ct, body) =
+        post_mcp_full(&app, session_start, Some(&sid), Some(raw), "elf.example.com").await;
+    assert_eq!(status, StatusCode::OK);
+    let payload = parse_rpc_payload(&body, &ct);
+    assert!(
+        payload["error"].is_null(),
+        "유효 키 session_start 성공: {payload}"
+    );
+
+    // (c) 유효한 WRITE Bearer → entry_new 성공 (permission gate 통과 + identity/perms 유도).
+    let entry_new = json!({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": { "name": "entry_new", "arguments": { "title": "auth-write-ok" } }
+    });
+    let (status, _, ct, body) =
+        post_mcp_full(&app, entry_new, Some(&sid), Some(raw), "elf.example.com").await;
+    assert_eq!(status, StatusCode::OK);
+    let payload = parse_rpc_payload(&body, &ct);
+    assert!(
+        payload["error"].is_null(),
+        "유효 WRITE 키로 entry_new 성공해야 함: {payload}"
+    );
+    assert!(payload["result"].is_object(), "entry_new result: {payload}");
+
+    // (e) route scope: auth 모드여도 /api는 non-loopback Host를 host_guard로 거절.
+    //     `/mcp` allowed_hosts 완화가 `/api`로 새지 않음을 잠금.
+    let evil = Request::builder()
+        .method(Method::GET)
+        .uri("/api/health")
+        .header("host", "evil.example.com")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(evil).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "/api는 auth 모드에서도 loopback-only (host_guard 불변)"
+    );
+
+    // /api는 loopback Host로는 정상.
+    let ok = Request::builder()
+        .method(Method::GET)
+        .uri("/api/health")
+        .header("host", "localhost")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(ok).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "/api loopback 정상");
+}
+
+/// [[N0104]] — audit.jsonl이 allowed / denied / auth_failed 3 outcome을 기록하는지.
+#[tokio::test]
+async fn http_smoke_audit_log_records_outcomes() {
+    let dir = setup_vault();
+    let write_raw = "eln_writekey00000000000000000000000000000000000000000000000000";
+    let read_raw = "eln_readkey000000000000000000000000000000000000000000000000000";
+    let app = build_app_with_registry(
+        VaultResolution {
+            path: dir.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        },
+        Arc::new(KeyRegistry::from_records(vec![
+            key_record("k_write", write_raw, 0b011), // READ|WRITE
+            key_record("k_read", read_raw, 0b001),   // READ only
+        ])),
+    );
+    let sid = handshake(&app, "localhost").await;
+
+    let entry_new = |id: i64, title: &str| {
+        json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": "entry_new", "arguments": { "title": title } }
+        })
+    };
+
+    // allowed: WRITE 키로 entry_new.
+    let _ = post_mcp_full(&app, entry_new(2, "ok"), Some(&sid), Some(write_raw), "localhost").await;
+    // denied: READ 키로 entry_new (handler ctx.permissions gate).
+    let _ = post_mcp_full(&app, entry_new(3, "nope"), Some(&sid), Some(read_raw), "localhost").await;
+    // auth_failed: Bearer 누락.
+    let _ = post_mcp_full(&app, entry_new(4, "noauth"), Some(&sid), None, "localhost").await;
+
+    let audit_path = dir.path().join(".elendirna").join("audit.jsonl");
+    let log = std::fs::read_to_string(&audit_path).expect("audit.jsonl written");
+    let outcomes: Vec<String> = log
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|v| v["outcome"].as_str().map(str::to_string))
+        .collect();
+    assert!(outcomes.contains(&"allowed".to_string()), "audit allowed: {outcomes:?}");
+    assert!(outcomes.contains(&"denied".to_string()), "audit denied: {outcomes:?}");
+    assert!(
+        outcomes.contains(&"auth_failed".to_string()),
+        "audit auth_failed: {outcomes:?}"
+    );
+    // tool 식별 + identity 직렬화 확인 (allowed 라인).
+    let allowed_line = log
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["outcome"] == "allowed")
+        .expect("allowed line");
+    assert_eq!(allowed_line["tool"], "entry_new");
+    assert_eq!(allowed_line["identity"]["kind"], "agent");
 }

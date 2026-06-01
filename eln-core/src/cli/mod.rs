@@ -3,6 +3,7 @@ pub mod entry;
 pub mod graph;
 pub mod help;
 pub mod init;
+pub mod key;
 pub mod link;
 pub mod migrate;
 pub mod query;

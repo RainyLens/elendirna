@@ -37,6 +37,8 @@ pulldown-cmark = { version = "0.10", default-features = false }
 rust-embed  = { version = "8", features = ["mime-guess"] }
 bitflags    = "2"
 async-trait = "0.1"
+sha2        = "0.10"
+rand        = "0.10"
 
 insta       = { version = "1", features = ["toml"] }
 tempfile    = "3"

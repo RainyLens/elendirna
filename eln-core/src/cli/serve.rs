@@ -216,13 +216,18 @@ fn print_mcp_snippet_stdio(vault_path: Option<&std::path::Path>) {
 
 /// `elf serve --transport http` (--mcp 없이) 호출 시 HTTP transport용 안내 snippet.
 /// Streamable HTTP MCP endpoint (`/mcp`) + 휴먼 백엔드 (`/api/health`) 위치 안내,
-/// curl smoke 예제, S2 한정 READ-only 가드 명시.
+/// curl smoke 예제, auth 게이팅 안내.
 fn print_mcp_snippet_http(vault_path: Option<&std::path::Path>, addr: &str) {
     let elf_bin = resolve_elf_bin();
     let vault_str = resolve_vault_display(vault_path);
 
     println!("# Elendirna MCP 서버 설정 snippet (Streamable HTTP transport)");
-    println!("# S2 한정: HTTP transport는 READ-only — 외부 write는 S3 ApiKey auth 도착 후.\n");
+    println!(
+        "# auth: 키 미발급이면 loopback 익명 READ-only. 외부 노출(non-loopback)은 `elf key new`로"
+    );
+    println!(
+        "#       키 발급 후 가능 — 키가 있으면 `/mcp`는 `Authorization: Bearer <key>` 필수.\n"
+    );
     println!("# 1) 서버 기동:");
     println!("#    {elf_bin} serve --mcp --transport http --addr {addr} --vault {vault_str}\n");
     println!("# 2) curl smoke — initialize:");
