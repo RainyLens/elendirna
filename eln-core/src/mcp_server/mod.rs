@@ -1231,6 +1231,66 @@ mod tests {
         );
     }
 
+    /// [[N0115]] P2#4 — 술어가 아니라 **실제 dispatch_tool 경로**로 confine이 발화하는지 검증.
+    /// 세션-state 피벗(prior session_start(vault=..)로 박힌 local_vault) 시나리오를 직접 주입해,
+    /// 무파라미터 호출이 launch 밖으로 풀릴 때 HTTP(`is_http=true`)면 -32001 거부 + scope_denied
+    /// audit이 launch vault에 기록되는지 확인 (배선 검증).
+    #[test]
+    fn dispatch_tool_confines_http_session_pivot() {
+        let launch = temp_vault("launch");
+        let other = temp_vault("other");
+        let server = ElfMcpServer::new(VaultResolution {
+            path: launch.path().to_path_buf(),
+            origin: VaultOrigin::ExplicitPath,
+        });
+        // 세션-state 피벗: local_vault를 launch 밖 vault(other)로 박는다 (resolve_tool_vault(None)이
+        // 이 값을 우선 반환 → 무파라미터 호출도 other로 풀림).
+        let sid = "pivot-session".to_string();
+        server.sessions.write().unwrap().insert(
+            sid.clone(),
+            crate::mcp_server::SessionState {
+                local_vault: Some(VaultResolution {
+                    path: canonical(other.path()),
+                    origin: VaultOrigin::CwdSearch,
+                }),
+            },
+        );
+        *server.current_session_id.write().unwrap() = Some(sid.clone());
+
+        let ctx = eln_plugin_sdk::CallContext::new(
+            sid.clone(),
+            eln_plugin_sdk::Identity::Human,
+            eln_plugin_sdk::Permissions::READ,
+        )
+        .with_key_id(Some("k_pivot".to_string()));
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // HTTP(is_http=true): 무파라미터 entry_list가 other로 풀려 confine이 거부.
+        let denied = rt.block_on(server.dispatch_tool(
+            "entry_list",
+            serde_json::json!({}),
+            ctx,
+            true,
+        ));
+        let err = denied.expect_err("HTTP cross-vault 피벗은 dispatch에서 거부되어야 함");
+        assert_eq!(err.code.0, -32001, "confine 거부 코드");
+
+        // scope_denied audit이 launch vault(키의 집)에 기록.
+        let audit = std::fs::read_to_string(launch.path().join(".elendirna").join("audit.jsonl"))
+            .expect("audit.jsonl 기록됨");
+        assert!(
+            audit.lines().any(|l| {
+                serde_json::from_str::<serde_json::Value>(l)
+                    .map(|v| v["outcome"] == "scope_denied" && v["key_id"] == "k_pivot")
+                    .unwrap_or(false)
+            }),
+            "scope_denied 라인 + key_id: {audit}"
+        );
+    }
+
     #[test]
     fn write_guard_requires_confirm_for_implicit_global_origins() {
         let temp = tempfile::tempdir().unwrap();
