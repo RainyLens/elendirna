@@ -305,10 +305,8 @@ impl ElfMcpServer {
             })
             .unwrap_or_default();
 
-        let (identity, permissions) = self.authorize(parts)?;
-        Ok(eln_plugin_sdk::CallContext::new(
-            session_id, identity, permissions,
-        ))
+        let (identity, permissions, key_id) = self.authorize(parts)?;
+        Ok(eln_plugin_sdk::CallContext::new(session_id, identity, permissions).with_key_id(key_id))
     }
 
     /// Bearer 인증 → (identity, permissions) 유도 ([[N0115]] 게이팅 모델). **모든 vault-data
@@ -323,17 +321,18 @@ impl ElfMcpServer {
     fn authorize(
         &self,
         parts: Option<&::http::request::Parts>,
-    ) -> Result<(eln_plugin_sdk::Identity, eln_plugin_sdk::Permissions), ErrorData> {
+    ) -> Result<(eln_plugin_sdk::Identity, eln_plugin_sdk::Permissions, Option<String>), ErrorData>
+    {
         use eln_plugin_sdk::Identity;
 
         // stdio (HTTP Parts 부재) → transport default(ADMIN) + Human.
         let Some(parts) = parts else {
-            return Ok((Identity::Human, self.default_permissions));
+            return Ok((Identity::Human, self.default_permissions, None));
         };
 
         // auth 미초기화 HTTP → anonymous, transport default(READ). loopback default 동작 보존.
         if !self.key_registry.is_initialized() {
-            return Ok((Identity::Human, self.default_permissions));
+            return Ok((Identity::Human, self.default_permissions, None));
         }
 
         // auth 초기화됨 → Bearer 필수.
@@ -357,7 +356,7 @@ impl ElfMcpServer {
             ));
         };
         match self.key_registry.lookup(raw) {
-            Some(rec) => Ok((rec.identity(), rec.permissions())),
+            Some(rec) => Ok((rec.identity(), rec.permissions(), Some(rec.id.clone()))),
             None => {
                 self.audit_auth_failure(audit_sid, "invalid_key");
                 Err(ErrorData::new(
@@ -382,6 +381,7 @@ impl ElfMcpServer {
             "event": "audit",
             "tool": tool,
             "identity": serde_json::to_value(&ctx.identity).unwrap_or(serde_json::Value::Null),
+            "key_id": ctx.key_id,
             "permissions": ctx.permissions.bits(),
             "outcome": outcome,
             "session_id": ctx.session_id,

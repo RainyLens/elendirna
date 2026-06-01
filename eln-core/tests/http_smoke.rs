@@ -670,4 +670,6 @@ async fn http_smoke_audit_log_records_outcomes() {
         .expect("allowed line");
     assert_eq!(allowed_line["tool"], "entry_new");
     assert_eq!(allowed_line["identity"]["kind"], "agent");
+    // key_id = 인증한 WRITE 키 레코드 id (ApiKey-derived, [[N0115]]/[[N0104]]).
+    assert_eq!(allowed_line["key_id"], "k_write");
 }
