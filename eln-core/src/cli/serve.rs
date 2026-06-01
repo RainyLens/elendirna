@@ -252,6 +252,20 @@ fn print_mcp_snippet_http(vault_path: Option<&std::path::Path>, addr: &str) {
     println!();
     println!("# stdio-spawn MCP client(Claude Desktop)에서 원격 HTTP MCP에 붙으려면");
     println!("# `mcp-remote` 같은 proxy bridge가 별도 필요.");
+    println!();
+    println!("# ─── 배포 시나리오 (auth/노출 게이팅) ───────────────────────────");
+    println!("#  1) 로컬 stdio              : elf serve --mcp                 (ADMIN, 무인증)");
+    println!("#  2) loopback HTTP 무인증    : --transport http (127.0.0.1)    (익명 READ-only)");
+    println!("#  3) 인증 HTTP + reverse proxy: elf key new → --transport http (127.0.0.1 bind)");
+    println!("#                                proxy가 HTTPS 종단 → 127.0.0.1로 forward (권장)");
+    println!("#  4) 직접 non-loopback bind  : elf key new → --addr 0.0.0.0:7878 (VPN/내부망)");
+    println!("#");
+    println!("#  • 외부 노출(non-loopback)은 `elf key new` 선행 필수 — 키 없으면 기동 거부.");
+    println!("#    키가 있으면 addr 무관 `/mcp`는 `Authorization: Bearer <key>` 필수.");
+    println!("#  • TLS는 앱 내 미구현 — reverse proxy(nginx/caddy) 또는 VPN/Tailscale로 HTTPS 종단.");
+    println!("#    public internet 평문 직접 노출 지양.");
+    println!("#  • 뷰어 FE(`/`)와 `/api`는 항상 loopback 고정 — proxy로 외부 노출 금지(무인증 표면).");
+    println!("#  • keys.toml은 ~/.elendirna/ (vault 바깥, git 비추적). audit는 <vault>/.elendirna/audit.jsonl.");
 }
 
 fn resolve_elf_bin() -> String {
