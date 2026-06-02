@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap        = { workspace = true }
-eln-core    = { version = "0.8.2", path = "../eln-core" }
+eln-core    = { version = "0.9.0", path = "../eln-core" }
 
 [dev-dependencies]
 assert_cmd  = { workspace = true }

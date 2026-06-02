@@ -942,6 +942,83 @@ async fn bundle_invalid_since_returns_invalid_argument() {
     }
 }
 
+#[tokio::test]
+async fn bundle_includes_sync_history_newest_first() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "tracked entry", None, None, vec![]).unwrap();
+    ops::sync_record(
+        dir.path(),
+        "first touch",
+        Some("claude"),
+        vec!["N0001".into()],
+        Some("s1".into()),
+    )
+    .unwrap();
+    ops::sync_record(
+        dir.path(),
+        "second touch",
+        Some("claude"),
+        vec!["N0001".into()],
+        Some("s2".into()),
+    )
+    .unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    let hist = result["sync_history"]
+        .as_array()
+        .expect("sync_history array");
+    assert_eq!(hist.len(), 2);
+    // newest-first.
+    assert_eq!(hist[0]["summary"], "second touch");
+    assert_eq!(hist[0]["session_id"], "s2");
+    assert!(hist[0].get("ts").is_some(), "ts key present");
+    assert!(hist[0].get("agent").is_some(), "agent key present");
+}
+
+#[tokio::test]
+async fn bundle_sync_history_always_present_as_empty_array() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "untouched entry", None, None, vec![]).unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    // 키는 항상 present, 값은 빈 배열 — 활동 끊긴 entry 신호 (cost_hint식 생략과 다름).
+    assert_eq!(result["sync_history"], json!([]));
+}
+
+#[tokio::test]
+async fn bundle_degrades_when_sync_jsonl_missing() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "entry", None, None, vec![]).unwrap();
+    // sync.jsonl 제거 — bundle 구조 동작은 무영향, sync_history만 빈 배열로 degradation.
+    let sync_path = dir.path().join(".elendirna").join("sync.jsonl");
+    if sync_path.exists() {
+        std::fs::remove_file(&sync_path).unwrap();
+    }
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should still succeed without sync.jsonl");
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["manifest"]["id"], "N0001");
+    assert_eq!(result["sync_history"], json!([]));
+}
+
 // ─── query (S5.1) ────────────────────────
 
 #[tokio::test]

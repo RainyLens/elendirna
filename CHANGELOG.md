@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0] — 2026-06-02
+
+### `bundle` 응답에 `sync_history` 추가 (N0117/N0069)
+
+`bundle(id)` 응답에 그 entry가 등장한 `sync.record`들의 newest-first 요약 `sync_history: [{ts, agent, summary, session_id}]`(최대 5건)를 **자동 포함**. sub-agent가 별도 `sync_log` 호출 없이 entry의 활동 이력을 함께 복원한다. read-path 전용 — write/데이터 모델 무변경.
+
+- **조회 격리**: `ops::entry_sync_history(vault_root, entry_id, limit)` 신규 — 기존 `sync_log`를 재사용해 `event=="sync.record"` AND `entries` 멤버십(EntryId 정규화)으로 필터 후 newest-first projection. 반환이 `Vec`(Result 아님)이라 실패가 전파되지 않는다.
+- **degradation/severity 불변식 (N0117)**: 조회는 `bundle_with_opts` 밖 handler의 별도 단계라 bundle 구조적 동작(manifest/revision/linked)과 결합되지 않는다. sync.jsonl 부재·손상·읽기실패는 모두 흡수 → `sync_history: []`로 degradation, bundle은 정상 반환. 빈 배열은 "활동이 끊긴 entry" 신호이므로 항상 present(cost_hint식 생략과 의도적으로 다름).
+- **I/O 비노출**: full-scan 비용은 server 내부 — cost_hint 등 agent-facing 필드에 반영하지 않는다. v1은 캐시 없이 `sync_log` 직접 필터(현 규모 full-scan <1ms). 미래 sqlite 캐시는 `ops::entry_sync_history` 단일 함수 뒤에 격리(simmer, → N0117 r0002).
+- **테스트 +9**: ops 단위 6(포함+미포함/multi-entry/limit+순서/부재 fail-soft/operation-log 제외+id 정규화/손상 줄 skip) + handler 단위 3(채워짐/항상 빈 배열/sync.jsonl 부재 degradation).
+
+### 내부 변경
+
+- 워크스페이스 버전 0.8.2 → 0.9.0 (응답 contract additive 변경 = minor). `eln-plugin-sdk`는 독립 버전 라인(0.1.1) 유지
+
+---
+
 ## [0.8.2] — 2026-05-30
 
 ### production hardening (N0111)

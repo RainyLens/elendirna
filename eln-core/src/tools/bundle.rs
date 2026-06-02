@@ -13,6 +13,9 @@ use serde_json::{Map, Value, json};
 use super::{map_ops_error, optional_string, optional_u32, require_string};
 use crate::vault::ops;
 
+/// sync_history projection 기본 limit (newest-first 최대 건수). MCP 인자로 노출하지 않음.
+const SYNC_HISTORY_LIMIT: usize = 5;
+
 pub const NAME: &str = "bundle";
 pub const DESCRIPTION: &str = "entry + revision chain + linked entries 수집. \
     세션 시작 시 컨텍스트 복원의 핵심 도구. \
@@ -20,7 +23,8 @@ pub const DESCRIPTION: &str = "entry + revision chain + linked entries 수집. \
     파일을 직접 읽지 말고 이 tool을 사용할 것. \
     depth=0 (default): revisions만 (cost-aware), depth=1: 직접 linked 전문, depth=2+: 2홉 이상 manifest만. \
     cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
-    since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용).";
+    since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용). \
+    응답의 sync_history: 이 entry가 등장한 최근 sync_record 요약(시간 역순, 최대 5건)을 자동 포함 — 별도 sync_log 호출 없이 활동 이력을 함께 복원. 빈 배열이면 활동이 끊긴 entry 신호.";
 
 pub struct BundleHandler;
 
@@ -106,6 +110,10 @@ impl ToolHandler for BundleHandler {
             None
         };
 
+        // sync_history: bundle 구조 동작(manifest/revision/linked)과 독립된 별도 단계.
+        // 반환이 Vec(Result 아님)이라 실패는 빈 배열로 흡수 (→ see N0117 degradation 불변식).
+        let sync_history = ops::entry_sync_history(vault_root, id, SYNC_HISTORY_LIMIT);
+
         let mut result = Map::new();
         result.insert("ok".into(), Value::Bool(true));
         result.insert(
@@ -132,6 +140,8 @@ impl ToolHandler for BundleHandler {
         result.insert("note".into(), Value::String(b.note_body));
         result.insert("revisions".into(), Value::Array(revs));
         result.insert("linked".into(), Value::Array(linked));
+        // 항상 포함 — 빈 배열도 "활동이 끊긴 entry" 신호다 (cost_hint식 생략과 다름, → see N0117).
+        result.insert("sync_history".into(), Value::Array(sync_history));
         if let Some(hint) = cost_hint {
             result.insert("cost_hint".into(), Value::String(hint));
         }

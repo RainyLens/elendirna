@@ -248,6 +248,132 @@ fn mcp_sync_log_agent_filter_isolates_events() {
     assert_eq!(claude_events[0]["summary"], "claude 요약");
 }
 
+// ─── entry_sync_history (N0117) ──────────
+
+#[test]
+fn entry_sync_history_includes_only_referencing_records() {
+    let dir = setup_vault();
+    ops::sync_record(
+        dir.path(),
+        "touch N0001",
+        Some("claude"),
+        vec!["N0001".into()],
+        Some("sess-1".into()),
+    )
+    .unwrap();
+    ops::sync_record(
+        dir.path(),
+        "touch N0002",
+        Some("claude"),
+        vec!["N0002".into()],
+        None,
+    )
+    .unwrap();
+
+    let hist = ops::entry_sync_history(dir.path(), "N0001", 5);
+    assert_eq!(hist.len(), 1);
+    assert_eq!(hist[0]["summary"], "touch N0001");
+    assert_eq!(hist[0]["agent"], "claude");
+    assert_eq!(hist[0]["session_id"], "sess-1");
+
+    // 참조되지 않은 entry → 빈 결과.
+    assert!(ops::entry_sync_history(dir.path(), "N0009", 5).is_empty());
+}
+
+#[test]
+fn entry_sync_history_multi_entry_surfaces_for_each() {
+    let dir = setup_vault();
+    ops::sync_record(
+        dir.path(),
+        "touch both",
+        Some("claude"),
+        vec!["N0001".into(), "N0002".into()],
+        None,
+    )
+    .unwrap();
+    assert_eq!(ops::entry_sync_history(dir.path(), "N0001", 5).len(), 1);
+    assert_eq!(ops::entry_sync_history(dir.path(), "N0002", 5).len(), 1);
+}
+
+#[test]
+fn entry_sync_history_limit_and_newest_first() {
+    let dir = setup_vault();
+    for i in 0..7 {
+        ops::sync_record(
+            dir.path(),
+            &format!("rec{i}"),
+            Some("claude"),
+            vec!["N0001".into()],
+            None,
+        )
+        .unwrap();
+    }
+    let hist = ops::entry_sync_history(dir.path(), "N0001", 5);
+    assert_eq!(hist.len(), 5);
+    // newest-first: 마지막 5건(rec2..rec6)을 reverse → rec6 먼저, rec2 마지막.
+    assert_eq!(hist[0]["summary"], "rec6");
+    assert_eq!(hist[4]["summary"], "rec2");
+}
+
+#[test]
+fn entry_sync_history_absent_is_empty_not_panic() {
+    let dir = setup_vault();
+    // sync.record 없음(init operation log만) → 빈 결과, panic 없음.
+    assert!(ops::entry_sync_history(dir.path(), "N0001", 5).is_empty());
+}
+
+#[test]
+fn entry_sync_history_excludes_operation_log_and_normalizes_id() {
+    let dir = setup_vault();
+    // operation log(action) 행 — entry.new + revision.add. event!=sync.record라 제외돼야 함.
+    let id = new_entry_direct(&dir, "op log entry");
+    ops::revision_add(dir.path(), &id, "[Change] x\n[Impact] y", "User").unwrap();
+    // 실제 handover 1건.
+    ops::sync_record(
+        dir.path(),
+        "real handover",
+        Some("claude"),
+        vec![id.clone()],
+        None,
+    )
+    .unwrap();
+
+    let hist = ops::entry_sync_history(dir.path(), &id, 5);
+    assert_eq!(hist.len(), 1, "operation log(action) 행은 제외");
+    assert_eq!(hist[0]["summary"], "real handover");
+
+    // 비정규 입력 "N1"도 "N0001"과 같은 EntryId로 정규화돼 매칭.
+    assert_eq!(ops::entry_sync_history(dir.path(), "N1", 5).len(), 1);
+}
+
+#[test]
+fn entry_sync_history_skips_corrupt_lines() {
+    let dir = setup_vault();
+    ops::sync_record(
+        dir.path(),
+        "valid record",
+        Some("claude"),
+        vec!["N0001".into()],
+        None,
+    )
+    .unwrap();
+    // 손상된 줄을 sync.jsonl 중간에 주입 — 원칙 3: 손상은 error 아닌 silent skip(→ see N0117 r0003).
+    let sync_path = dir.path().join(".elendirna").join("sync.jsonl");
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&sync_path)
+        .unwrap();
+    writeln!(f, "{{ this is not valid json").unwrap();
+    writeln!(f, "garbage line without braces").unwrap();
+    f.flush().unwrap();
+
+    // 유효 record는 살아남고 손상 줄은 조용히 skip, panic·error 없음.
+    let hist = ops::entry_sync_history(dir.path(), "N0001", 5);
+    assert_eq!(hist.len(), 1);
+    assert_eq!(hist[0]["summary"], "valid record");
+}
+
 // ─── validate (MCP tool 핵심 경로) ─────────
 
 #[test]

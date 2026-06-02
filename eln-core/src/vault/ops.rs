@@ -654,6 +654,56 @@ pub fn sync_log(
     Ok(events)
 }
 
+/// entry가 등장한 `sync.record`들을 newest-first 요약으로 반환.
+///
+/// **infallible** — sync.jsonl 부재/손상/읽기오류를 모두 흡수해 빈 Vec를 돌려준다.
+/// bundle의 구조적 동작(manifest/revision/linked 수집)은 이 결과에 의존하지 않으며,
+/// sync_history는 편의 레이어다 (→ see N0117 계층/degradation 불변식). projection
+/// shape: `{ts, agent, summary, session_id}`. 미래에 sqlite 캐시를 얹는다면 이 함수
+/// 본문만 교체하면 되도록 조회를 단일 지점에 격리한다 (→ see N0117 r0002).
+pub fn entry_sync_history(
+    vault_root: &Path,
+    entry_id: &str,
+    limit: usize,
+) -> Vec<serde_json::Value> {
+    let Some(target) = EntryId::from_str(entry_id) else {
+        return Vec::new();
+    };
+    // sync_log은 oldest→newest, fail-soft(부재→빈 Vec, 깨진 줄→skip). 잔여 Err도 흡수.
+    let events = sync_log(vault_root, None, None).unwrap_or_default();
+    let mut matched: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|v| v.get("event").and_then(|e| e.as_str()) == Some("sync.record"))
+        .filter(|v| {
+            // operation log(action 필드)는 event != sync.record라 위에서 이미 제외됨.
+            // 대상 id와 record entries 원소를 둘 다 EntryId로 정규화해 비교(false-empty 방지).
+            v.get("entries")
+                .and_then(|e| e.as_array())
+                .is_some_and(|ids| {
+                    ids.iter().any(|id| {
+                        id.as_str()
+                            .and_then(EntryId::from_str)
+                            .is_some_and(|e| e == target)
+                    })
+                })
+        })
+        .collect();
+    // newest-first: 시간순(oldest→newest)에서 마지막 limit건을 취한 뒤 reverse.
+    let start = matched.len().saturating_sub(limit);
+    matched
+        .drain(start..)
+        .rev()
+        .map(|v| {
+            serde_json::json!({
+                "ts":         v.get("ts").cloned().unwrap_or(serde_json::Value::Null),
+                "agent":      v.get("agent").cloned().unwrap_or(serde_json::Value::Null),
+                "summary":    v.get("summary").cloned().unwrap_or(serde_json::Value::Null),
+                "session_id": v.get("session_id").cloned().unwrap_or(serde_json::Value::Null),
+            })
+        })
+        .collect()
+}
+
 // ─── link ────────────────────────────────
 
 /// 양방향 링크 추가. 이미 존재하면 no-op.
