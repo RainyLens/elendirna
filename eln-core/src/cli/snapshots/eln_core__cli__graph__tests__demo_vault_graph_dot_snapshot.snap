@@ -1,0 +1,33 @@
+---
+source: eln-core/src/cli/graph.rs
+expression: render_dot(&demo_graph())
+---
+digraph elendirna {
+  rankdir=LR;
+  node [shape=box, style=filled, fontname="sans-serif"];
+
+  "N0001" [label="N0001\nOAuth2 Login Integration", fillcolor="#AED6F1", shape=box];
+  "N0001@r0001" [label="N0001@r0001", fillcolor="#FAD7A0", shape=ellipse];
+  "N0001@r0002" [label="N0001@r0002", fillcolor="#FAD7A0", shape=ellipse];
+  "N0002" [label="N0002\nSecurity Guidelines", fillcolor="#AED6F1", shape=box];
+  "N0003" [label="N0003\nJWT 토큰 보안 취약점", fillcolor="#AED6F1", shape=box];
+  "N0003@r0001" [label="N0003@r0001", fillcolor="#FAD7A0", shape=ellipse];
+  "N0003@r0002" [label="N0003@r0002", fillcolor="#FAD7A0", shape=ellipse];
+  "N0003@r0003" [label="N0003@r0003", fillcolor="#FAD7A0", shape=ellipse];
+  "N0004" [label="N0004\nPKCE 흐름 이해", fillcolor="#AED6F1", shape=box];
+  "N0005" [label="N0005\n세션 vs JWT 비교", fillcolor="#AED6F1", shape=box];
+  "N0005@r0001" [label="N0005@r0001", fillcolor="#FAD7A0", shape=ellipse];
+
+  "N0001" -> "N0002" [label="연결", dir=both];
+  "N0001" -> "N0004" [label="연결", dir=both];
+  "N0001" -> "N0005" [label="연결", dir=both];
+  "N0001@r0001" -> "N0001@r0000" [label="delta", style=dashed];
+  "N0001@r0002" -> "N0001@r0001" [label="delta", style=dashed];
+  "N0002" -> "N0003" [label="연결", dir=both];
+  "N0003" -> "N0005" [label="연결", dir=both];
+  "N0003" -> "N0006" [label="연결", dir=both];
+  "N0003@r0001" -> "N0003@r0000" [label="delta", style=dashed];
+  "N0003@r0002" -> "N0003@r0001" [label="delta", style=dashed];
+  "N0003@r0003" -> "N0003@r0002" [label="delta", style=dashed];
+  "N0005@r0001" -> "N0005@r0000" [label="delta", style=dashed];
+}

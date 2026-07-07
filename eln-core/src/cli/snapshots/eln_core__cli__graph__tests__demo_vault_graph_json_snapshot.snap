@@ -1,0 +1,136 @@
+---
+source: eln-core/src/cli/graph.rs
+expression: render_json(&demo_graph())
+---
+{
+  "edges": [
+    {
+      "from": "N0001",
+      "kind": "link",
+      "to": "N0002"
+    },
+    {
+      "from": "N0001",
+      "kind": "link",
+      "to": "N0004"
+    },
+    {
+      "from": "N0001",
+      "kind": "link",
+      "to": "N0005"
+    },
+    {
+      "from": "N0001@r0001",
+      "kind": "revision",
+      "to": "N0001@r0000"
+    },
+    {
+      "from": "N0001@r0002",
+      "kind": "revision",
+      "to": "N0001@r0001"
+    },
+    {
+      "from": "N0002",
+      "kind": "link",
+      "to": "N0003"
+    },
+    {
+      "from": "N0003",
+      "kind": "link",
+      "to": "N0005"
+    },
+    {
+      "from": "N0003",
+      "kind": "link",
+      "to": "N0006"
+    },
+    {
+      "from": "N0003@r0001",
+      "kind": "revision",
+      "to": "N0003@r0000"
+    },
+    {
+      "from": "N0003@r0002",
+      "kind": "revision",
+      "to": "N0003@r0001"
+    },
+    {
+      "from": "N0003@r0003",
+      "kind": "revision",
+      "to": "N0003@r0002"
+    },
+    {
+      "from": "N0005@r0001",
+      "kind": "revision",
+      "to": "N0005@r0000"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N0001",
+      "kind": "entry",
+      "label": "N0001\nOAuth2 Login Integration",
+      "status": "draft"
+    },
+    {
+      "id": "N0001@r0001",
+      "kind": "revision",
+      "label": "N0001@r0001",
+      "status": ""
+    },
+    {
+      "id": "N0001@r0002",
+      "kind": "revision",
+      "label": "N0001@r0002",
+      "status": ""
+    },
+    {
+      "id": "N0002",
+      "kind": "entry",
+      "label": "N0002\nSecurity Guidelines",
+      "status": "draft"
+    },
+    {
+      "id": "N0003",
+      "kind": "entry",
+      "label": "N0003\nJWT 토큰 보안 취약점",
+      "status": "draft"
+    },
+    {
+      "id": "N0003@r0001",
+      "kind": "revision",
+      "label": "N0003@r0001",
+      "status": ""
+    },
+    {
+      "id": "N0003@r0002",
+      "kind": "revision",
+      "label": "N0003@r0002",
+      "status": ""
+    },
+    {
+      "id": "N0003@r0003",
+      "kind": "revision",
+      "label": "N0003@r0003",
+      "status": ""
+    },
+    {
+      "id": "N0004",
+      "kind": "entry",
+      "label": "N0004\nPKCE 흐름 이해",
+      "status": "draft"
+    },
+    {
+      "id": "N0005",
+      "kind": "entry",
+      "label": "N0005\n세션 vs JWT 비교",
+      "status": "draft"
+    },
+    {
+      "id": "N0005@r0001",
+      "kind": "revision",
+      "label": "N0005@r0001",
+      "status": ""
+    }
+  ]
+}

@@ -139,10 +139,10 @@ fn check_naming(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
     let entries_dir = crate::vault::data_root(vault_root).join("entries");
     let _revisions_dir = crate::vault::data_root(vault_root).join("revisions");
 
-    // entry 디렉터리명: N\d{4}_<slug>  (slug는 유니코드 문자/숫자/밑줄 허용)
-    let entry_dir_re = Regex::new(r"^N\d{4}_[\p{L}\p{N}_]+$").unwrap();
-    // revision 파일명: r\d{4}\.md (fix-011 Q1: 4자리)
-    let rev_file_re = Regex::new(r"^r\d{4}\.md$").unwrap();
+    // entry 디렉터리명: N\d{4,}_<slug>  (slug는 유니코드 문자/숫자/밑줄 허용)
+    let entry_dir_re = Regex::new(r"^N\d{4,}_[\p{L}\p{N}_]+$").unwrap();
+    // revision 파일명: r\d{4,}\.md (fix-011 Q1: 최소 4자리)
+    let rev_file_re = Regex::new(r"^r\d{4,}\.md$").unwrap();
 
     if let Ok(rd) = std::fs::read_dir(&entries_dir) {
         for e in rd.flatten() {
@@ -315,9 +315,6 @@ fn check_dangling(
     entry_ids: &HashSet<String>,
     issues: &mut Vec<Issue>,
 ) -> Result<(), ElfError> {
-    // `→ see N####` 정규식
-    let see_re = Regex::new(r"→ see\s+(N\d{4})").unwrap();
-
     for entry in entries {
         let m = &entry.manifest;
 
@@ -368,7 +365,7 @@ fn check_dangling(
         // note.md + revision 파일 내 `→ see` 스캔 (F2: fenced/inline/blockquote 격리)
         let note_path = entry.note_path();
         if let Ok(content) = std::fs::read_to_string(&note_path) {
-            for ref_id in scan_inline_refs(&content, &see_re) {
+            for ref_id in crate::vault::refs::scan_inline_refs(&content) {
                 if !entry_ids.contains(&ref_id) {
                     issues.push(Issue {
                         severity: Severity::Warning,
@@ -389,7 +386,7 @@ fn check_dangling(
         {
             for e in rd.flatten() {
                 if let Ok(content) = std::fs::read_to_string(e.path()) {
-                    for ref_id in scan_inline_refs(&content, &see_re) {
+                    for ref_id in crate::vault::refs::scan_inline_refs(&content) {
                         if !entry_ids.contains(&ref_id) {
                             issues.push(Issue {
                                 severity: Severity::Warning,
@@ -711,33 +708,4 @@ pub fn apply_fixes(issues: &[Issue]) -> Result<usize, ElfError> {
 
 fn entry_id_from_manifest(entry: &Entry) -> EntryId {
     EntryId::from_str(&entry.manifest.id).unwrap_or_else(|| EntryId::new(0))
-}
-
-/// markdown 본문에서 fenced code block / inline code / blockquote 를 격리하고
-/// 일반 텍스트 안의 `→ see N####` 패턴만 수집. (F2)
-fn scan_inline_refs(content: &str, re: &Regex) -> Vec<String> {
-    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
-
-    let mut refs = Vec::new();
-    let mut in_code_block = false;
-    let mut in_blockquote = 0u32;
-
-    for event in Parser::new(content) {
-        match event {
-            Event::Start(Tag::CodeBlock(_)) => in_code_block = true,
-            Event::End(TagEnd::CodeBlock) => in_code_block = false,
-            Event::Start(Tag::BlockQuote) => in_blockquote += 1,
-            Event::End(TagEnd::BlockQuote) => {
-                in_blockquote = in_blockquote.saturating_sub(1);
-            }
-            Event::Code(_) => {}
-            Event::Text(text) if !in_code_block && in_blockquote == 0 => {
-                for cap in re.captures_iter(&text) {
-                    refs.push(cap[1].to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    refs
 }

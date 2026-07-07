@@ -257,6 +257,50 @@ mod validate {
         );
     }
 
+    #[test]
+    fn validate_accepts_five_digit_entry_revision_and_inline_ref() {
+        let (dir, _guard) = setup();
+        new_entry(&dir, "Source");
+
+        let target_dir = dir.path().join(".elendirna/entries/N10000_slug");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let target_manifest = Manifest::new("N10000", "Slug");
+        target_manifest.write(&target_dir).unwrap();
+        std::fs::write(
+            target_dir.join("note.md"),
+            "---\nid: \"N10000\"\ntitle: \"Slug\"\nbaseline: null\ntags: []\n---\n# Slug\n",
+        )
+        .unwrap();
+
+        let source_note = dir.path().join(".elendirna/entries/N0001_source/note.md");
+        let original = std::fs::read_to_string(&source_note).unwrap();
+        std::fs::write(&source_note, format!("{original}\n→ see N10000\n")).unwrap();
+
+        let rev_dir = dir.path().join(".elendirna/revisions/N10000");
+        std::fs::create_dir_all(&rev_dir).unwrap();
+        std::fs::write(
+            rev_dir.join("r10000.md"),
+            "---\nbaseline: N10000@r0000\ncreated: 2026-07-07T00:00:00+09:00\nauthor: User\n---\n\n## Delta\n\n[Change] rollover revision\n\n[Impact] rollover validation\n",
+        )
+        .unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let relevant_issues: Vec<_> = result
+            .issues
+            .iter()
+            .filter(|i| {
+                i.message.contains("N10000")
+                    || i.path.to_string_lossy().contains("N10000")
+                    || i.path.to_string_lossy().contains("r10000")
+            })
+            .collect();
+
+        assert!(
+            relevant_issues.is_empty(),
+            "five-digit ID paths and inline refs should validate cleanly: {relevant_issues:?}"
+        );
+    }
+
     /// v0.6.2 F3: consistency diff 메시지가 escape 표현을 드러내야 한다.
     /// 사용자 진단 가독성 — `"foo "bar""` vs `"foo \"bar\""`처럼 시각적으로 같아 보이는
     /// 두 문자열의 진짜 차이를 메시지 안에서 구분 가능해야 함.
