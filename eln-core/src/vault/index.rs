@@ -1,11 +1,11 @@
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
-use rusqlite::{Connection, params};
-/// `.elendirna/index.sqlite` — 파생 캐시.
-/// 항상 `elf validate`로 재생성 가능. vault 없이는 의미 없음.
+use rusqlite::{Connection, params, params_from_iter};
 use std::path::Path;
 
+// `.elendirna/index.sqlite` — 파생 캐시.
+// 항상 `elf validate`로 재생성 가능. vault 없이는 의미 없음.
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS entries (
     id       TEXT PRIMARY KEY,
@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS links (
     from_id  TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     to_id    TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     PRIMARY KEY (from_id, to_id)
+);
+
+CREATE TABLE IF NOT EXISTS authored_edges (
+    src         TEXT NOT NULL,
+    dst         TEXT NOT NULL,
+    rel         TEXT NOT NULL CHECK(rel IN ('baseline','manifest_link','revision_chain')),
+    source_kind TEXT NOT NULL CHECK(source_kind IN ('manifest','revision')),
+    source_ref  TEXT,
+    created     TEXT,
+    PRIMARY KEY (src, dst, rel, source_ref)
 );
 
 CREATE TABLE IF NOT EXISTS revisions (
@@ -70,6 +80,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     conn.execute_batch(
         "
         DELETE FROM revisions;
+        DELETE FROM authored_edges;
         DELETE FROM links;
         DELETE FROM tags;
         DELETE FROM entries;
@@ -80,7 +91,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     let entries = Entry::find_all(vault_root);
     let count = entries.len();
 
-    // 1단계: entries / tags / revisions 삽입
+    // 1단계: entries / tags / authored_edges / revisions 삽입
     for entry in &entries {
         let m = &entry.manifest;
         conn.execute(
@@ -93,7 +104,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                 m.status.to_string(),
                 m.created.to_rfc3339(),
                 m.updated.to_rfc3339(),
-                m.baseline,
+                m.baseline.as_deref(),
             ],
         )
         .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
@@ -102,6 +113,27 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
             conn.execute(
                 "INSERT OR IGNORE INTO tags (entry_id, tag) VALUES (?1, ?2)",
                 params![m.id, tag],
+            )
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        }
+
+        if let Some(baseline) = &m.baseline {
+            let dst = baseline.split('@').next().unwrap_or(baseline.as_str());
+            conn.execute(
+                "INSERT OR IGNORE INTO authored_edges
+                 (src, dst, rel, source_kind, source_ref, created)
+                 VALUES (?1, ?2, 'baseline', 'manifest', ?3, ?4)",
+                params![m.id, dst, baseline, m.created.to_rfc3339()],
+            )
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        }
+
+        for link in &m.links {
+            conn.execute(
+                "INSERT OR IGNORE INTO authored_edges
+                 (src, dst, rel, source_kind, source_ref, created)
+                 VALUES (?1, ?2, 'manifest_link', 'manifest', NULL, ?3)",
+                params![m.id, link, m.created.to_rfc3339()],
             )
             .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
         }
@@ -117,6 +149,15 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
                         rev.baseline.to_string(),
                         rev.created.to_rfc3339(),
                     ],
+                )
+                .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+                let source_ref = format!("{}@{}", m.id, rev.rev_id);
+                conn.execute(
+                    "INSERT OR IGNORE INTO authored_edges
+                     (src, dst, rel, source_kind, source_ref, created)
+                     VALUES (?1, ?1, 'revision_chain', 'revision', ?2, ?3)",
+                    params![m.id, source_ref, rev.created.to_rfc3339()],
                 )
                 .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
             }
@@ -156,21 +197,22 @@ pub struct QueryRow {
     pub baseline: Option<String>,
 }
 
-/// index.sqlite가 entry manifest보다 오래되었는지 검사 (lazy rebuild trigger).
+/// index.sqlite가 entry manifest·revision 파일보다 오래되었는지 검사 (lazy rebuild trigger).
 ///
 /// query는 N0034 원칙상 "degradation 가능한 편의 기능"이자 "lazy initialization 대상".
-/// entry write(entry_new/status/tag)는 index를 갱신하지 않으므로, query 시점에
-/// `entries/*/manifest.toml` 최신 mtime이 `index.sqlite` mtime보다 나중이면 stale로 보고
-/// rebuild를 트리거한다. revision은 query 결과(entry meta: id/title/status/tag)에 영향이
-/// 없으므로 비교 대상에서 제외 — manifest mtime만으로 충분.
+/// entry write(entry_new/status/tag)는 index를 갱신하지 않으므로, query 시점에 최신 mtime이
+/// `index.sqlite` mtime보다 나중이면 stale로 보고 rebuild를 트리거한다.
+/// authored_edges가 revision_chain 행을 포함하므로 revision 파일(*.md)도 manifest.toml과
+/// 같은 mtime 비교에 참여한다. 디렉토리 mtime은 직속 자식만 반영하므로 파일 단위로 스캔.
 fn index_is_stale(vault_root: &Path) -> bool {
     let idx_mtime = match std::fs::metadata(index_path(vault_root)).and_then(|m| m.modified()) {
         Ok(t) => t,
-        Err(_) => return true, // index 부재 → lazy init 대상
+        Err(_) => return true,
     };
-    let entries_dir = crate::vault::metadata_root(vault_root).join("entries");
+
+    let entries_dir = crate::vault::data_root(vault_root).join("entries");
     let Ok(rd) = std::fs::read_dir(&entries_dir) else {
-        return false; // entries dir 없으면 비교 의미 없음 (빈 vault)
+        return false;
     };
     for entry in rd.flatten() {
         let manifest = entry.path().join("manifest.toml");
@@ -178,6 +220,33 @@ fn index_is_stale(vault_root: &Path) -> bool {
             && m > idx_mtime
         {
             return true;
+        }
+    }
+
+    let revisions_dir = crate::vault::data_root(vault_root).join("revisions");
+    let Ok(rd) = std::fs::read_dir(&revisions_dir) else {
+        return false;
+    };
+    for entry_dir in rd.flatten() {
+        let Ok(file_type) = entry_dir.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let Ok(revisions) = std::fs::read_dir(entry_dir.path()) else {
+            continue;
+        };
+        for rev in revisions.flatten() {
+            let path = rev.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                continue;
+            }
+            if let Ok(m) = std::fs::metadata(&path).and_then(|md| md.modified())
+                && m > idx_mtime
+            {
+                return true;
+            }
         }
     }
     false
@@ -203,32 +272,37 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
         sql.push_str(" JOIN tags t ON e.id = t.entry_id");
     }
 
-    let mut conditions: Vec<String> = vec![];
+    let mut conditions: Vec<&str> = vec![];
+    let mut values: Vec<String> = vec![];
     if let Some(ref tag) = filter.tag {
-        conditions.push(format!("t.tag = '{tag}'"));
+        conditions.push("t.tag = ?");
+        values.push(tag.clone());
     }
     if let Some(ref status) = filter.status {
-        conditions.push(format!("e.status = '{status}'"));
+        conditions.push("e.status = ?");
+        values.push(status.clone());
     }
     if let Some(ref bl) = filter.baseline {
-        conditions.push(format!("e.baseline LIKE '{bl}%'"));
+        conditions.push("e.baseline LIKE ?");
+        values.push(format!("{bl}%"));
     }
     if let Some(ref kw) = filter.title_contains {
-        conditions.push(format!("e.title LIKE '%{kw}%'"));
+        conditions.push("e.title LIKE ?");
+        values.push(format!("%{kw}%"));
     }
 
     if !conditions.is_empty() {
         sql.push_str(" WHERE ");
         sql.push_str(&conditions.join(" AND "));
     }
-    sql.push_str(" ORDER BY e.id");
+    sql.push_str(" ORDER BY CAST(substr(e.id, 2) AS INTEGER)");
 
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
     let rows = stmt
-        .query_map([], |row| {
+        .query_map(params_from_iter(values.iter()), |row| {
             Ok(QueryRow {
                 id: row.get(0)?,
                 title: row.get(1)?,
