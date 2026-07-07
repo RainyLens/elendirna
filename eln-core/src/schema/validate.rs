@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::error::ElfError;
-use crate::schema::manifest::NoteFrontmatter;
+use crate::schema::manifest::{EntryStatus, Manifest, NoteFrontmatter};
 use crate::vault::config::{RevisionSeverity, VaultConfig};
 use crate::vault::entry::Entry;
 use crate::vault::id::{EntryId, EntryRevRef, RevisionId};
@@ -56,6 +56,10 @@ pub enum AutoFix {
         path: PathBuf,
         field: String,
         value: String,
+    },
+    UpdateManifestStatus {
+        dir: PathBuf,
+        to: String,
     },
 }
 
@@ -114,6 +118,7 @@ pub fn run_all_with_severity(
 
     // 3. Consistency
     check_consistency(&entries, &mut issues);
+    check_status_from_graph(vault_root, &entries, &mut issues);
 
     // 4. Dangling
     check_dangling(vault_root, &entries, &entry_ids, &mut issues)?;
@@ -366,6 +371,63 @@ fn check_consistency(entries: &[Entry], issues: &mut Vec<Issue>) {
                 }),
             });
         }
+    }
+}
+
+fn check_status_from_graph(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
+    let linked_by = crate::vault::ops::compute_linked_by(entries);
+
+    for entry in entries {
+        if entry.manifest.status != EntryStatus::Draft {
+            continue;
+        }
+
+        let id = &entry.manifest.id;
+        let link_inbound = linked_by.get(id).copied().unwrap_or(0);
+        let baseline_inbound = entries
+            .iter()
+            .filter(|other| other.manifest.id != *id)
+            .filter(|other| {
+                other
+                    .manifest
+                    .baseline
+                    .as_deref()
+                    .and_then(|baseline| baseline.split('@').next())
+                    == Some(id.as_str())
+            })
+            .count() as u32;
+        let rev_count = EntryId::from_str(id)
+            .map(|eid| crate::vault::ops::revision_count(vault_root, &eid))
+            .unwrap_or(0);
+
+        let mut reasons = Vec::new();
+        if link_inbound > 0 {
+            reasons.push(format!("links inbound {link_inbound}"));
+        }
+        if baseline_inbound > 0 {
+            reasons.push(format!("baseline inbound {baseline_inbound}"));
+        }
+        if rev_count >= 1 {
+            reasons.push(format!("revision {rev_count}"));
+        }
+        if reasons.is_empty() {
+            continue;
+        }
+
+        issues.push(Issue {
+            severity: Severity::Warning,
+            kind: IssueKind::Schema,
+            path: entry.dir.join("manifest.toml"),
+            message: format!(
+                "{}은 draft이지만 이미 그래프가 의존합니다({}) — stable 승급을 제안합니다",
+                id,
+                reasons.join(", ")
+            ),
+            fix: Some(AutoFix::UpdateManifestStatus {
+                dir: entry.dir.clone(),
+                to: "stable".to_string(),
+            }),
+        });
     }
 }
 
@@ -780,6 +842,24 @@ pub fn apply_fixes(issues: &[Issue]) -> Result<usize, ElfError> {
                     NoteFrontmatter::write(path, &fm, &body)?;
                     count += 1;
                 }
+            }
+            AutoFix::UpdateManifestStatus { dir, to } => {
+                let status = match to.as_str() {
+                    "draft" => EntryStatus::Draft,
+                    "stable" => EntryStatus::Stable,
+                    "archived" => EntryStatus::Archived,
+                    other => {
+                        return Err(ElfError::InvalidInput {
+                            message: format!(
+                                "알 수 없는 manifest status fix 대상: '{other}' (draft / stable / archived)"
+                            ),
+                        });
+                    }
+                };
+                let mut manifest = Manifest::read(dir)?;
+                manifest.status = status;
+                manifest.touch_and_write(dir)?;
+                count += 1;
             }
         }
     }
