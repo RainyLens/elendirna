@@ -130,6 +130,55 @@ pub fn estimate_linked_entry_bytes(vault_root: &Path, link_ids: &[String]) -> u6
     total
 }
 
+pub fn compute_mentioned(vault_root: &Path, entry: &Entry) -> Vec<String> {
+    let Some(self_id) = EntryId::from_str(&entry.manifest.id) else {
+        return Vec::new();
+    };
+    let Ok(note_body) = entry.note_body() else {
+        return Vec::new();
+    };
+
+    let manifest_links: HashSet<String> = entry
+        .manifest
+        .links
+        .iter()
+        .filter_map(|link| {
+            let entry_part = link.split('@').next().unwrap_or(link.as_str());
+            EntryId::from_str(entry_part).map(|id| id.to_string())
+        })
+        .collect();
+
+    let mut mentioned = Vec::new();
+    let mut seen = HashSet::new();
+    let mut scan = |content: &str| {
+        for raw in crate::vault::refs::scan_inline_refs(content) {
+            let Some(ref_id) = EntryId::from_str(&raw) else {
+                continue;
+            };
+            if ref_id == self_id {
+                continue;
+            }
+
+            let normalized = ref_id.to_string();
+            if manifest_links.contains(&normalized) || !seen.insert(normalized.clone()) {
+                continue;
+            }
+            if Entry::find_by_id(vault_root, &ref_id).is_none() {
+                continue;
+            }
+
+            mentioned.push(normalized);
+        }
+    };
+
+    scan(&note_body);
+    for revision in Revision::list(vault_root, &self_id) {
+        scan(&revision.delta);
+    }
+
+    mentioned
+}
+
 pub fn links_out_count(entry: &Entry) -> u32 {
     let mut seen: HashSet<&str> = HashSet::new();
     for link in &entry.manifest.links {
