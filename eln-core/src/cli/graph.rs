@@ -151,7 +151,18 @@ fn render_json(data: &crate::vault::ops::GraphData) -> String {
                 EdgeKind::Link => "link",
                 EdgeKind::Revision => "revision",
             };
-            serde_json::json!({ "from": e.from, "to": e.to, "kind": kind })
+            let mut edge = serde_json::json!({
+                "from": e.from,
+                "to":   e.to,
+                "kind": kind,
+            });
+            if let Some(rel) = &e.rel {
+                edge["rel"] = serde_json::json!(rel);
+            }
+            if let Some(source_ref) = &e.source_ref {
+                edge["source_ref"] = serde_json::json!(source_ref);
+            }
+            edge
         })
         .collect();
 
@@ -165,7 +176,7 @@ fn render_json(data: &crate::vault::ops::GraphData) -> String {
 #[cfg(test)]
 mod tests {
     use super::{render_dot, render_json, render_mermaid};
-    use crate::vault::ops::graph_data;
+    use crate::vault::ops::{EdgeKind, GraphData, GraphEdge, GraphNode, NodeKind, graph_data};
 
     fn demo_graph() -> crate::vault::ops::GraphData {
         let vault_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -188,5 +199,64 @@ mod tests {
     #[test]
     fn demo_vault_graph_json_snapshot() {
         insta::assert_snapshot!(render_json(&demo_graph()));
+    }
+
+    #[test]
+    fn graph_json_edge_metadata_snapshot() {
+        let data = GraphData {
+            nodes: vec![
+                GraphNode {
+                    id: "N0001".to_string(),
+                    label: "N0001\nParent".to_string(),
+                    kind: NodeKind::Entry("stable".to_string()),
+                },
+                GraphNode {
+                    id: "N0002".to_string(),
+                    label: "N0002\nChild".to_string(),
+                    kind: NodeKind::Entry("draft".to_string()),
+                },
+            ],
+            edges: vec![
+                GraphEdge {
+                    from: "N0002".to_string(),
+                    to: "N0001".to_string(),
+                    kind: EdgeKind::Baseline,
+                    rel: Some("baseline".to_string()),
+                    source_ref: Some("N0001@r0003".to_string()),
+                },
+                GraphEdge {
+                    from: "N0002".to_string(),
+                    to: "N0003".to_string(),
+                    kind: EdgeKind::Link,
+                    rel: Some("manifest_link".to_string()),
+                    source_ref: None,
+                },
+                GraphEdge {
+                    from: "N0002".to_string(),
+                    to: "N0002".to_string(),
+                    kind: EdgeKind::Revision,
+                    rel: Some("revision_chain".to_string()),
+                    source_ref: Some("N0002@r0001".to_string()),
+                },
+            ],
+        };
+
+        insta::assert_snapshot!(render_json(&data));
+    }
+
+    #[test]
+    fn demo_vault_graph_json_rels_are_authored_allowlist() {
+        let parsed: serde_json::Value = serde_json::from_str(&render_json(&demo_graph())).unwrap();
+        let edges = parsed["edges"].as_array().unwrap();
+
+        for edge in edges {
+            let rel = edge["rel"]
+                .as_str()
+                .expect("graph JSON edge must expose rel");
+            assert!(
+                matches!(rel, "baseline" | "manifest_link" | "revision_chain"),
+                "unexpected graph edge rel: {rel}"
+            );
+        }
     }
 }
