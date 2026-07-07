@@ -1,0 +1,42 @@
+---
+source: eln-core/src/cli/graph.rs
+expression: render_json(&data)
+---
+{
+  "edges": [
+    {
+      "from": "N0002",
+      "kind": "baseline",
+      "rel": "baseline",
+      "source_ref": "N0001@r0003",
+      "to": "N0001"
+    },
+    {
+      "from": "N0002",
+      "kind": "link",
+      "rel": "manifest_link",
+      "to": "N0003"
+    },
+    {
+      "from": "N0002",
+      "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0002@r0001",
+      "to": "N0002"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N0001",
+      "kind": "entry",
+      "label": "N0001\nParent",
+      "status": "stable"
+    },
+    {
+      "id": "N0002",
+      "kind": "entry",
+      "label": "N0002\nChild",
+      "status": "draft"
+    }
+  ]
+}

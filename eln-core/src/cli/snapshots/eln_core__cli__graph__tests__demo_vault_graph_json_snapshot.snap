@@ -7,61 +7,79 @@ expression: render_json(&demo_graph())
     {
       "from": "N0001",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0002"
     },
     {
       "from": "N0001",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0004"
     },
     {
       "from": "N0001",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0005"
     },
     {
       "from": "N0001@r0001",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0001@r0001",
       "to": "N0001@r0000"
     },
     {
       "from": "N0001@r0002",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0001@r0002",
       "to": "N0001@r0001"
     },
     {
       "from": "N0002",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0003"
     },
     {
       "from": "N0003",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0005"
     },
     {
       "from": "N0003",
       "kind": "link",
+      "rel": "manifest_link",
       "to": "N0006"
     },
     {
       "from": "N0003@r0001",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0003@r0001",
       "to": "N0003@r0000"
     },
     {
       "from": "N0003@r0002",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0003@r0002",
       "to": "N0003@r0001"
     },
     {
       "from": "N0003@r0003",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0003@r0003",
       "to": "N0003@r0002"
     },
     {
       "from": "N0005@r0001",
       "kind": "revision",
+      "rel": "revision_chain",
+      "source_ref": "N0005@r0001",
       "to": "N0005@r0000"
     }
   ],

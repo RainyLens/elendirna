@@ -664,6 +664,8 @@ pub struct GraphEdge {
     pub from: String,
     pub to: String,
     pub kind: EdgeKind,
+    pub rel: Option<String>,
+    pub source_ref: Option<String>,
 }
 
 pub struct GraphData {
@@ -740,6 +742,8 @@ pub fn graph_data(vault_root: &Path, entry_id_str: Option<&str>) -> Result<Graph
                 from: id.clone(),
                 to: parent_id.to_string(),
                 kind: EdgeKind::Baseline,
+                rel: Some("baseline".to_string()),
+                source_ref: Some(bl.clone()),
             });
         }
 
@@ -755,6 +759,8 @@ pub fn graph_data(vault_root: &Path, entry_id_str: Option<&str>) -> Result<Graph
                     from: id.clone(),
                     to: link.clone(),
                     kind: EdgeKind::Link,
+                    rel: Some("manifest_link".to_string()),
+                    source_ref: None,
                 });
             }
         }
@@ -772,6 +778,8 @@ pub fn graph_data(vault_root: &Path, entry_id_str: Option<&str>) -> Result<Graph
                     from: rev_node_id,
                     to: rev.baseline.to_string(),
                     kind: EdgeKind::Revision,
+                    rel: Some("revision_chain".to_string()),
+                    source_ref: Some(format!("{}@{}", id, rev.rev_id)),
                 });
             }
         }
