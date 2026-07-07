@@ -1,4 +1,5 @@
 use regex::Regex;
+use rusqlite::{Connection, OpenFlags, params};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -109,6 +110,7 @@ pub fn run_all_with_severity(
 
     // 2. Schema
     check_schema(&entries, &mut issues);
+    check_authored_edges_index(vault_root, &mut issues)?;
 
     // 3. Consistency
     check_consistency(&entries, &mut issues);
@@ -238,6 +240,67 @@ fn check_schema(entries: &[Entry], issues: &mut Vec<Issue>) {
 // ─────────────────────────────────────────
 // 3. Consistency — manifest ↔ frontmatter
 // ─────────────────────────────────────────
+
+fn check_authored_edges_index(vault_root: &Path, issues: &mut Vec<Issue>) -> Result<(), ElfError> {
+    let index_path = crate::vault::metadata_root(vault_root).join("index.sqlite");
+    if !index_path.exists() {
+        return Ok(());
+    }
+
+    let conn = Connection::open_with_flags(&index_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*)
+             FROM sqlite_master
+             WHERE type = 'table' AND name = ?1",
+            params!["authored_edges"],
+            |row| row.get(0),
+        )
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+    if table_count == 0 {
+        return Ok(());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT src, dst, rel, source_kind, COALESCE(source_ref, '')
+             FROM authored_edges
+             WHERE rel NOT IN ('baseline','manifest_link','revision_chain')
+                OR source_kind NOT IN ('manifest','revision')
+             ORDER BY src, dst, rel, source_ref",
+        )
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+    for row in rows {
+        let (src, dst, rel, source_kind, source_ref) =
+            row.map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        issues.push(Issue {
+            severity: Severity::Error,
+            kind: IssueKind::Schema,
+            path: index_path.clone(),
+            message: format!(
+                "authored_edges allowlist violation: {src} -> {dst}, rel={rel:?}, source_kind={source_kind:?}, source_ref={source_ref:?}"
+            ),
+            fix: None,
+        });
+    }
+
+    Ok(())
+}
 
 fn check_consistency(entries: &[Entry], issues: &mut Vec<Issue>) {
     for entry in entries {
