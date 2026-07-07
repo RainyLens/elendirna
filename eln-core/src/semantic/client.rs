@@ -1,5 +1,8 @@
 use crate::error::ElfError;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+const EMBEDDINGS_TIMEOUT_SECS: u64 = 3;
 
 #[derive(Debug, Clone)]
 pub struct EmbeddingsClient {
@@ -27,7 +30,15 @@ impl EmbeddingsClient {
             model: &self.model,
             input: inputs,
         };
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(EMBEDDINGS_TIMEOUT_SECS))
+            .build()
+            .map_err(|e| ElfError::InvalidInput {
+                message: format!(
+                    "semantic embeddings client build failed: {e}. hint: {}",
+                    crate::semantic::SEMANTIC_HINT
+                ),
+            })?;
         let mut request = client.post(url).json(&body);
         if let Some(api_key) = self.api_key.as_deref() {
             request = request.bearer_auth(api_key);

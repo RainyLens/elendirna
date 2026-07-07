@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use crate::cli::init::{InitArgs, run as init_run};
+use crate::semantic::store;
 use crate::tools::bundle::BundleHandler;
 use crate::tools::entry_assets::EntryAssetsHandler;
 use crate::tools::entry_attach::EntryAttachHandler;
@@ -32,6 +33,7 @@ use crate::tools::query::QueryHandler;
 use crate::tools::revision_add::RevisionAddHandler;
 use crate::tools::sync_record::SyncRecordHandler;
 use crate::tools::validate::ValidateHandler;
+use crate::vault::config::{SemanticConfig, VaultConfig};
 use crate::vault::ops;
 
 fn ctx(perms: Permissions) -> CallContext {
@@ -53,6 +55,49 @@ fn setup_vault() -> TempDir {
 
 fn vault_root_arg(dir: &TempDir) -> Value {
     Value::String(dir.path().to_string_lossy().into_owned())
+}
+
+fn configure_semantic(dir: &TempDir, endpoint: String, dim: usize) {
+    let mut config = VaultConfig::read(dir.path()).unwrap();
+    config.semantic = Some(SemanticConfig {
+        endpoint,
+        model: "test-embedding-model".to_string(),
+        api_key: None,
+        dim,
+    });
+    config.write(dir.path()).unwrap();
+}
+
+async fn spawn_embeddings_server(vector: Vec<f32>) -> (String, tokio::task::JoinHandle<()>) {
+    use axum::{Json, Router, extract::State, routing::post};
+
+    async fn embeddings(State(vector): State<Vec<f32>>, Json(payload): Json<Value>) -> Json<Value> {
+        let input_len = payload
+            .get("input")
+            .and_then(Value::as_array)
+            .map_or(1, Vec::len);
+        let data: Vec<Value> = (0..input_len)
+            .map(|index| json!({ "index": index, "embedding": vector.clone() }))
+            .collect();
+        Json(json!({ "data": data }))
+    }
+
+    let app = Router::new()
+        .route("/embeddings", post(embeddings))
+        .with_state(vector);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (format!("http://{addr}"), handle)
+}
+
+async fn unused_local_endpoint() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    format!("http://{addr}")
 }
 
 /// sync.jsonl에서 마지막 `sync.record` 이벤트를 파싱 (operation log와 혼재하므로 필터). → see N0105
@@ -223,6 +268,99 @@ async fn entry_new_creates_with_write_perm() {
     let reloaded = ops::entry_list(dir.path());
     assert_eq!(reloaded.len(), 1);
     assert_eq!(reloaded[0].manifest.title, "정상 생성 항목");
+}
+
+#[tokio::test]
+async fn entry_new_omits_similar_without_semantic_config() {
+    let dir = setup_vault();
+    let handler = EntryNewHandler;
+    let result = handler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({ "vault_root": vault_root_arg(&dir), "title": "no semantic config" }),
+        )
+        .await
+        .expect("missing semantic config must not block entry_new");
+
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["id"], "N0001");
+    assert!(result.get("similar").is_none(), "result: {result}");
+}
+
+#[tokio::test]
+async fn entry_new_returns_similar_candidates_from_semantic_store() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "alpha existing",
+        Some("shared topic"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(
+        dir.path(),
+        "beta existing",
+        Some("other topic"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
+    store::upsert(dir.path(), "N0002", "h2", &[0.0, 1.0]).unwrap();
+    store::upsert(dir.path(), "N0003", "stale-self", &[1.0, 0.0]).unwrap();
+    let (endpoint, _server) = spawn_embeddings_server(vec![1.0, 0.0]).await;
+    configure_semantic(&dir, endpoint, 2);
+
+    let handler = EntryNewHandler;
+    let result = handler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "title": "alpha new",
+                "body": "shared topic continuation",
+            }),
+        )
+        .await
+        .expect("entry_new should include best-effort similar hits");
+
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["id"], "N0003");
+    assert_eq!(result["title"], "alpha new");
+    let similar = result["similar"].as_array().expect("similar array");
+    assert_eq!(similar[0]["id"], "N0001");
+    assert_eq!(similar[0]["title"], "alpha existing");
+    assert!(similar[0]["score"].as_f64().unwrap() > 0.99);
+    assert!(
+        similar.iter().all(|hit| hit["id"] != "N0003"),
+        "new entry must be excluded defensively: {similar:?}"
+    );
+}
+
+#[tokio::test]
+async fn entry_new_omits_similar_when_embedding_endpoint_fails() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "indexed existing", Some("body"), None, vec![]).unwrap();
+    store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
+    let endpoint = unused_local_endpoint().await;
+    configure_semantic(&dir, endpoint, 2);
+
+    let handler = EntryNewHandler;
+    let result = handler
+        .call(
+            &ctx(Permissions::WRITE),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "title": "endpoint failure still creates",
+            }),
+        )
+        .await
+        .expect("embedding failure must not block entry_new");
+
+    assert_eq!(result["ok"], Value::Bool(true));
+    assert_eq!(result["id"], "N0002");
+    assert!(result.get("similar").is_none(), "result: {result}");
 }
 
 #[tokio::test]

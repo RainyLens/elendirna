@@ -140,6 +140,22 @@ fn mcp_tool_surface_does_not_expose_entry_rebase_or_retract() {
 }
 
 #[test]
+fn mcp_entry_new_descriptor_mentions_similar_routing() {
+    let dir = setup_vault();
+    let server = eln_core::mcp_server::ElfMcpServer::new(eln_core::vault::VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: eln_core::vault::VaultOrigin::ExplicitPath,
+    });
+
+    let tool = server.get_tool("entry_new").unwrap();
+    let description = tool.description.as_deref().unwrap_or("");
+    assert!(description.contains("similar"));
+    assert!(description.contains("revision_add"));
+    assert!(description.contains("rebase --baseline"));
+    assert!(description.contains("link"));
+}
+
+#[test]
 fn mcp_bundle_includes_revisions_and_linked() {
     let dir = setup_vault();
     new_entry_direct(&dir, "번들 루트");

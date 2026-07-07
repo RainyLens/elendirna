@@ -16,6 +16,10 @@ pub fn db_path(vault_root: &Path) -> PathBuf {
     vault::metadata_root(vault_root).join(DB_NAME)
 }
 
+pub fn exists(vault_root: &Path) -> bool {
+    db_path(vault_root).exists()
+}
+
 pub fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     let path = db_path(vault_root);
     if let Some(parent) = path.parent() {
