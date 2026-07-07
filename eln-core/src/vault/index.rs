@@ -4,6 +4,8 @@ use crate::vault::revision::Revision;
 use rusqlite::{Connection, params, params_from_iter};
 use std::path::Path;
 
+// `.elendirna/index.sqlite` — 파생 캐시.
+// 항상 `elf validate`로 재생성 가능. vault 없이는 의미 없음.
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS entries (
     id       TEXT PRIMARY KEY,
@@ -57,6 +59,7 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     let conn =
         Connection::open(&path).map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
 
+    // v0.3.1: 동시성 강화 — WAL 모드 및 busy_timeout(5초) 설정
     conn.execute_batch(
         "
         PRAGMA journal_mode = WAL;
@@ -70,6 +73,7 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     Ok(conn)
 }
 
+/// vault의 모든 entry/revision을 index.sqlite에 재구성.
 pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     let conn = open(vault_root)?;
 
@@ -87,6 +91,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
     let entries = Entry::find_all(vault_root);
     let count = entries.len();
 
+    // 1단계: entries / tags / authored_edges / revisions 삽입
     for entry in &entries {
         let m = &entry.manifest;
         conn.execute(
@@ -159,6 +164,7 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
         }
     }
 
+    // 2단계: links 삽입 (양쪽 entry가 먼저 존재해야 함)
     for entry in &entries {
         let m = &entry.manifest;
         for link in &m.links {
@@ -172,6 +178,8 @@ pub fn rebuild(vault_root: &Path) -> Result<usize, ElfError> {
 
     Ok(count)
 }
+
+// ─── query ───────────────────────────────
 
 pub struct QueryFilter {
     pub tag: Option<String>,
@@ -189,10 +197,13 @@ pub struct QueryRow {
     pub baseline: Option<String>,
 }
 
-/// index.sqlite stale check for entry manifests and revision files.
+/// index.sqlite가 entry manifest·revision 파일보다 오래되었는지 검사 (lazy rebuild trigger).
 ///
-/// authored_edges includes revision_chain rows, so revision files participate in the same
-/// mtime comparison as manifest.toml. Directory mtimes are intentionally ignored.
+/// query는 N0034 원칙상 "degradation 가능한 편의 기능"이자 "lazy initialization 대상".
+/// entry write(entry_new/status/tag)는 index를 갱신하지 않으므로, query 시점에 최신 mtime이
+/// `index.sqlite` mtime보다 나중이면 stale로 보고 rebuild를 트리거한다.
+/// authored_edges가 revision_chain 행을 포함하므로 revision 파일(*.md)도 manifest.toml과
+/// 같은 mtime 비교에 참여한다. 디렉토리 mtime은 직속 자식만 반영하므로 파일 단위로 스캔.
 fn index_is_stale(vault_root: &Path) -> bool {
     let idx_mtime = match std::fs::metadata(index_path(vault_root)).and_then(|m| m.modified()) {
         Ok(t) => t,
@@ -241,6 +252,11 @@ fn index_is_stale(vault_root: &Path) -> bool {
     false
 }
 
+/// 필터 기반 entry 검색.
+///
+/// 호출 시 index staleness를 검사해 stale이면 rebuild를 먼저 수행한다 (lazy rebuild,
+/// N0034 원칙 4 "lazy initialization"). rebuild 실패는 degradation으로 흡수 — stale read라도
+/// query 자체는 진행 (편의 기능 degradation 허용).
 pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, ElfError> {
     if index_is_stale(vault_root) {
         let _ = rebuild(vault_root);
