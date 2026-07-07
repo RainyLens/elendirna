@@ -1,8 +1,10 @@
 use crate::error::ElfError;
+use crate::schema::manifest::NoteFrontmatter;
 use crate::vault::entry::Entry;
 use crate::vault::id::{EntryId, EntryRevRef};
 use crate::vault::revision::Revision;
-use crate::vault::util::append_sync_event;
+use crate::vault::tombstone;
+use crate::vault::util::{append_sync_event, append_sync_event_ext};
 use chrono::{DateTime, FixedOffset};
 /// MCP 서버와 CLI가 공유하는 고수준 vault 조작 함수.
 /// 출력 로직 없음 — 호출자(CLI 핸들러 또는 MCP tool)가 결과를 직렬화한다.
@@ -45,7 +47,7 @@ pub fn entry_new(
         });
     }
 
-    let next_id = EntryId::next(&Entry::entries_dir(vault_root))?;
+    let next_id = EntryId::next_for_vault(vault_root)?;
     let entry = Entry::create(
         vault_root,
         next_id,
@@ -56,6 +58,144 @@ pub fn entry_new(
     )?;
 
     Ok(EntryNewResult { entry })
+}
+
+fn parse_entry_id(id_str: &str) -> Result<EntryId, ElfError> {
+    EntryId::from_str(id_str).ok_or_else(|| ElfError::InvalidInput {
+        message: format!("'{id_str}' 유효한 entry ID가 아닙니다"),
+    })
+}
+
+fn validate_baseline_entry_exists(vault_root: &Path, baseline: &str) -> Result<(), ElfError> {
+    let entry_part = baseline.split('@').next().unwrap_or(baseline);
+    let bid = EntryId::from_str(entry_part).ok_or_else(|| ElfError::InvalidInput {
+        message: format!("baseline '{baseline}'의 entry ID 형식이 올바르지 않습니다"),
+    })?;
+    if Entry::find_by_id(vault_root, &bid).is_none() {
+        return Err(ElfError::NotFound {
+            id: bid.to_string(),
+        });
+    }
+    Ok(())
+}
+
+pub fn assert_genesis_window(vault_root: &Path, id: &EntryId) -> Result<(), ElfError> {
+    let target = id.to_string();
+    let mut blockers = Vec::new();
+    let entries = Entry::find_all(vault_root);
+
+    for entry in &entries {
+        for link in &entry.manifest.links {
+            let entry_part = link.split('@').next().unwrap_or(link.as_str());
+            if entry_part == target {
+                blockers.push(format!("{}가 이 entry를 link합니다", entry.manifest.id));
+            }
+        }
+
+        if let Some(baseline) = &entry.manifest.baseline {
+            let entry_part = baseline.split('@').next().unwrap_or(baseline.as_str());
+            if entry_part == target {
+                blockers.push(format!(
+                    "{}가 이 entry를 baseline으로 참조합니다",
+                    entry.manifest.id
+                ));
+            }
+        }
+
+        if let Some(entry_id) = EntryId::from_str(&entry.manifest.id) {
+            for revision in Revision::list(vault_root, &entry_id) {
+                if revision.baseline.entry == *id {
+                    blockers.push(format!(
+                        "{}@{} revision baseline이 이 entry를 참조합니다",
+                        entry.manifest.id, revision.rev_id
+                    ));
+                }
+            }
+        }
+    }
+
+    if revision_count(vault_root, id) > 0 {
+        blockers.push("revision이 이미 존재합니다".to_string());
+    }
+
+    if blockers.is_empty() {
+        Ok(())
+    } else {
+        Err(ElfError::InvalidInput {
+            message: format!(
+                "{}는 생성 창 안에 있지 않아 변경할 수 없습니다: {}",
+                target,
+                blockers.join("; ")
+            ),
+        })
+    }
+}
+
+pub fn entry_rebase(
+    vault_root: &Path,
+    id_str: &str,
+    new_baseline: &str,
+) -> Result<Entry, ElfError> {
+    validate_baseline_entry_exists(vault_root, new_baseline)?;
+    let id = parse_entry_id(id_str)?;
+    let mut entry = Entry::find_by_id(vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: id_str.to_string(),
+    })?;
+    assert_genesis_window(vault_root, &id)?;
+
+    entry.manifest.baseline = Some(new_baseline.to_string());
+    entry.manifest.touch_and_write(&entry.dir)?;
+
+    let note_path = entry.note_path();
+    let (mut fm, body) = NoteFrontmatter::read(&note_path)?;
+    fm.baseline = Some(new_baseline.to_string());
+    NoteFrontmatter::write(&note_path, &fm, &body)?;
+
+    append_sync_event(
+        vault_root,
+        &format!("entry.rebase.{id}"),
+        Some(&id.to_string()),
+    )?;
+    Ok(entry)
+}
+
+pub fn entry_retract(
+    vault_root: &Path,
+    id_str: &str,
+    merged_into: Option<&str>,
+) -> Result<(), ElfError> {
+    let id = parse_entry_id(id_str)?;
+    let entry = Entry::find_by_id(vault_root, &id).ok_or_else(|| ElfError::NotFound {
+        id: id_str.to_string(),
+    })?;
+    if let Some(target) = merged_into {
+        let target_id = parse_entry_id(target)?;
+        if target_id == id {
+            return Err(ElfError::InvalidInput {
+                message: "merged_into는 retract 대상 자신을 가리킬 수 없습니다".to_string(),
+            });
+        }
+        if Entry::find_by_id(vault_root, &target_id).is_none() {
+            return Err(ElfError::NotFound {
+                id: target_id.to_string(),
+            });
+        }
+    }
+    assert_genesis_window(vault_root, &id)?;
+
+    tombstone::append(vault_root, &id, merged_into)?;
+    std::fs::remove_dir_all(&entry.dir)?;
+    let rev_dir = Revision::rev_dir(vault_root, &id);
+    if rev_dir.exists() {
+        std::fs::remove_dir_all(rev_dir)?;
+    }
+    append_sync_event_ext(
+        vault_root,
+        &format!("entry.retract.{id}"),
+        Some(&id.to_string()),
+        serde_json::json!({ "merged_into": merged_into }),
+    )?;
+    Ok(())
 }
 
 pub struct EntryShowResult {

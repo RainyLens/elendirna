@@ -6,11 +6,12 @@ use eln_core::cli::entry::{NewArgs, ShowArgs, run_new, run_show};
 use eln_core::cli::init::{InitArgs, run as init_run};
 use eln_core::cli::link::{LinkArgs, run as link_run};
 use eln_core::cli::revision::{AddArgs, RevisionArgs, RevisionCommand, run as rev_run};
-use eln_core::schema::manifest::Manifest;
+use eln_core::schema::manifest::{Manifest, NoteFrontmatter};
 use eln_core::schema::validate::run_all;
 use eln_core::vault::VaultArgs;
 use eln_core::vault::entry::Entry;
 use eln_core::vault::id::EntryId;
+use eln_core::vault::{index, ops, tombstone};
 
 use tempfile::TempDir;
 
@@ -270,4 +271,142 @@ fn estimate_linked_entry_bytes_sums_existing_entries_only() {
     // 빈 list는 0
     let empty: Vec<String> = vec![];
     assert_eq!(estimate_linked_entry_bytes(dir.path(), &empty), 0);
+}
+
+#[test]
+fn entry_rebase_succeeds_inside_genesis_window_and_syncs_frontmatter() {
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "baseline parent", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "rebase target", None, None, vec![]).unwrap();
+
+    let entry = ops::entry_rebase(dir.path(), "N0002", "N0001@r0000").unwrap();
+    assert_eq!(entry.manifest.baseline, Some("N0001@r0000".to_string()));
+
+    let entry = Entry::find_by_id(dir.path(), &EntryId::new(2)).unwrap();
+    let manifest = Manifest::read(&entry.dir).unwrap();
+    let (frontmatter, _) = NoteFrontmatter::read(&entry.note_path()).unwrap();
+    assert_eq!(manifest.baseline, Some("N0001@r0000".to_string()));
+    assert_eq!(frontmatter.baseline, Some("N0001@r0000".to_string()));
+
+    let result = run_all(dir.path()).unwrap();
+    assert_eq!(result.error_count(), 0);
+    assert_eq!(
+        result
+            .issues
+            .iter()
+            .filter(|i| i.kind == eln_core::schema::validate::IssueKind::Consistency)
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn entry_retract_succeeds_inside_genesis_window_and_prevents_id_reuse() {
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "merged target", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "duplicate draft", None, None, vec![]).unwrap();
+
+    ops::entry_retract(dir.path(), "N0002", Some("N0001")).unwrap();
+    assert!(Entry::find_by_id(dir.path(), &EntryId::new(2)).is_none());
+    assert!(tombstone::is_tombstoned(dir.path(), &EntryId::new(2)));
+
+    let tombstones =
+        std::fs::read_to_string(dir.path().join(".elendirna").join("tombstones.jsonl")).unwrap();
+    assert!(tombstones.contains(r#""id":"N0002""#));
+    assert!(tombstones.contains(r#""merged_into":"N0001""#));
+
+    let sync_log =
+        std::fs::read_to_string(dir.path().join(".elendirna").join("sync.jsonl")).unwrap();
+    assert!(sync_log.contains("entry.retract.N0002"));
+    assert!(sync_log.contains(r#""merged_into":"N0001""#));
+
+    let next = ops::entry_new(dir.path(), "next draft", None, None, vec![]).unwrap();
+    assert_eq!(next.entry.manifest.id, "N0003");
+}
+
+#[test]
+fn entry_retract_rejects_link_inbound_baseline_inbound_and_revision() {
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "link target", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "link source", None, None, vec![]).unwrap();
+    ops::link_add(dir.path(), "N0002", "N0001").unwrap();
+    let err = ops::entry_retract(dir.path(), "N0001", None).unwrap_err();
+    assert!(format!("{err}").contains("link"));
+
+    ops::entry_new(dir.path(), "baseline target", None, None, vec![]).unwrap();
+    ops::entry_new(
+        dir.path(),
+        "baseline child",
+        None,
+        Some("N0003@r0000"),
+        vec![],
+    )
+    .unwrap();
+    let err = ops::entry_retract(dir.path(), "N0003", None).unwrap_err();
+    assert!(format!("{err}").contains("baseline"));
+
+    ops::entry_new(dir.path(), "revision target", None, None, vec![]).unwrap();
+    ops::revision_add(dir.path(), "N0005", "[Change] x\n[Impact] y", "User").unwrap();
+    let err = ops::entry_retract(dir.path(), "N0005", None).unwrap_err();
+    assert!(format!("{err}").contains("revision"));
+}
+
+#[test]
+fn entry_retract_rollover_tombstone_makes_next_id_n10000_and_validate_clean() {
+    let (dir, _guard) = setup_vault();
+    Entry::create(
+        dir.path(),
+        EntryId::new(9998),
+        "Nine Thousand Nine Hundred Ninety Eight",
+        None,
+        None,
+        vec![],
+    )
+    .unwrap();
+    Entry::create(
+        dir.path(),
+        EntryId::new(9999),
+        "Nine Thousand Nine Hundred Ninety Nine",
+        None,
+        None,
+        vec![],
+    )
+    .unwrap();
+
+    ops::entry_retract(dir.path(), "N9999", None).unwrap();
+    assert_eq!(tombstone::max_tombstoned(dir.path()), Some(9999));
+
+    let next = ops::entry_new(dir.path(), "Ten Thousand", None, None, vec![]).unwrap();
+    assert_eq!(next.entry.manifest.id, "N10000");
+
+    let result = run_all(dir.path()).unwrap();
+    assert_eq!(result.error_count(), 0);
+    assert_eq!(result.warning_count(), 0);
+
+    index::rebuild(dir.path()).unwrap();
+    let rows = index::query(
+        dir.path(),
+        &index::QueryFilter {
+            tag: None,
+            status: None,
+            baseline: None,
+            title_contains: None,
+        },
+    )
+    .unwrap();
+    let ids: Vec<_> = rows.into_iter().map(|row| row.id).collect();
+    assert_eq!(ids, vec!["N9998", "N10000"]);
+}
+
+#[test]
+fn validate_reports_error_when_tombstoned_entry_directory_remains() {
+    let (dir, _guard) = setup_vault();
+    ops::entry_new(dir.path(), "residue", None, None, vec![]).unwrap();
+    tombstone::append(dir.path(), &EntryId::new(1), None).unwrap();
+
+    let result = run_all(dir.path()).unwrap();
+    assert!(result.issues.iter().any(|issue| {
+        issue.severity == eln_core::schema::validate::Severity::Error
+            && issue.message.contains("tombstones.jsonl")
+    }));
 }

@@ -6,6 +6,7 @@ pub mod keystore;
 pub mod ops;
 pub mod refs;
 pub mod revision;
+pub mod tombstone;
 pub mod util;
 
 #[cfg(test)]

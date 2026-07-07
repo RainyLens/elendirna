@@ -31,6 +31,10 @@ pub enum EntryCommand {
     Assets(AssetsArgs),
     /// entry tag 관리 (add / remove / set) — N0080
     Tag(TagArgs),
+    /// 생성 창 안 entry의 baseline 교체
+    Rebase(RebaseArgs),
+    /// 생성 창 안 entry 회수
+    Retract(RetractArgs),
 }
 
 // ─── entry tag (N0080) ───────────────────────
@@ -130,7 +134,7 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
     }
 
     // dry-run
-    let next_id = crate::vault::id::EntryId::next(&Entry::entries_dir(&vault_root))?;
+    let next_id = crate::vault::id::EntryId::next_for_vault(&vault_root)?;
     let slug = crate::vault::id::title_to_slug(&args.title);
     let dir_name = format!("{next_id}_{slug}");
 
@@ -179,6 +183,132 @@ pub fn run_new(args: NewArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
 }
 
 // ─── entry show ──────────────────────────
+
+// ─── entry rebase / retract ─────────────────────────────────────────────
+
+#[derive(Debug, Args)]
+pub struct RebaseArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// 새 baseline (예: N0001 또는 N0001@r0001)
+    #[arg(long)]
+    pub baseline: String,
+
+    /// 실제로 변경하지 않고 수행될 작업만 출력
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RetractArgs {
+    /// entry ID (예: N0001)
+    pub id: String,
+
+    /// 회수 대상이 병합되는 entry ID
+    #[arg(long)]
+    pub merged_into: Option<String>,
+
+    /// 실제로 삭제하지 않고 수행될 작업만 출력
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// JSON 출력
+    #[arg(long)]
+    pub json: bool,
+}
+
+pub fn run_rebase(args: RebaseArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+    if args.dry_run {
+        if args.json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "command": "entry.rebase",
+                    "ok": true,
+                    "dry_run": true,
+                    "data": {
+                        "id": args.id,
+                        "baseline": args.baseline,
+                    }
+                })
+            );
+        } else {
+            println!("-- dry-run: 실제로 변경하지 않습니다 --");
+            println!("  [update] {} baseline -> {}", args.id, args.baseline);
+            println!("  [append] .elendirna/sync.jsonl");
+        }
+        return Ok(());
+    }
+
+    let entry = crate::vault::ops::entry_rebase(&vault_root, &args.id, &args.baseline)?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.rebase",
+                "ok": true,
+                "data": {
+                    "id": entry.manifest.id,
+                    "baseline": entry.manifest.baseline,
+                }
+            })
+        );
+    } else {
+        println!("entry rebase 완료: {} -> {}", args.id, args.baseline);
+    }
+    Ok(())
+}
+
+pub fn run_retract(args: RetractArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
+    let vault_root = vault::resolve_vault_root(&vault_args)?;
+    if args.dry_run {
+        if args.json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "command": "entry.retract",
+                    "ok": true,
+                    "dry_run": true,
+                    "data": {
+                        "id": args.id,
+                        "merged_into": args.merged_into,
+                    }
+                })
+            );
+        } else {
+            println!("-- dry-run: 실제로 삭제하지 않습니다 --");
+            println!("  [append] .elendirna/tombstones.jsonl");
+            println!("  [remove] entries/{}", args.id);
+            println!("  [remove] revisions/{}", args.id);
+            println!("  [append] .elendirna/sync.jsonl");
+        }
+        return Ok(());
+    }
+
+    crate::vault::ops::entry_retract(&vault_root, &args.id, args.merged_into.as_deref())?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "command": "entry.retract",
+                "ok": true,
+                "data": {
+                    "id": args.id,
+                    "merged_into": args.merged_into,
+                }
+            })
+        );
+    } else {
+        println!("entry retract 완료: {}", args.id);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Args)]
 pub struct ShowArgs {

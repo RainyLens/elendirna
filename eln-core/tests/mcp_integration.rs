@@ -11,6 +11,7 @@ use eln_core::cli::init::{InitArgs, run as init_run};
 use eln_core::cli::revision::{AddArgs, run_add};
 use eln_core::vault::VaultArgs;
 use eln_core::vault::ops;
+use rmcp::ServerHandler;
 
 use tempfile::TempDir;
 
@@ -124,6 +125,19 @@ fn mcp_entry_new_duplicate_title_returns_error() {
 }
 
 // ─── bundle ───────────────────────────────
+
+#[test]
+fn mcp_tool_surface_does_not_expose_entry_rebase_or_retract() {
+    let dir = setup_vault();
+    let server = eln_core::mcp_server::ElfMcpServer::new(eln_core::vault::VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: eln_core::vault::VaultOrigin::ExplicitPath,
+    });
+
+    assert!(server.get_tool("entry_rebase").is_none());
+    assert!(server.get_tool("entry_retract").is_none());
+    assert!(server.get_tool("entry_new").is_some());
+}
 
 #[test]
 fn mcp_bundle_includes_revisions_and_linked() {

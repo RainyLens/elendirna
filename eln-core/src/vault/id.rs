@@ -35,6 +35,13 @@ impl EntryId {
         Ok(Self(max + 1))
     }
 
+    pub fn next_for_vault(vault_root: &Path) -> Result<Self, ElfError> {
+        let entries_dir = crate::vault::data_root(vault_root).join("entries");
+        let dir_next = Self::next(&entries_dir)?;
+        let tombstone_max = crate::vault::tombstone::max_tombstoned(vault_root).unwrap_or(0);
+        Ok(Self(dir_next.0.saturating_sub(1).max(tombstone_max) + 1))
+    }
+
     /// "N0042_rust_ownership" → Some(EntryId(42))
     pub fn from_dir_name(name: &str) -> Option<Self> {
         // N 으로 시작하고 숫자 4자리 이상

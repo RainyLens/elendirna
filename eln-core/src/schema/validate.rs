@@ -123,6 +123,7 @@ pub fn run_all_with_severity(
 
     // 6. Orphan
     check_orphan(vault_root, &entry_ids, &mut issues)?;
+    check_tombstone_residue(vault_root, &entries, &mut issues);
 
     // 7. Asset
     check_asset(vault_root, &entries, &mut issues);
@@ -558,6 +559,26 @@ fn check_orphan(
 // 7. Asset — sources 파일 실재 확인
 // (이미 Dangling에서 처리하므로 추가 Asset 검사: assets/ 미등록 파일 경고)
 // ─────────────────────────────────────────
+
+fn check_tombstone_residue(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
+    for entry in entries {
+        let Some(id) = EntryId::from_str(&entry.manifest.id) else {
+            continue;
+        };
+        if crate::vault::tombstone::is_tombstoned(vault_root, &id) {
+            issues.push(Issue {
+                severity: Severity::Error,
+                kind: IssueKind::Orphan,
+                path: entry.dir.clone(),
+                message: format!(
+                    "{}는 tombstones.jsonl에 기록되어 있으나 entry 디렉터리가 남아 있습니다",
+                    entry.manifest.id
+                ),
+                fix: None,
+            });
+        }
+    }
+}
 
 fn check_asset(vault_root: &Path, entries: &[Entry], issues: &mut Vec<Issue>) {
     let assets_dir = crate::vault::data_root(vault_root).join("assets");
