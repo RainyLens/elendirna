@@ -855,6 +855,21 @@ fn mcp_tool_list_exposes_semantic_query_descriptor() {
     assert!(server.tool_names().contains(&"semantic_query"));
 }
 
+#[test]
+fn mcp_tool_list_exposes_graph_descriptors_without_rebase_or_retract() {
+    let dir = setup_vault();
+    let server = ElfMcpServer::new(VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: VaultOrigin::ExplicitPath,
+    });
+    let names = server.tool_names();
+    assert!(names.contains(&"graph_neighbors"));
+    assert!(names.contains(&"graph_subgraph"));
+    assert!(names.contains(&"graph_path"));
+    assert!(!names.contains(&"entry_rebase"));
+    assert!(!names.contains(&"entry_retract"));
+}
+
 #[tokio::test]
 async fn mcp_semantic_query_missing_config_returns_hint() {
     use eln_plugin_sdk::ToolError;

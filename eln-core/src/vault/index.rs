@@ -1,7 +1,8 @@
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
-use rusqlite::{Connection, OpenFlags, params, params_from_iter};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_iter};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 // `.elendirna/index.sqlite` — 파생 캐시.
@@ -226,6 +227,37 @@ pub struct QueryRow {
     pub baseline: Option<String>,
 }
 
+pub const AUTHORED_EDGE_RELS: [&str; 3] = ["baseline", "manifest_link", "revision_chain"];
+
+pub fn is_authored_edge_rel(rel: &str) -> bool {
+    AUTHORED_EDGE_RELS.contains(&rel)
+}
+
+#[derive(Clone, Debug)]
+pub struct GraphNodeRow {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct GraphEdgeRow {
+    pub src: String,
+    pub dst: String,
+    pub rel: String,
+    pub source_ref: Option<String>,
+}
+
+pub struct GraphNeighborRow {
+    pub id: String,
+    pub title: String,
+    pub rel: String,
+    pub direction: String,
+    pub source_ref: Option<String>,
+}
+
+pub type GraphPathResult = Option<(Vec<GraphNodeRow>, Vec<GraphEdgeRow>)>;
+
 /// index.sqlite가 entry manifest·revision 파일보다 오래되었는지 검사 (lazy rebuild trigger).
 ///
 /// query는 N0034 원칙상 "degradation 가능한 편의 기능"이자 "lazy initialization 대상".
@@ -378,4 +410,260 @@ pub fn authored_neighbors_read_only(
     neighbors.sort();
     neighbors.dedup();
     Ok(neighbors)
+}
+
+fn ensure_index_for_graph(vault_root: &Path) {
+    if index_is_stale(vault_root) {
+        let _ = rebuild(vault_root);
+    }
+}
+
+fn graph_node(conn: &Connection, id: &str) -> Result<Option<GraphNodeRow>, ElfError> {
+    conn.query_row(
+        "SELECT id, title, status FROM entries WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(GraphNodeRow {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                status: row.get(2)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))
+}
+
+fn require_graph_node(conn: &Connection, id: &str) -> Result<GraphNodeRow, ElfError> {
+    graph_node(conn, id)?.ok_or_else(|| ElfError::NotFound { id: id.to_string() })
+}
+
+fn graph_edges_for_node(
+    conn: &Connection,
+    id: &str,
+    rel: Option<&str>,
+) -> Result<Vec<GraphEdgeRow>, ElfError> {
+    let mut out = Vec::new();
+    if let Some(rel) = rel {
+        let mut stmt = conn
+            .prepare(
+                "SELECT src, dst, rel, source_ref
+                 FROM authored_edges
+                 WHERE (src = ?1 OR dst = ?1) AND rel = ?2
+                 ORDER BY rel, src, dst, source_ref",
+            )
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        let rows = stmt
+            .query_map(params![id, rel], |row| {
+                Ok(GraphEdgeRow {
+                    src: row.get(0)?,
+                    dst: row.get(1)?,
+                    rel: row.get(2)?,
+                    source_ref: row.get(3)?,
+                })
+            })
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        for row in rows {
+            out.push(row.map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?);
+        }
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT src, dst, rel, source_ref
+                 FROM authored_edges
+                 WHERE src = ?1 OR dst = ?1
+                 ORDER BY rel, src, dst, source_ref",
+            )
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        let rows = stmt
+            .query_map(params![id], |row| {
+                Ok(GraphEdgeRow {
+                    src: row.get(0)?,
+                    dst: row.get(1)?,
+                    rel: row.get(2)?,
+                    source_ref: row.get(3)?,
+                })
+            })
+            .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        for row in rows {
+            out.push(row.map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?);
+        }
+    }
+    Ok(out)
+}
+
+pub fn graph_neighbors(
+    vault_root: &Path,
+    entry_id: &str,
+    rel: Option<&str>,
+    depth: u32,
+) -> Result<Vec<GraphNeighborRow>, ElfError> {
+    ensure_index_for_graph(vault_root);
+    let conn = open_read_only(vault_root)?;
+    require_graph_node(&conn, entry_id)?;
+
+    let mut rows = Vec::new();
+    let mut visited_nodes = HashSet::from([entry_id.to_string()]);
+    let mut seen_edges = HashSet::new();
+    let mut frontier = VecDeque::from([entry_id.to_string()]);
+
+    for _ in 0..depth {
+        let level_count = frontier.len();
+        if level_count == 0 {
+            break;
+        }
+        for _ in 0..level_count {
+            let Some(current) = frontier.pop_front() else {
+                break;
+            };
+            for edge in graph_edges_for_node(&conn, &current, rel)? {
+                if !seen_edges.insert(edge.clone()) {
+                    continue;
+                }
+                let (other, direction) = if edge.src == current {
+                    (edge.dst.clone(), "out")
+                } else {
+                    (edge.src.clone(), "in")
+                };
+                if let Some(node) = graph_node(&conn, &other)? {
+                    rows.push(GraphNeighborRow {
+                        id: node.id,
+                        title: node.title,
+                        rel: edge.rel,
+                        direction: direction.to_string(),
+                        source_ref: edge.source_ref,
+                    });
+                    if visited_nodes.insert(other.clone()) {
+                        frontier.push_back(other);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(rows)
+}
+
+pub fn graph_subgraph(
+    vault_root: &Path,
+    entry_id: &str,
+    depth: u32,
+) -> Result<(Vec<GraphNodeRow>, Vec<GraphEdgeRow>), ElfError> {
+    ensure_index_for_graph(vault_root);
+    let conn = open_read_only(vault_root)?;
+    require_graph_node(&conn, entry_id)?;
+
+    let mut visited_nodes = HashSet::from([entry_id.to_string()]);
+    let mut frontier = VecDeque::from([entry_id.to_string()]);
+    for _ in 0..depth {
+        let level_count = frontier.len();
+        if level_count == 0 {
+            break;
+        }
+        for _ in 0..level_count {
+            let Some(current) = frontier.pop_front() else {
+                break;
+            };
+            for edge in graph_edges_for_node(&conn, &current, None)? {
+                let other = if edge.src == current {
+                    edge.dst
+                } else {
+                    edge.src
+                };
+                if graph_node(&conn, &other)?.is_some() && visited_nodes.insert(other.clone()) {
+                    frontier.push_back(other);
+                }
+            }
+        }
+    }
+
+    let mut node_ids: Vec<String> = visited_nodes.iter().cloned().collect();
+    node_ids.sort();
+    let mut nodes = Vec::with_capacity(node_ids.len());
+    for id in &node_ids {
+        nodes.push(require_graph_node(&conn, id)?);
+    }
+
+    let mut edges = HashSet::new();
+    for id in &node_ids {
+        for edge in graph_edges_for_node(&conn, id, None)? {
+            if visited_nodes.contains(&edge.src) && visited_nodes.contains(&edge.dst) {
+                edges.insert(edge);
+            }
+        }
+    }
+    let mut edges: Vec<GraphEdgeRow> = edges.into_iter().collect();
+    edges.sort_by(|a, b| {
+        (&a.src, &a.dst, &a.rel, &a.source_ref).cmp(&(&b.src, &b.dst, &b.rel, &b.source_ref))
+    });
+
+    Ok((nodes, edges))
+}
+
+pub fn graph_path(
+    vault_root: &Path,
+    from: &str,
+    to: &str,
+    max_depth: u32,
+) -> Result<GraphPathResult, ElfError> {
+    ensure_index_for_graph(vault_root);
+    let conn = open_read_only(vault_root)?;
+    require_graph_node(&conn, from)?;
+    require_graph_node(&conn, to)?;
+
+    if from == to {
+        return Ok(Some((vec![require_graph_node(&conn, from)?], vec![])));
+    }
+
+    let mut visited = HashSet::from([from.to_string()]);
+    let mut parent: HashMap<String, (String, GraphEdgeRow)> = HashMap::new();
+    let mut queue = VecDeque::from([(from.to_string(), 0_u32)]);
+    let mut found = false;
+
+    while let Some((current, depth)) = queue.pop_front() {
+        if depth >= max_depth {
+            continue;
+        }
+        for edge in graph_edges_for_node(&conn, &current, None)? {
+            let other = if edge.src == current {
+                edge.dst.clone()
+            } else {
+                edge.src.clone()
+            };
+            if graph_node(&conn, &other)?.is_none() || !visited.insert(other.clone()) {
+                continue;
+            }
+            parent.insert(other.clone(), (current.clone(), edge));
+            if other == to {
+                found = true;
+                queue.clear();
+                break;
+            }
+            queue.push_back((other, depth + 1));
+        }
+    }
+
+    if !found {
+        return Ok(None);
+    }
+
+    let mut ids = vec![to.to_string()];
+    let mut edges = Vec::new();
+    let mut current = to.to_string();
+    while current != from {
+        let Some((prev, edge)) = parent.get(&current) else {
+            return Ok(None);
+        };
+        edges.push(edge.clone());
+        ids.push(prev.clone());
+        current = prev.clone();
+    }
+    ids.reverse();
+    edges.reverse();
+
+    let mut nodes = Vec::with_capacity(ids.len());
+    for id in &ids {
+        nodes.push(require_graph_node(&conn, id)?);
+    }
+    Ok(Some((nodes, edges)))
 }
