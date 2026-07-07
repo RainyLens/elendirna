@@ -54,6 +54,9 @@ enum Commands {
     /// entry 의존 그래프 export (DOT / Mermaid / JSON)
     Graph(cli::graph::GraphArgs),
 
+    /// semantic embeddings cache commands
+    Semantic(cli::semantic::SemanticArgs),
+
     /// MCP 서버 구동 (v0.2)
     Serve(cli::serve::ServeArgs),
 
@@ -86,6 +89,7 @@ fn main() {
         Commands::Bundle(args) => cli::bundle::run(args, vault_args),
         Commands::Query(args) => cli::query::run(args, vault_args),
         Commands::Graph(args) => cli::graph::run(args, vault_args),
+        Commands::Semantic(args) => cli::semantic::run(args, vault_args),
         Commands::Serve(args) => cli::serve::run(args),
         Commands::Sync(args) => cli::sync::run(args, vault_args),
         Commands::Key(args) => cli::key::run(args),

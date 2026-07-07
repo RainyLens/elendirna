@@ -20,6 +20,7 @@ pub mod entry_tag_remove;
 pub mod entry_tag_set;
 pub mod query;
 pub mod revision_add;
+pub mod semantic_query;
 pub mod sync_record;
 pub mod validate;
 

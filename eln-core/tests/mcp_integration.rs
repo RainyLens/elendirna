@@ -9,8 +9,8 @@
 use eln_core::cli::entry::{NewArgs, run_new};
 use eln_core::cli::init::{InitArgs, run as init_run};
 use eln_core::cli::revision::{AddArgs, run_add};
-use eln_core::vault::VaultArgs;
 use eln_core::vault::ops;
+use eln_core::vault::{VaultArgs, VaultOrigin, VaultResolution};
 
 use tempfile::TempDir;
 
@@ -691,8 +691,10 @@ fn mcp_revision_add_appends_and_touches_manifest() {
 // 분기는 mcp_integration scope에서 미검증. 본 3 test가 S5.2의 handler 이동 결정(BundleSince
 // parse + cost_hint 산출 → handler) cross-layer 회귀 catch.
 
+use eln_core::mcp_server::ElfMcpServer;
 use eln_core::tools::bundle::BundleHandler;
 use eln_core::tools::query::QueryHandler;
+use eln_core::tools::semantic_query::SemanticQueryHandler;
 
 #[tokio::test]
 async fn mcp_query_filters_by_tag() {
@@ -775,5 +777,39 @@ async fn mcp_bundle_invalid_since_returns_invalid_argument() {
             assert!(msg.contains("since"), "message should mention since: {msg}");
         }
         other => panic!("expected InvalidArgument, got {other:?}"),
+    }
+}
+
+#[test]
+fn mcp_tool_list_exposes_semantic_query_descriptor() {
+    let dir = setup_vault();
+    let server = ElfMcpServer::new(VaultResolution {
+        path: dir.path().to_path_buf(),
+        origin: VaultOrigin::ExplicitPath,
+    });
+    assert!(server.tool_names().contains(&"semantic_query"));
+}
+
+#[tokio::test]
+async fn mcp_semantic_query_missing_config_returns_hint() {
+    use eln_plugin_sdk::ToolError;
+
+    let dir = setup_vault();
+    let err = SemanticQueryHandler
+        .call(
+            &admin_ctx(),
+            json!({
+                "vault_root": dir.path().to_string_lossy(),
+                "text": "search text",
+            }),
+        )
+        .await
+        .expect_err("missing [semantic] config must be explicit");
+
+    match err {
+        ToolError::Internal(msg) => {
+            assert!(msg.contains("config에 [semantic] 설정 + elf semantic reindex 실행"));
+        }
+        other => panic!("expected Internal, got {other:?}"),
     }
 }

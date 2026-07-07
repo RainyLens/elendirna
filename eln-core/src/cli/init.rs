@@ -235,7 +235,11 @@ fn update_gitignore(root: &Path) -> Result<(), ElfError> {
     let path = root.join(".gitignore");
     // 추적 제외 항목: index.sqlite(재생성 가능한 파생물) + audit.jsonl(보안 감사 로그 —
     // handover 의미의 sync.jsonl과 달리 보통 비추적, [[N0104]]/[[N0115]]). 항목별 idempotent.
-    let required = [".elendirna/index.sqlite", ".elendirna/audit.jsonl"];
+    let required = [
+        ".elendirna/index.sqlite",
+        ".elendirna/semantic.sqlite",
+        ".elendirna/audit.jsonl",
+    ];
 
     let mut content = if path.exists() {
         std::fs::read_to_string(&path)?
