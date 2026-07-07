@@ -4,6 +4,7 @@ pub mod id;
 pub mod index;
 pub mod keystore;
 pub mod ops;
+pub mod refs;
 pub mod revision;
 pub mod util;
 

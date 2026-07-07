@@ -1,0 +1,34 @@
+---
+source: eln-core/src/cli/graph.rs
+expression: render_mermaid(&demo_graph())
+---
+graph LR
+  N0001["N0001: OAuth2 Login Integration"]:::draft
+  N0001_at_r0001(["N0001@r0001"]):::revision
+  N0001_at_r0002(["N0001@r0002"]):::revision
+  N0002["N0002: Security Guidelines"]:::draft
+  N0003["N0003: JWT 토큰 보안 취약점"]:::draft
+  N0003_at_r0001(["N0003@r0001"]):::revision
+  N0003_at_r0002(["N0003@r0002"]):::revision
+  N0003_at_r0003(["N0003@r0003"]):::revision
+  N0004["N0004: PKCE 흐름 이해"]:::draft
+  N0005["N0005: 세션 vs JWT 비교"]:::draft
+  N0005_at_r0001(["N0005@r0001"]):::revision
+
+  N0001 <-->|연결| N0002
+  N0001 <-->|연결| N0004
+  N0001 <-->|연결| N0005
+  N0001_at_r0001 -.->|delta| N0001_at_r0000
+  N0001_at_r0002 -.->|delta| N0001_at_r0001
+  N0002 <-->|연결| N0003
+  N0003 <-->|연결| N0005
+  N0003 <-->|연결| N0006
+  N0003_at_r0001 -.->|delta| N0003_at_r0000
+  N0003_at_r0002 -.->|delta| N0003_at_r0001
+  N0003_at_r0003 -.->|delta| N0003_at_r0002
+  N0005_at_r0001 -.->|delta| N0005_at_r0000
+
+  classDef stable fill:#A9DFBF;
+  classDef draft fill:#AED6F1;
+  classDef archived fill:#D5D8DC;
+  classDef revision fill:#FAD7A0;

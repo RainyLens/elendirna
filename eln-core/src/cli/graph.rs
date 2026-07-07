@@ -161,3 +161,32 @@ fn render_json(data: &crate::vault::ops::GraphData) -> String {
     }))
     .unwrap()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{render_dot, render_json, render_mermaid};
+    use crate::vault::ops::graph_data;
+
+    fn demo_graph() -> crate::vault::ops::GraphData {
+        let vault_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("demo_vault");
+        graph_data(&vault_root, None).unwrap()
+    }
+
+    #[test]
+    fn demo_vault_graph_dot_snapshot() {
+        insta::assert_snapshot!(render_dot(&demo_graph()));
+    }
+
+    #[test]
+    fn demo_vault_graph_mermaid_snapshot() {
+        insta::assert_snapshot!(render_mermaid(&demo_graph()));
+    }
+
+    #[test]
+    fn demo_vault_graph_json_snapshot() {
+        insta::assert_snapshot!(render_json(&demo_graph()));
+    }
+}
