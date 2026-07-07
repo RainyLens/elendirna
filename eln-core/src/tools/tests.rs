@@ -12,6 +12,8 @@ use eln_plugin_sdk::{
     CallContext, Identity, PermissionDenied, Permissions, ToolError, ToolHandler,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use crate::cli::init::{InitArgs, run as init_run};
@@ -865,6 +867,26 @@ fn push_link_to_manifest(entry_dir: &std::path::Path, link_id: &str) {
     m.write(entry_dir).unwrap();
 }
 
+fn snapshot_file_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn visit(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(root, &path, out);
+            } else {
+                let rel = path.strip_prefix(root).unwrap().to_path_buf();
+                out.insert(rel, std::fs::read(&path).unwrap());
+            }
+        }
+    }
+
+    let mut out = BTreeMap::new();
+    visit(root, root, &mut out);
+    out
+}
+
 #[tokio::test]
 async fn bundle_emits_cost_hint_when_default_depth_and_links() {
     let dir = setup_vault();
@@ -917,6 +939,121 @@ async fn bundle_no_cost_hint_when_depth_explicit() {
         result.get("cost_hint").is_none() || result["cost_hint"].is_null(),
         "cost_hint must not appear when depth is explicit: {result}"
     );
+}
+
+#[tokio::test]
+async fn bundle_suggested_mentioned_always_present_and_empty() {
+    let dir = setup_vault();
+    ops::entry_new(dir.path(), "plain entry", None, None, vec![]).unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+
+    assert_eq!(result["suggested"], json!({ "mentioned": [] }));
+}
+
+#[tokio::test]
+async fn bundle_suggested_mentioned_surfaces_unlinked_refs_then_link_removes_them() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "root entry",
+        Some("본문 언급 → see N0002"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(dir.path(), "target entry", None, None, vec![]).unwrap();
+
+    let before_link = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    assert_eq!(before_link["suggested"], json!({ "mentioned": ["N0002"] }));
+
+    ops::link_add(dir.path(), "N0001", "N0002").unwrap();
+
+    let after_link = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    assert_eq!(after_link["suggested"], json!({ "mentioned": [] }));
+}
+
+#[tokio::test]
+async fn bundle_suggested_mentioned_ignores_isolated_dangling_self_and_duplicates() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "root entry",
+        Some(
+            r#"plain → see N0002 and duplicate → see N0002 and self → see N0001 and missing → see N9999
+
+```
+fenced → see N0003
+```
+
+inline `→ see N0004`
+
+> quoted → see N0005
+"#,
+        ),
+        None,
+        vec![],
+    )
+    .unwrap();
+    for title in ["target", "fenced", "inline", "quoted"] {
+        ops::entry_new(dir.path(), title, None, None, vec![]).unwrap();
+    }
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+
+    assert_eq!(result["suggested"], json!({ "mentioned": ["N0002"] }));
+}
+
+#[tokio::test]
+async fn bundle_suggested_mentioned_is_read_only_for_vault_files_and_index() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "root entry",
+        Some("본문 언급 → see N0002"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(dir.path(), "target entry", None, None, vec![]).unwrap();
+    crate::vault::index::rebuild(dir.path()).unwrap();
+
+    let before = snapshot_file_bytes(dir.path());
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+    let after = snapshot_file_bytes(dir.path());
+
+    assert_eq!(result["suggested"], json!({ "mentioned": ["N0002"] }));
+    assert_eq!(before, after, "bundle must not mutate vault files or index");
 }
 
 #[tokio::test]

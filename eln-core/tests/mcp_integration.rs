@@ -173,6 +173,41 @@ fn mcp_bundle_unknown_id_returns_error() {
     assert_eq!(err.exit_code(), 2); // NotFound
 }
 
+#[test]
+fn mcp_compute_mentioned_scans_note_and_all_revisions_independent_of_since() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "mentioned root",
+        Some("note mention → see N0002"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(dir.path(), "note target", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "revision target", None, None, vec![]).unwrap();
+    ops::revision_add(dir.path(), "N0001", "revision mention → see N0003", "User").unwrap();
+
+    let bundle = ops::bundle_with_opts(
+        dir.path(),
+        "N0001",
+        ops::BundleOptions {
+            depth: 0,
+            since: ops::BundleSince::parse("N0001@r0001"),
+        },
+    )
+    .unwrap();
+
+    assert!(
+        bundle.revisions.is_empty(),
+        "since filter should hide r0001"
+    );
+    assert_eq!(
+        ops::compute_mentioned(dir.path(), &bundle.entry),
+        vec!["N0002", "N0003"]
+    );
+}
+
 // ─── sync_record / sync_log ───────────────
 
 #[test]

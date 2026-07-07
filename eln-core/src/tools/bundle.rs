@@ -24,6 +24,7 @@ pub const DESCRIPTION: &str = "entry + revision chain + linked entries 수집. \
     depth=0 (default): revisions만 (cost-aware), depth=1: 직접 linked 전문, depth=2+: 2홉 이상 manifest만. \
     cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
     since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용). \
+    응답의 suggested.mentioned: 본문이 언급하지만 아직 link되지 않은 entry 후보. 판단에 참고하고, 승격은 elf link로 수행. \
     응답의 sync_history: 이 entry가 등장한 최근 sync_record 요약(시간 역순, 최대 5건)을 자동 포함 — 별도 sync_log 호출 없이 활동 이력을 함께 복원. 빈 배열이면 활동이 끊긴 entry 신호.";
 
 pub struct BundleHandler;
@@ -113,6 +114,7 @@ impl ToolHandler for BundleHandler {
         // sync_history: bundle 구조 동작(manifest/revision/linked)과 독립된 별도 단계.
         // 반환이 Vec(Result 아님)이라 실패는 빈 배열로 흡수 (→ see N0117 degradation 불변식).
         let sync_history = ops::entry_sync_history(vault_root, id, SYNC_HISTORY_LIMIT);
+        let mentioned = ops::compute_mentioned(vault_root, &b.entry);
 
         let mut result = Map::new();
         result.insert("ok".into(), Value::Bool(true));
@@ -140,6 +142,12 @@ impl ToolHandler for BundleHandler {
         result.insert("note".into(), Value::String(b.note_body));
         result.insert("revisions".into(), Value::Array(revs));
         result.insert("linked".into(), Value::Array(linked));
+        result.insert(
+            "suggested".into(),
+            json!({
+                "mentioned": mentioned,
+            }),
+        );
         // 항상 포함 — 빈 배열도 "활동이 끊긴 entry" 신호다 (cost_hint식 생략과 다름, → see N0117).
         result.insert("sync_history".into(), Value::Array(sync_history));
         if let Some(hint) = cost_hint {
