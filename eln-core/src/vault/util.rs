@@ -48,12 +48,33 @@ pub fn append_sync_event(
     action: &str,
     id: Option<&str>,
 ) -> Result<(), ElfError> {
+    append_sync_event_ext(vault_root, action, id, serde_json::Value::Null)
+}
+
+pub fn append_sync_event_ext(
+    vault_root: &Path,
+    action: &str,
+    id: Option<&str>,
+    extra: serde_json::Value,
+) -> Result<(), ElfError> {
     let agent = std::env::var("ELF_AGENT").unwrap_or_else(|_| "User".to_string());
     let ts = chrono::Local::now().to_rfc3339();
-    let event = match id {
-        Some(i) => serde_json::json!({"ts": ts, "agent": agent, "action": action, "id": i}),
-        None => serde_json::json!({"ts": ts, "agent": agent, "action": action}),
-    };
+    let mut event = serde_json::Map::new();
+    event.insert("ts".to_string(), serde_json::Value::String(ts));
+    event.insert("agent".to_string(), serde_json::Value::String(agent));
+    event.insert(
+        "action".to_string(),
+        serde_json::Value::String(action.to_string()),
+    );
+    if let Some(i) = id {
+        event.insert("id".to_string(), serde_json::Value::String(i.to_string()));
+    }
+    if let Some(extra) = extra.as_object() {
+        for (key, value) in extra {
+            event.insert(key.clone(), value.clone());
+        }
+    }
+    let event = serde_json::Value::Object(event);
     let line = format!("{event}\n");
 
     let path = crate::vault::metadata_root(vault_root).join("sync.jsonl");

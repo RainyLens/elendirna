@@ -111,6 +111,8 @@ fn run_entry(args: cli::entry::EntryArgs, vault_args: VaultArgs) -> Result<(), E
         cli::entry::EntryCommand::Detach(a) => cli::entry::run_detach(a, vault_args),
         cli::entry::EntryCommand::Assets(a) => cli::entry::run_assets(a, vault_args),
         cli::entry::EntryCommand::Tag(a) => run_entry_tag(a, vault_args),
+        cli::entry::EntryCommand::Rebase(a) => cli::entry::run_rebase(a, vault_args),
+        cli::entry::EntryCommand::Retract(a) => cli::entry::run_retract(a, vault_args),
     }
 }
 
