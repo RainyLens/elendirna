@@ -61,12 +61,19 @@ mod manifest {
 mod validate {
     use crate::cli::entry::{NewArgs, run_new};
     use crate::cli::init::{InitArgs, run as init_run};
-    use crate::schema::manifest::Manifest;
-    use crate::schema::validate::{IssueKind, Severity, run_all, run_all_with_severity};
+    use crate::schema::manifest::{EntryStatus, Manifest};
+    use crate::schema::validate::{
+        AutoFix, Issue, IssueKind, Severity, ValidateResult, apply_fixes, run_all,
+        run_all_with_severity,
+    };
     use crate::vault::VaultArgs;
     use crate::vault::config::RevisionSeverity;
+    use crate::vault::entry::Entry;
     use crate::vault::id::EntryId;
+    use crate::vault::ops;
     use crate::vault::revision::Revision;
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn setup() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
@@ -96,6 +103,73 @@ mod validate {
             VaultArgs::default(),
         )
         .unwrap();
+    }
+
+    fn status_issue_for<'a>(result: &'a ValidateResult, id: &str) -> &'a Issue {
+        let issues: Vec<_> = result
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue.message.contains(id) && issue.message.contains("stable 승급을 제안합니다")
+            })
+            .collect();
+        assert_eq!(
+            issues.len(),
+            1,
+            "{id} status issue가 정확히 하나여야 함: {:?}",
+            result
+                .issues
+                .iter()
+                .map(|issue| issue.message.as_str())
+                .collect::<Vec<_>>()
+        );
+        issues[0]
+    }
+
+    fn assert_status_fix_reason(result: &ValidateResult, id: &str, reason: &str) {
+        let issue = status_issue_for(result, id);
+        assert_eq!(issue.severity, Severity::Warning);
+        assert_eq!(issue.kind, IssueKind::Schema);
+        assert!(
+            issue.message.contains(reason),
+            "status issue에 원인 {reason:?}이 포함돼야 함: {}",
+            issue.message
+        );
+        match issue
+            .fix
+            .as_ref()
+            .expect("status issue는 fix를 제안해야 함")
+        {
+            AutoFix::UpdateManifestStatus { dir, to } => {
+                assert!(dir.ends_with(id) || dir.to_string_lossy().contains(id));
+                assert_eq!(to, "stable");
+            }
+            other => panic!("unexpected status fix: {other:?}"),
+        }
+    }
+
+    fn set_status(entry: &Entry, status: EntryStatus) {
+        let mut manifest = Manifest::read(&entry.dir).unwrap();
+        manifest.status = status;
+        manifest.write(&entry.dir).unwrap();
+    }
+
+    fn snapshot_files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+        fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(base, &path, out);
+                } else {
+                    let rel = path.strip_prefix(base).unwrap().to_path_buf();
+                    out.insert(rel, std::fs::read(&path).unwrap());
+                }
+            }
+        }
+
+        let mut out = BTreeMap::new();
+        walk(root, root, &mut out);
+        out
     }
 
     #[test]
@@ -173,8 +247,6 @@ mod validate {
     /// 두 번째 validate에서 같은 warning 재출현.
     #[test]
     fn apply_fixes_resolves_consistency_in_one_pass() {
-        use crate::schema::validate::apply_fixes;
-
         let (dir, _guard) = setup();
         new_entry(&dir, "Alpha");
 
@@ -264,7 +336,8 @@ mod validate {
 
         let target_dir = dir.path().join(".elendirna/entries/N10000_slug");
         std::fs::create_dir_all(&target_dir).unwrap();
-        let target_manifest = Manifest::new("N10000", "Slug");
+        let mut target_manifest = Manifest::new("N10000", "Slug");
+        target_manifest.status = EntryStatus::Stable;
         target_manifest.write(&target_dir).unwrap();
         std::fs::write(
             target_dir.join("note.md"),
@@ -325,6 +398,155 @@ mod validate {
         assert!(
             msgs.iter().any(|m| m.contains(r#"\""#)),
             "consistency 메시지에 \\\" 같은 escape 표현이 있어야 함: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn draft_link_inbound_suggests_status_stable_fix() {
+        let (dir, _guard) = setup();
+        ops::entry_new(dir.path(), "target", None, None, vec![]).unwrap();
+        let mut source = ops::entry_new(dir.path(), "source", None, None, vec![])
+            .unwrap()
+            .entry;
+        source.manifest.links.push("N0001".to_string());
+        source.manifest.write(&source.dir).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+
+        assert_status_fix_reason(&result, "N0001", "links inbound 1");
+    }
+
+    #[test]
+    fn draft_baseline_inbound_suggests_status_stable_fix() {
+        let (dir, _guard) = setup();
+        ops::entry_new(dir.path(), "target", None, None, vec![]).unwrap();
+        ops::entry_new(dir.path(), "child", None, Some("N0001@r0000"), vec![]).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+
+        assert_status_fix_reason(&result, "N0001", "baseline inbound 1");
+    }
+
+    #[test]
+    fn draft_revision_suggests_status_stable_fix() {
+        let (dir, _guard) = setup();
+        ops::entry_new(dir.path(), "target", None, None, vec![]).unwrap();
+        Revision::create(
+            dir.path(),
+            &EntryId::new(1),
+            "[Change] status 대상 변경\n[Impact] draft 승급 제안",
+            "User",
+        )
+        .unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+
+        assert_status_fix_reason(&result, "N0001", "revision 1");
+    }
+
+    #[test]
+    fn validate_status_suggestion_does_not_write_without_fix() {
+        let (dir, _guard) = setup();
+        ops::entry_new(dir.path(), "target", None, None, vec![]).unwrap();
+        let mut source = ops::entry_new(dir.path(), "source", None, None, vec![])
+            .unwrap()
+            .entry;
+        source.manifest.links.push("N0001".to_string());
+        source.manifest.write(&source.dir).unwrap();
+
+        let vault_data = dir.path().join(".elendirna");
+        let before = snapshot_files(&vault_data);
+        let result = run_all(dir.path()).unwrap();
+        let after = snapshot_files(&vault_data);
+
+        assert_status_fix_reason(&result, "N0001", "links inbound 1");
+        assert_eq!(
+            before, after,
+            "validate 단독 실행은 vault 파일을 쓰면 안 됨"
+        );
+    }
+
+    #[test]
+    fn apply_status_fix_promotes_manifest_and_clears_issue() {
+        let (dir, _guard) = setup();
+        let target = ops::entry_new(dir.path(), "target", None, None, vec![])
+            .unwrap()
+            .entry;
+        let mut source = ops::entry_new(dir.path(), "source", None, None, vec![])
+            .unwrap()
+            .entry;
+        source.manifest.links.push("N0001".to_string());
+        source.manifest.write(&source.dir).unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        assert_status_fix_reason(&result, "N0001", "links inbound 1");
+
+        let fixed = apply_fixes(&result.issues).unwrap();
+        assert_eq!(fixed, 1);
+        let manifest = Manifest::read(&target.dir).unwrap();
+        assert_eq!(manifest.status, EntryStatus::Stable);
+
+        let result2 = run_all(dir.path()).unwrap();
+        assert!(
+            !result2
+                .issues
+                .iter()
+                .any(|issue| issue.message.contains("N0001")
+                    && issue.message.contains("stable 승급을 제안합니다")),
+            "stable 승급 후 같은 status issue가 재출현하면 안 됨: {:?}",
+            result2
+                .issues
+                .iter()
+                .map(|issue| issue.message.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn status_rule_skips_unreferenced_draft_and_non_draft_entries() {
+        let (dir, _guard) = setup();
+        let stable = ops::entry_new(dir.path(), "stable revised", None, None, vec![])
+            .unwrap()
+            .entry;
+        set_status(&stable, EntryStatus::Stable);
+        Revision::create(
+            dir.path(),
+            &EntryId::new(1),
+            "[Change] stable 변경\n[Impact] stable 유지",
+            "User",
+        )
+        .unwrap();
+
+        let archived = ops::entry_new(dir.path(), "archived referenced", None, None, vec![])
+            .unwrap()
+            .entry;
+        set_status(&archived, EntryStatus::Archived);
+
+        ops::entry_new(dir.path(), "plain draft", None, None, vec![]).unwrap();
+
+        let mut source = ops::entry_new(dir.path(), "source", None, None, vec![])
+            .unwrap()
+            .entry;
+        source.manifest.links.push("N0002".to_string());
+        source.manifest.write(&source.dir).unwrap();
+        ops::entry_new(
+            dir.path(),
+            "baseline child",
+            None,
+            Some("N0002@r0000"),
+            vec![],
+        )
+        .unwrap();
+
+        let result = run_all(dir.path()).unwrap();
+        let status_issues: Vec<_> = result
+            .issues
+            .iter()
+            .filter(|issue| issue.message.contains("stable 승급을 제안합니다"))
+            .collect();
+        assert!(
+            status_issues.is_empty(),
+            "미참조·미개정 draft와 stable/archived는 비대상이어야 함: {status_issues:?}"
         );
     }
 
