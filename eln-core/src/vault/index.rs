@@ -1,7 +1,7 @@
 use crate::error::ElfError;
 use crate::vault::entry::Entry;
 use crate::vault::revision::Revision;
-use rusqlite::{Connection, params, params_from_iter};
+use rusqlite::{Connection, OpenFlags, params, params_from_iter};
 use std::path::Path;
 
 // `.elendirna/index.sqlite` — 파생 캐시.
@@ -71,6 +71,35 @@ fn open(vault_root: &Path) -> Result<Connection, ElfError> {
     conn.execute_batch(SCHEMA)
         .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
     Ok(conn)
+}
+
+fn open_read_only(vault_root: &Path) -> Result<Connection, ElfError> {
+    let path = index_path(vault_root);
+    Connection::open_with_flags(
+        sqlite_immutable_uri(&path),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))
+}
+
+fn sqlite_immutable_uri(path: &Path) -> String {
+    let path = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .replace('\\', "/");
+    let path = path.strip_prefix("//?/").unwrap_or(&path);
+    let mut uri = String::from("file:");
+    for byte in path.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'_' | b'-' => {
+                uri.push(*byte as char);
+            }
+            other => uri.push_str(&format!("%{other:02X}")),
+        }
+    }
+    uri.push_str("?mode=ro&immutable=1");
+    uri
 }
 
 /// vault의 모든 entry/revision을 index.sqlite에 재구성.
@@ -316,4 +345,37 @@ pub fn query(vault_root: &Path, filter: &QueryFilter) -> Result<Vec<QueryRow>, E
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))
+}
+
+pub fn authored_neighbors_read_only(
+    vault_root: &Path,
+    entry_id: &str,
+) -> Result<Vec<String>, ElfError> {
+    let conn = open_read_only(vault_root)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT src, dst
+             FROM authored_edges
+             WHERE src = ?1 OR dst = ?1",
+        )
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+    let rows = stmt
+        .query_map(params![entry_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+
+    let mut neighbors = Vec::new();
+    for row in rows {
+        let (src, dst) = row.map_err(|e| ElfError::Io(std::io::Error::other(e.to_string())))?;
+        if src == entry_id {
+            neighbors.push(dst);
+        } else {
+            neighbors.push(src);
+        }
+    }
+    neighbors.sort();
+    neighbors.dedup();
+    Ok(neighbors)
 }
