@@ -4,6 +4,7 @@
 //! `cost_hint` 산출을 모두 handler 안으로 이동. depth=None(default) + linked links
 //! 존재 시 `cost_hint` 키로 escalate 안내. `vault_meta` 키는 adapter가 부착.
 
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -11,10 +12,14 @@ use eln_plugin_sdk::{CallContext, PermissionDenied, Permissions, ToolError, Tool
 use serde_json::{Map, Value, json};
 
 use super::{map_ops_error, optional_string, optional_u32, require_string};
-use crate::vault::ops;
+use crate::semantic;
+use crate::semantic::store;
+use crate::vault::entry::Entry;
+use crate::vault::{index, ops};
 
 /// sync_history projection 기본 limit (newest-first 최대 건수). MCP 인자로 노출하지 않음.
 const SYNC_HISTORY_LIMIT: usize = 5;
+const SEMANTIC_SUGGESTION_LIMIT: usize = 5;
 
 pub const NAME: &str = "bundle";
 pub const DESCRIPTION: &str = "entry + revision chain + linked entries 수집. \
@@ -25,6 +30,7 @@ pub const DESCRIPTION: &str = "entry + revision chain + linked entries 수집. \
     cost-aware: depth 미지정 시 default=0이라 linked는 비어 있고, linked가 있으면 cost_hint로 escalate 안내. \
     since=N####@r#### 또는 RFC3339: 해당 이후 revision만 포함 (최근 변화만 볼 때 사용). \
     응답의 suggested.mentioned: 본문이 언급하지만 아직 link되지 않은 entry 후보. 판단에 참고하고, 승격은 elf link로 수행. \
+    suggested.semantic / suggested.graph는 캐시된 semantic.sqlite와 authored_edges를 읽기 시점에만 참고하는 선택적 추천 신호. \
     응답의 sync_history: 이 entry가 등장한 최근 sync_record 요약(시간 역순, 최대 5건)을 자동 포함 — 별도 sync_log 호출 없이 활동 이력을 함께 복원. 빈 배열이면 활동이 끊긴 entry 신호.";
 
 pub struct BundleHandler;
@@ -115,6 +121,9 @@ impl ToolHandler for BundleHandler {
         // 반환이 Vec(Result 아님)이라 실패는 빈 배열로 흡수 (→ see N0117 degradation 불변식).
         let sync_history = ops::entry_sync_history(vault_root, id, SYNC_HISTORY_LIMIT);
         let mentioned = ops::compute_mentioned(vault_root, &b.entry);
+        let semantic = compute_semantic_suggestions(vault_root, &b.entry, &mentioned);
+        let graph_candidates = suggestion_candidate_ids(&mentioned, semantic.as_deref());
+        let graph = compute_graph_labels(vault_root, id, &graph_candidates);
 
         let mut result = Map::new();
         result.insert("ok".into(), Value::Bool(true));
@@ -142,12 +151,29 @@ impl ToolHandler for BundleHandler {
         result.insert("note".into(), Value::String(b.note_body));
         result.insert("revisions".into(), Value::Array(revs));
         result.insert("linked".into(), Value::Array(linked));
-        result.insert(
-            "suggested".into(),
-            json!({
-                "mentioned": mentioned,
-            }),
-        );
+        let mut suggested = Map::new();
+        suggested.insert("mentioned".into(), json!(mentioned));
+        if let Some(semantic) = semantic {
+            suggested.insert(
+                "semantic".into(),
+                Value::Array(
+                    semantic
+                        .into_iter()
+                        .map(|row| {
+                            json!({
+                                "id": row.id,
+                                "score": row.score,
+                                "title": row.title,
+                            })
+                        })
+                        .collect(),
+                ),
+            );
+        }
+        if let Some(graph) = graph {
+            suggested.insert("graph".into(), json!(graph));
+        }
+        result.insert("suggested".into(), Value::Object(suggested));
         // 항상 포함 — 빈 배열도 "활동이 끊긴 entry" 신호다 (cost_hint식 생략과 다름, → see N0117).
         result.insert("sync_history".into(), Value::Array(sync_history));
         if let Some(hint) = cost_hint {
@@ -155,6 +181,102 @@ impl ToolHandler for BundleHandler {
         }
         Ok(Value::Object(result))
     }
+}
+
+#[derive(Debug, Clone)]
+struct SemanticSuggestion {
+    id: String,
+    score: f32,
+    title: String,
+}
+
+fn compute_semantic_suggestions(
+    vault_root: &Path,
+    entry: &Entry,
+    mentioned: &[String],
+) -> Option<Vec<SemanticSuggestion>> {
+    let query_vec = store::entry_vector_read_only(vault_root, &entry.manifest.id)
+        .ok()
+        .flatten()?;
+    let hits = store::search_read_only(vault_root, &query_vec, SEMANTIC_SUGGESTION_LIMIT).ok()?;
+
+    let manifest_links: HashSet<String> = entry
+        .manifest
+        .links
+        .iter()
+        .filter_map(|link| {
+            let entry_part = link.split('@').next().unwrap_or(link.as_str());
+            crate::vault::id::EntryId::from_str(entry_part).map(|id| id.to_string())
+        })
+        .collect();
+    let mentioned: HashSet<&str> = mentioned.iter().map(String::as_str).collect();
+
+    let mut rows = Vec::new();
+    for (id, score) in hits {
+        if id == entry.manifest.id
+            || manifest_links.contains(&id)
+            || mentioned.contains(id.as_str())
+        {
+            continue;
+        }
+        let Some(title) = semantic::title_for_id(vault_root, &id).ok().flatten() else {
+            continue;
+        };
+        rows.push(SemanticSuggestion { id, score, title });
+    }
+    Some(rows)
+}
+
+fn suggestion_candidate_ids(
+    mentioned: &[String],
+    semantic: Option<&[SemanticSuggestion]>,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for id in mentioned {
+        if seen.insert(id.as_str()) {
+            candidates.push(id.clone());
+        }
+    }
+    if let Some(semantic) = semantic {
+        for row in semantic {
+            if seen.insert(row.id.as_str()) {
+                candidates.push(row.id.clone());
+            }
+        }
+    }
+    candidates
+}
+
+fn compute_graph_labels(
+    vault_root: &Path,
+    entry_id: &str,
+    candidates: &[String],
+) -> Option<BTreeMap<String, &'static str>> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let source_neighbors: HashSet<String> =
+        index::authored_neighbors_read_only(vault_root, entry_id)
+            .ok()?
+            .into_iter()
+            .collect();
+    let mut labels = BTreeMap::new();
+    for candidate in candidates {
+        let candidate_neighbors =
+            index::authored_neighbors_read_only(vault_root, candidate).ok()?;
+        let label = if candidate_neighbors
+            .iter()
+            .any(|neighbor| source_neighbors.contains(neighbor))
+        {
+            "corroborated"
+        } else {
+            "bridge"
+        };
+        labels.insert(candidate.clone(), label);
+    }
+    Some(labels)
 }
 
 /// Transport-level JSON schema. `vault_root`는 transport가 inject.

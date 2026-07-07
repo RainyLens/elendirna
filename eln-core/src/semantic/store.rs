@@ -1,7 +1,7 @@
 use crate::error::ElfError;
 use crate::vault;
 use chrono::Local;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 const DB_NAME: &str = "semantic.sqlite";
@@ -39,6 +39,35 @@ fn ensure_schema(conn: &Connection) -> Result<(), ElfError> {
     )
     .map_err(sql_error)?;
     Ok(())
+}
+
+fn open_read_only(vault_root: &Path) -> Result<Connection, ElfError> {
+    let path = db_path(vault_root);
+    Connection::open_with_flags(
+        sqlite_immutable_uri(&path),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(sql_error)
+}
+
+fn sqlite_immutable_uri(path: &Path) -> String {
+    let path = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .replace('\\', "/");
+    let path = path.strip_prefix("//?/").unwrap_or(&path);
+    let mut uri = String::from("file:");
+    for byte in path.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'_' | b'-' => {
+                uri.push(*byte as char);
+            }
+            other => uri.push_str(&format!("%{other:02X}")),
+        }
+    }
+    uri.push_str("?mode=ro&immutable=1");
+    uri
 }
 
 pub fn stored_metadata(
@@ -108,6 +137,42 @@ pub fn search(
     top_k: usize,
 ) -> Result<Vec<(String, f32)>, ElfError> {
     let conn = open(vault_root)?;
+    search_conn(&conn, query_vec, top_k)
+}
+
+pub fn entry_vector_read_only(
+    vault_root: &Path,
+    entry_id: &str,
+) -> Result<Option<Vec<f32>>, ElfError> {
+    let conn = open_read_only(vault_root)?;
+    conn.query_row(
+        "SELECT dim, vec FROM embeddings WHERE entry_id = ?1",
+        params![entry_id],
+        |row| Ok((row.get::<_, i64>(0)? as usize, row.get::<_, Vec<u8>>(1)?)),
+    )
+    .optional()
+    .map_err(sql_error)?
+    .map(|(dim, bytes)| {
+        let vec = decode_f32_le(&bytes)?;
+        if vec.len() != dim {
+            return Err(ElfError::ParseError {
+                message: format!(
+                    "embedding dimension mismatch for {entry_id}: metadata={dim}, blob={}",
+                    vec.len()
+                ),
+            });
+        }
+        Ok(vec)
+    })
+    .transpose()
+}
+
+pub fn search_read_only(
+    vault_root: &Path,
+    query_vec: &[f32],
+    top_k: usize,
+) -> Result<Vec<(String, f32)>, ElfError> {
+    let conn = open_read_only(vault_root)?;
     search_conn(&conn, query_vec, top_k)
 }
 

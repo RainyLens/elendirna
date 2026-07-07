@@ -887,6 +887,15 @@ fn snapshot_file_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     out
 }
 
+fn checkpoint_sqlite(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+    let conn = rusqlite::Connection::open(path).unwrap();
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .unwrap();
+}
+
 #[tokio::test]
 async fn bundle_emits_cost_hint_when_default_depth_and_links() {
     let dir = setup_vault();
@@ -1029,6 +1038,84 @@ inline `→ see N0004`
 }
 
 #[tokio::test]
+async fn bundle_suggested_semantic_uses_cached_vectors_and_excludes_existing_signals() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "root entry",
+        Some("body mentions → see N0004"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(dir.path(), "semantic target", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "linked target", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "mentioned target", None, None, vec![]).unwrap();
+    ops::link_add(dir.path(), "N0001", "N0003").unwrap();
+
+    crate::semantic::store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0002", "h2", &[0.9, 0.1]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0003", "h3", &[0.8, 0.2]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0004", "h4", &[0.7, 0.3]).unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+
+    assert_eq!(result["suggested"]["mentioned"], json!(["N0004"]));
+    let semantic = result["suggested"]["semantic"]
+        .as_array()
+        .expect("semantic suggestions should be present");
+    assert_eq!(semantic.len(), 1);
+    assert_eq!(semantic[0]["id"], "N0002");
+    assert_eq!(semantic[0]["title"], "semantic target");
+    assert!(semantic[0]["score"].as_f64().unwrap() > 0.99);
+    assert!(
+        result["suggested"].get("graph").is_none(),
+        "graph should degrade away when index.sqlite is absent"
+    );
+}
+
+#[tokio::test]
+async fn bundle_suggested_graph_labels_corroborated_and_bridge_candidates() {
+    let dir = setup_vault();
+    ops::entry_new(
+        dir.path(),
+        "root entry",
+        Some("mentions → see N0002 and → see N0003"),
+        None,
+        vec![],
+    )
+    .unwrap();
+    ops::entry_new(dir.path(), "corroborated candidate", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "bridge candidate", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "shared neighbor", None, None, vec![]).unwrap();
+    ops::link_add(dir.path(), "N0001", "N0004").unwrap();
+    ops::link_add(dir.path(), "N0002", "N0004").unwrap();
+    crate::vault::index::rebuild(dir.path()).unwrap();
+
+    let result = BundleHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001" }),
+        )
+        .await
+        .expect("bundle should succeed");
+
+    assert_eq!(result["suggested"]["mentioned"], json!(["N0002", "N0003"]));
+    assert_eq!(result["suggested"]["graph"]["N0002"], "corroborated");
+    assert_eq!(result["suggested"]["graph"]["N0003"], "bridge");
+    assert!(
+        result["suggested"].get("semantic").is_none(),
+        "semantic should degrade away when semantic.sqlite is absent"
+    );
+}
+
+#[tokio::test]
 async fn bundle_suggested_mentioned_is_read_only_for_vault_files_and_index() {
     let dir = setup_vault();
     ops::entry_new(
@@ -1040,7 +1127,13 @@ async fn bundle_suggested_mentioned_is_read_only_for_vault_files_and_index() {
     )
     .unwrap();
     ops::entry_new(dir.path(), "target entry", None, None, vec![]).unwrap();
+    ops::entry_new(dir.path(), "semantic target", None, None, vec![]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0003", "h3", &[0.9, 0.1]).unwrap();
     crate::vault::index::rebuild(dir.path()).unwrap();
+    let meta = crate::vault::metadata_root(dir.path());
+    checkpoint_sqlite(&meta.join("index.sqlite"));
+    checkpoint_sqlite(&meta.join("semantic.sqlite"));
 
     let before = snapshot_file_bytes(dir.path());
     let result = BundleHandler
@@ -1052,7 +1145,10 @@ async fn bundle_suggested_mentioned_is_read_only_for_vault_files_and_index() {
         .expect("bundle should succeed");
     let after = snapshot_file_bytes(dir.path());
 
-    assert_eq!(result["suggested"], json!({ "mentioned": ["N0002"] }));
+    assert_eq!(result["suggested"]["mentioned"], json!(["N0002"]));
+    assert_eq!(result["suggested"]["semantic"][0]["id"], "N0003");
+    assert_eq!(result["suggested"]["graph"]["N0002"], "bridge");
+    assert_eq!(result["suggested"]["graph"]["N0003"], "bridge");
     assert_eq!(before, after, "bundle must not mutate vault files or index");
 }
 
