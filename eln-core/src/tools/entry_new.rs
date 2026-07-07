@@ -11,13 +11,17 @@ use eln_plugin_sdk::{CallContext, PermissionDenied, Permissions, ToolError, Tool
 use serde_json::{Value, json};
 
 use super::{map_ops_error, optional_string, optional_string_array, require_string};
+use crate::semantic;
+use crate::semantic::store;
 use crate::vault::ops;
 
 pub const NAME: &str = "entry_new";
-pub const DESCRIPTION: &str = "새 entry 생성. \
-    새로운 아이디어, 결정, 기록을 남길 때 사용. \
-    body로 이 entry의 출발 상태(base)를 함께 기록할 수 있음 (선택). \
-    기존 entry 내용 변경은 revision_add를 사용할 것.";
+const DEFAULT_SIMILAR_LIMIT: usize = 5;
+pub const DESCRIPTION: &str = "새 entry 생성. 새로운 아이디어, 결정, 기록에 사용합니다. \
+    body로 entry의 출발 상태(base)를 함께 기록할 수 있습니다(선택). \
+    기존 entry 내용 변경은 revision_add를 사용하세요. \
+    similar는 기존의 비슷한 주제 후보입니다. 참고해서 중복이면 방금 entry를 retract 후 기존 entry에 revision_add, \
+    파생이면 rebase --baseline, 관련이면 link를 고려할 수 있습니다.";
 
 pub struct EntryNewHandler;
 
@@ -47,11 +51,67 @@ impl ToolHandler for EntryNewHandler {
         let result =
             ops::entry_new(vault_root, title, body, baseline, tags).map_err(map_ops_error)?;
 
-        Ok(json!({
+        let mut response = json!({
             "ok":    true,
             "id":    result.entry.manifest.id,
             "title": result.entry.manifest.title,
-        }))
+        });
+        if let Some(similar) =
+            similar_entries(vault_root, &result.entry.manifest.id, title, body).await
+            && let Some(obj) = response.as_object_mut()
+        {
+            obj.insert("similar".to_string(), similar);
+        }
+
+        Ok(response)
+    }
+}
+
+async fn similar_entries(
+    vault_root: &Path,
+    self_id: &str,
+    title: &str,
+    body: Option<&str>,
+) -> Option<Value> {
+    if !store::exists(vault_root) {
+        return None;
+    }
+
+    let config = semantic::config(vault_root).ok()?;
+    let text = match body {
+        Some(body) if !body.trim().is_empty() => format!("{title}\n\n{}", body.trim()),
+        _ => title.to_string(),
+    };
+    let client = semantic::client_from_config(&config);
+    let embeddings = client.embed(&[text.as_str()]).await.ok()?;
+    let query_vec = embeddings.first()?;
+    if query_vec.len() != config.dim {
+        return None;
+    }
+
+    let hits = store::search(vault_root, query_vec, DEFAULT_SIMILAR_LIMIT + 1).ok()?;
+    let mut rows = Vec::new();
+    for (id, score) in hits {
+        if id == self_id {
+            continue;
+        }
+        let title = semantic::title_for_id(vault_root, &id)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        rows.push(json!({
+            "id": id,
+            "score": score,
+            "title": title,
+        }));
+        if rows.len() == DEFAULT_SIMILAR_LIMIT {
+            break;
+        }
+    }
+    if rows.is_empty() {
+        None
+    } else {
+        Some(Value::Array(rows))
     }
 }
 
