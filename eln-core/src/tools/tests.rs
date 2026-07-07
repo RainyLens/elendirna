@@ -29,6 +29,9 @@ use crate::tools::entry_status::EntryStatusHandler;
 use crate::tools::entry_tag_add::EntryTagAddHandler;
 use crate::tools::entry_tag_remove::EntryTagRemoveHandler;
 use crate::tools::entry_tag_set::EntryTagSetHandler;
+use crate::tools::graph_neighbors::GraphNeighborsHandler;
+use crate::tools::graph_path::GraphPathHandler;
+use crate::tools::graph_subgraph::GraphSubgraphHandler;
 use crate::tools::query::QueryHandler;
 use crate::tools::revision_add::RevisionAddHandler;
 use crate::tools::sync_record::SyncRecordHandler;
@@ -55,6 +58,51 @@ fn setup_vault() -> TempDir {
 
 fn vault_root_arg(dir: &TempDir) -> Value {
     Value::String(dir.path().to_string_lossy().into_owned())
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+fn copied_demo_vault() -> TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/demo_vault");
+    copy_dir_all(&src, dir.path());
+    dir
+}
+
+fn vault_file_snapshot(dir: &TempDir) -> BTreeMap<String, Vec<u8>> {
+    fn collect(root: &Path, path: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if entry.file_type().unwrap().is_dir() {
+                collect(root, &path, out);
+            } else {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.insert(rel, std::fs::read(path).unwrap());
+            }
+        }
+    }
+
+    let mut out = BTreeMap::new();
+    collect(dir.path(), &dir.path().join("entries"), &mut out);
+    collect(dir.path(), &dir.path().join("revisions"), &mut out);
+    out
 }
 
 fn configure_semantic(dir: &TempDir, endpoint: String, dim: usize) {
@@ -1445,4 +1493,144 @@ async fn entry_assets_lists_attached_files() {
     assert_eq!(assets.len(), 1);
     assert_eq!(assets[0]["exists"], Value::Bool(true));
     assert_eq!(assets[0]["size"], 5);
+}
+#[tokio::test]
+async fn graph_tools_work_on_demo_vault_fixture() {
+    let dir = copied_demo_vault();
+    crate::vault::entry::Entry::create(
+        dir.path(),
+        crate::vault::id::EntryId::new(6),
+        "Fixture Link Target",
+        None,
+        None,
+        vec![],
+    )
+    .unwrap();
+    crate::vault::entry::Entry::create(
+        dir.path(),
+        crate::vault::id::EntryId::new(7),
+        "Disconnected Fixture",
+        None,
+        None,
+        vec![],
+    )
+    .unwrap();
+    let before = vault_file_snapshot(&dir);
+
+    let neighbors = GraphNeighborsHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id": "N0001",
+                "rel": "manifest_link",
+            }),
+        )
+        .await
+        .expect("demo graph_neighbors should succeed");
+    let neighbors = neighbors["neighbors"].as_array().unwrap();
+    assert!(neighbors.iter().any(|neighbor| {
+        neighbor["id"] == "N0002"
+            && neighbor["rel"] == "manifest_link"
+            && neighbor["direction"] == "out"
+    }));
+    assert!(
+        neighbors
+            .iter()
+            .all(|neighbor| neighbor["rel"] == "manifest_link")
+    );
+
+    let subgraph = GraphSubgraphHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001", "depth": 1 }),
+        )
+        .await
+        .expect("demo graph_subgraph should succeed");
+    assert!(
+        subgraph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["id"] == "N0001" && node["status"] == "draft")
+    );
+    assert!(
+        subgraph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["src"] == "N0001"
+                && edge["dst"] == "N0002"
+                && edge["rel"] == "manifest_link")
+    );
+
+    let path = GraphPathHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "from": "N0001",
+                "to": "N0003",
+            }),
+        )
+        .await
+        .expect("demo graph_path should succeed");
+    assert_eq!(path["found"], Value::Bool(true));
+    assert_eq!(path["path"][0]["id"], "N0001");
+    assert_eq!(
+        path["path"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()
+            .get("id")
+            .unwrap(),
+        "N0003"
+    );
+
+    let disconnected = GraphPathHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "from": "N0001",
+                "to": "N0007",
+            }),
+        )
+        .await
+        .expect("disconnected graph_path should succeed");
+    assert_eq!(disconnected, json!({ "found": false }));
+
+    let invalid_rel = GraphNeighborsHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({
+                "vault_root": vault_root_arg(&dir),
+                "id": "N0001",
+                "rel": "see_ref",
+            }),
+        )
+        .await
+        .expect_err("invalid rel should be rejected");
+    assert!(matches!(invalid_rel, ToolError::InvalidArgument(_)));
+
+    let excessive_depth = GraphSubgraphHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N0001", "depth": 5 }),
+        )
+        .await
+        .expect_err("depth cap should be enforced");
+    assert!(matches!(excessive_depth, ToolError::InvalidArgument(_)));
+
+    let missing = GraphNeighborsHandler
+        .call(
+            &ctx(Permissions::READ),
+            json!({ "vault_root": vault_root_arg(&dir), "id": "N9999" }),
+        )
+        .await
+        .expect_err("missing id should be rejected");
+    assert!(matches!(missing, ToolError::InvalidArgument(_)));
+
+    assert_eq!(vault_file_snapshot(&dir), before);
 }

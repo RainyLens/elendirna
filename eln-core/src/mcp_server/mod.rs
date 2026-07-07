@@ -60,7 +60,7 @@ pub struct ElfMcpServer {
     /// API key registry ([[N0115]] S3a). 서버 생성 시 1회 로드되어 `Arc`로 공유.
     /// empty = auth 미초기화(anonymous READ). 활성 키 존재 = auth 모드(Bearer 필수).
     key_registry: std::sync::Arc<crate::vault::keystore::KeyRegistry>,
-    /// 15 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
+    /// 18 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
     /// session_start은 별도 dispatch path (transport-special, RequestContext 필요).
     descriptors: Vec<eln_plugin_sdk::ToolDescriptor>,
     #[allow(dead_code)]
@@ -109,7 +109,7 @@ impl ElfMcpServer {
         }
     }
 
-    /// 15 tool ToolDescriptor 빌드 — server 생성 시 1회 호출되어 cache.
+    /// 18 tool ToolDescriptor 빌드 — server 생성 시 1회 호출되어 cache.
     /// session_start은 본 list에 X — call_tool 안에서 별도 dispatch.
     fn build_descriptors() -> Vec<eln_plugin_sdk::ToolDescriptor> {
         use crate::tools;
@@ -147,6 +147,15 @@ impl ElfMcpServer {
                 .with_required_permissions(Permissions::READ),
             ToolDescriptor::new(tools::semantic_query::SemanticQueryHandler)
                 .with_input_schema(tools::semantic_query::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::graph_neighbors::GraphNeighborsHandler)
+                .with_input_schema(tools::graph_neighbors::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::graph_subgraph::GraphSubgraphHandler)
+                .with_input_schema(tools::graph_subgraph::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::graph_path::GraphPathHandler)
+                .with_input_schema(tools::graph_path::input_schema())
                 .with_required_permissions(Permissions::READ),
             ToolDescriptor::new(tools::sync_record::SyncRecordHandler)
                 .with_input_schema(tools::sync_record::input_schema())
