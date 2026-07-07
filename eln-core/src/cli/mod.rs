@@ -8,6 +8,7 @@ pub mod link;
 pub mod migrate;
 pub mod query;
 pub mod revision;
+pub mod semantic;
 pub mod serve;
 pub mod sync;
 pub mod validate;

@@ -36,6 +36,7 @@ eln-plugin-sdk  = "0.1.1"
 async-trait     = "0.1"
 sha2            = { workspace = true }
 rand            = { workspace = true }
+reqwest         = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 insta       = { workspace = true }

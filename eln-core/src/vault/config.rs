@@ -36,6 +36,18 @@ pub struct VaultConfig {
     /// revision content-shape 검사 강도 (→ see N0108). default Off — 기존 config 무수정.
     #[serde(default)]
     pub revision_severity: RevisionSeverity,
+    /// Optional OpenAI-compatible embeddings configuration for semantic cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<SemanticConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SemanticConfig {
+    pub endpoint: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    pub dim: usize,
 }
 
 impl VaultConfig {
@@ -47,6 +59,7 @@ impl VaultConfig {
             editor: "$EDITOR".to_string(),
             vaults: HashMap::new(),
             revision_severity: RevisionSeverity::default(),
+            semantic: None,
         }
     }
 

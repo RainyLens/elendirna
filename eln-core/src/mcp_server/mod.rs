@@ -60,7 +60,7 @@ pub struct ElfMcpServer {
     /// API key registry ([[N0115]] S3a). 서버 생성 시 1회 로드되어 `Arc`로 공유.
     /// empty = auth 미초기화(anonymous READ). 활성 키 존재 = auth 모드(Bearer 필수).
     key_registry: std::sync::Arc<crate::vault::keystore::KeyRegistry>,
-    /// 14 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
+    /// 15 tool ToolDescriptor cache — `list_tools` / `call_tool`이 소비.
     /// session_start은 별도 dispatch path (transport-special, RequestContext 필요).
     descriptors: Vec<eln_plugin_sdk::ToolDescriptor>,
     #[allow(dead_code)]
@@ -109,7 +109,7 @@ impl ElfMcpServer {
         }
     }
 
-    /// 14 tool ToolDescriptor 빌드 — server 생성 시 1회 호출되어 cache.
+    /// 15 tool ToolDescriptor 빌드 — server 생성 시 1회 호출되어 cache.
     /// session_start은 본 list에 X — call_tool 안에서 별도 dispatch.
     fn build_descriptors() -> Vec<eln_plugin_sdk::ToolDescriptor> {
         use crate::tools;
@@ -144,6 +144,9 @@ impl ElfMcpServer {
                 .with_required_permissions(Permissions::READ),
             ToolDescriptor::new(tools::query::QueryHandler)
                 .with_input_schema(tools::query::input_schema())
+                .with_required_permissions(Permissions::READ),
+            ToolDescriptor::new(tools::semantic_query::SemanticQueryHandler)
+                .with_input_schema(tools::semantic_query::input_schema())
                 .with_required_permissions(Permissions::READ),
             ToolDescriptor::new(tools::sync_record::SyncRecordHandler)
                 .with_input_schema(tools::sync_record::input_schema())
@@ -185,6 +188,10 @@ impl ElfMcpServer {
     pub fn with_init_fallback(mut self, value: bool) -> Self {
         self.launch_init_fallback = value;
         self
+    }
+
+    pub fn tool_names(&self) -> Vec<&str> {
+        self.descriptors.iter().map(|d| d.name()).collect()
     }
 
     /// vault resolution → JSON 메타데이터 조각.
@@ -641,7 +648,7 @@ struct SessionStartParams {
 // ─── tool dispatch + session_start (P1: ToolDescriptor 소비) ─────────────
 
 impl ElfMcpServer {
-    /// 14 tool 공통 dispatch entry point. transport-level args (vault alias + confirm)
+    /// 15 tool 공통 dispatch entry point. transport-level args (vault alias + confirm)
     /// 정규화 → vault resolve → write confirm gate → handler invoke → vault_meta merge →
     /// tool-specific post-process (validate issues → messages, entry_attach warning →
     /// message) → escalated mark.
@@ -856,7 +863,7 @@ impl ElfMcpServer {
         let meta = self.vault_meta(&res);
         let is_global = meta["vault_kind"].as_str().unwrap_or("local") == "global";
         // 호환성 진단: core(eln-core) / plugin_sdk(eln-plugin-sdk) / plugins[] 3-tier 버전.
-        // 현재 14 tool은 eln-core built-in이라 단일 "elendirna-builtin" plugin 항목 (version=core).
+        // 현재 15 tool은 eln-core built-in이라 단일 "elendirna-builtin" plugin 항목 (version=core).
         // 외부 plugin 로딩(N0094) 도착 시 각 {name, version}로 plugins[] 확장.
         let versions = serde_json::json!({
             "core": env!("CARGO_PKG_VERSION"),
@@ -922,7 +929,7 @@ impl ElfMcpServer {
     }
 
     /// session_start descriptor를 Tool로 변환 (list_tools용). transport-special이라
-    /// 14 ToolDescriptor list 밖에서 inline build. Tool은 `#[non_exhaustive]`라
+    /// 15 ToolDescriptor list 밖에서 inline build. Tool은 `#[non_exhaustive]`라
     /// default 후 field assign으로 구성 (E0639 회피).
     fn session_start_tool() -> Tool {
         let schema = serde_json::json!({

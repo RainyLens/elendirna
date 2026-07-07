@@ -5,6 +5,7 @@ pub mod mcp_server;
 pub mod output;
 pub mod render;
 pub mod schema;
+pub mod semantic;
 pub mod tools;
 pub mod vault;
 
