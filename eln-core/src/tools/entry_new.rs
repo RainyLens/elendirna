@@ -82,7 +82,8 @@ async fn similar_entries(
         Some(body) if !body.trim().is_empty() => format!("{title}\n\n{}", body.trim()),
         _ => title.to_string(),
     };
-    let client = semantic::client_from_config(&config);
+    // best-effort 신호: 생성 응답을 붙잡지 않도록 짧은 timeout (cold-load면 similar 생략)
+    let client = semantic::client_from_config(&config).with_timeout(3);
     let embeddings = client.embed(&[text.as_str()]).await.ok()?;
     let query_vec = embeddings.first()?;
     if query_vec.len() != config.dim {

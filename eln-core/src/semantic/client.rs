@@ -2,13 +2,17 @@ use crate::error::ElfError;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const EMBEDDINGS_TIMEOUT_SECS: u64 = 3;
+// 기본 timeout은 명시 호출(semantic_query·reindex) 기준 — ollama가 유휴 후 모델을
+// 언로드하면 cold-load에만 3초 이상 걸리므로(bge-m3 실측 3.4초) 넉넉해야 한다.
+// entry_new의 best-effort 신호처럼 응답을 붙잡으면 안 되는 경로는 with_timeout으로 좁힌다.
+const DEFAULT_EMBEDDINGS_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Clone)]
 pub struct EmbeddingsClient {
     pub endpoint: String,
     pub model: String,
     pub api_key: Option<String>,
+    timeout: Duration,
 }
 
 impl EmbeddingsClient {
@@ -17,7 +21,14 @@ impl EmbeddingsClient {
             endpoint,
             model,
             api_key,
+            timeout: Duration::from_secs(DEFAULT_EMBEDDINGS_TIMEOUT_SECS),
         }
+    }
+
+    /// 호출자별 timeout 조정 (초). best-effort 경로(entry_new.similar)가 짧게 좁혀 쓴다.
+    pub fn with_timeout(mut self, secs: u64) -> Self {
+        self.timeout = Duration::from_secs(secs);
+        self
     }
 
     pub async fn embed(&self, inputs: &[&str]) -> Result<Vec<Vec<f32>>, ElfError> {
@@ -31,7 +42,7 @@ impl EmbeddingsClient {
             input: inputs,
         };
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(EMBEDDINGS_TIMEOUT_SECS))
+            .timeout(self.timeout)
             .build()
             .map_err(|e| ElfError::InvalidInput {
                 message: format!(
