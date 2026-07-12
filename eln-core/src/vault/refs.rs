@@ -1,7 +1,9 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-static SEE_REF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"→ see\s+(N\d{4,})").unwrap());
+static SEE_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"→ see\s+(N\d{4,}(?:\s*,\s*N\d{4,})*)").unwrap());
+static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"N\d{4,}").unwrap());
 
 pub fn see_ref_re() -> &'static Regex {
     &SEE_REF_RE
@@ -27,7 +29,9 @@ pub fn scan_inline_refs(content: &str) -> Vec<String> {
             Event::Code(_) => {}
             Event::Text(text) if !in_code_block && in_blockquote == 0 => {
                 for cap in see_ref_re().captures_iter(&text) {
-                    refs.push(cap[1].to_string());
+                    for id in ID_RE.find_iter(&cap[1]) {
+                        refs.push(id.as_str().to_string());
+                    }
                 }
             }
             _ => {}
@@ -45,6 +49,13 @@ mod tests {
         let refs = scan_inline_refs("plain → see N0001 and rollover → see N10000");
 
         assert_eq!(refs, vec!["N0001", "N10000"]);
+    }
+
+    #[test]
+    fn scan_inline_refs_extracts_comma_separated_lists() {
+        let refs = scan_inline_refs("연결 → see N0127, N0129. 그리고 → see N0001");
+
+        assert_eq!(refs, vec!["N0127", "N0129", "N0001"]);
     }
 
     #[test]
