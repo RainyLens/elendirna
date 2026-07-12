@@ -9,7 +9,7 @@ use crate::semantic;
 use crate::semantic::store;
 
 pub const NAME: &str = "semantic_query";
-pub const DESCRIPTION: &str = "Natural-language semantic search over the derived semantic.sqlite cache. Requires [semantic] config and a prior `elf semantic reindex`.";
+pub const DESCRIPTION: &str = "Natural-language semantic search over the derived semantic.sqlite cache. Vectors are per revision; each hit reports the best-matching revision as `rev` (r0000 = base note). Requires [semantic] config and a prior `elf semantic reindex`.";
 
 pub struct SemanticQueryHandler;
 
@@ -53,13 +53,14 @@ impl ToolHandler for SemanticQueryHandler {
 
         let hits = store::search(vault_root, query_vec, limit).map_err(semantic_tool_error)?;
         let mut rows = Vec::with_capacity(hits.len());
-        for (id, score) in hits {
-            let title = semantic::title_for_id(vault_root, &id)
+        for hit in hits {
+            let title = semantic::title_for_id(vault_root, &hit.entry_id)
                 .map_err(semantic_tool_error)?
                 .unwrap_or_default();
             rows.push(json!({
-                "id": id,
-                "score": score,
+                "id": hit.entry_id,
+                "rev": hit.rev_id,
+                "score": hit.score,
                 "title": title,
             }));
         }

@@ -354,9 +354,9 @@ async fn entry_new_returns_similar_candidates_from_semantic_store() {
         vec![],
     )
     .unwrap();
-    store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
-    store::upsert(dir.path(), "N0002", "h2", &[0.0, 1.0]).unwrap();
-    store::upsert(dir.path(), "N0003", "stale-self", &[1.0, 0.0]).unwrap();
+    store::upsert(dir.path(), "N0001", "r0000", "h1", &[1.0, 0.0]).unwrap();
+    store::upsert(dir.path(), "N0002", "r0000", "h2", &[0.0, 1.0]).unwrap();
+    store::upsert(dir.path(), "N0003", "r0000", "stale-self", &[1.0, 0.0]).unwrap();
     let (endpoint, _server) = spawn_embeddings_server(vec![1.0, 0.0]).await;
     configure_semantic(&dir, endpoint, 2);
 
@@ -390,7 +390,7 @@ async fn entry_new_returns_similar_candidates_from_semantic_store() {
 async fn entry_new_omits_similar_when_embedding_endpoint_fails() {
     let dir = setup_vault();
     ops::entry_new(dir.path(), "indexed existing", Some("body"), None, vec![]).unwrap();
-    store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
+    store::upsert(dir.path(), "N0001", "r0000", "h1", &[1.0, 0.0]).unwrap();
     let endpoint = unused_local_endpoint().await;
     configure_semantic(&dir, endpoint, 2);
 
@@ -1239,10 +1239,10 @@ async fn bundle_suggested_semantic_uses_cached_vectors_and_excludes_existing_sig
     ops::entry_new(dir.path(), "mentioned target", None, None, vec![]).unwrap();
     ops::link_add(dir.path(), "N0001", "N0003").unwrap();
 
-    crate::semantic::store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
-    crate::semantic::store::upsert(dir.path(), "N0002", "h2", &[0.9, 0.1]).unwrap();
-    crate::semantic::store::upsert(dir.path(), "N0003", "h3", &[0.8, 0.2]).unwrap();
-    crate::semantic::store::upsert(dir.path(), "N0004", "h4", &[0.7, 0.3]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0001", "r0000", "h1", &[1.0, 0.0]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0002", "r0000", "h2", &[0.9, 0.1]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0003", "r0000", "h3", &[0.8, 0.2]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0004", "r0000", "h4", &[0.7, 0.3]).unwrap();
 
     let result = BundleHandler
         .call(
@@ -1314,8 +1314,8 @@ async fn bundle_suggested_mentioned_is_read_only_for_vault_files_and_index() {
     .unwrap();
     ops::entry_new(dir.path(), "target entry", None, None, vec![]).unwrap();
     ops::entry_new(dir.path(), "semantic target", None, None, vec![]).unwrap();
-    crate::semantic::store::upsert(dir.path(), "N0001", "h1", &[1.0, 0.0]).unwrap();
-    crate::semantic::store::upsert(dir.path(), "N0003", "h3", &[0.9, 0.1]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0001", "r0000", "h1", &[1.0, 0.0]).unwrap();
+    crate::semantic::store::upsert(dir.path(), "N0003", "r0000", "h3", &[0.9, 0.1]).unwrap();
     crate::vault::index::rebuild(dir.path()).unwrap();
     let meta = crate::vault::metadata_root(dir.path());
     checkpoint_sqlite(&meta.join("index.sqlite"));

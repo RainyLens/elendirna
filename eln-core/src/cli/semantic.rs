@@ -32,6 +32,7 @@ struct ReindexStats {
     indexed: usize,
     skipped: usize,
     failed: usize,
+    pruned: usize,
 }
 
 pub fn run(args: SemanticArgs, vault_args: VaultArgs) -> Result<(), ElfError> {
@@ -45,11 +46,18 @@ pub fn run_reindex(args: ReindexArgs, vault_args: VaultArgs) -> Result<(), ElfEr
     let config = semantic::config(&vault_root)?;
     let client = semantic::client_from_config(&config);
     let sources = semantic::collect_sources(&vault_root)?;
+    let conn = store::open(&vault_root)?;
     let mut pending = Vec::new();
     let mut stats = ReindexStats::default();
 
+    let valid: std::collections::HashSet<(String, String)> = sources
+        .iter()
+        .map(|source| (source.id.clone(), source.rev_id.clone()))
+        .collect();
+    stats.pruned = store::prune_conn(&conn, &valid)?;
+
     for source in sources {
-        let metadata = store::stored_metadata(&vault_root, &source.id)?;
+        let metadata = store::stored_metadata_conn(&conn, &source.id, &source.rev_id)?;
         if metadata
             .as_ref()
             .map(|m| m.content_hash == source.content_hash && m.dim == config.dim)
@@ -77,7 +85,7 @@ pub fn run_reindex(args: ReindexArgs, vault_args: VaultArgs) -> Result<(), ElfEr
                 stats.failed += 1;
                 continue;
             }
-            match store::upsert(&vault_root, &source.id, &source.content_hash, embedding) {
+            match store::upsert_conn(&conn, &source.id, &source.rev_id, &source.content_hash, embedding) {
                 Ok(()) => stats.indexed += 1,
                 Err(_) => stats.failed += 1,
             }
@@ -91,12 +99,13 @@ pub fn run_reindex(args: ReindexArgs, vault_args: VaultArgs) -> Result<(), ElfEr
             "indexed": stats.indexed,
             "skipped": stats.skipped,
             "failed": stats.failed,
+            "pruned": stats.pruned,
         });
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
         println!(
-            "semantic reindex: indexed={}, skipped={}, failed={}",
-            stats.indexed, stats.skipped, stats.failed
+            "semantic reindex: indexed={}, skipped={}, failed={}, pruned={}",
+            stats.indexed, stats.skipped, stats.failed, stats.pruned
         );
     }
     Ok(())

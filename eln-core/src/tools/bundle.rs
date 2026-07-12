@@ -195,9 +195,9 @@ fn compute_semantic_suggestions(
     entry: &Entry,
     mentioned: &[String],
 ) -> Option<Vec<SemanticSuggestion>> {
-    let query_vec = store::entry_vector_read_only(vault_root, &entry.manifest.id)
-        .ok()
-        .flatten()?;
+    // entry의 벡터가 revision별로 여럿이므로 centroid(평균)를 "이 entry 전체 주제" 질의로 사용
+    let vecs = store::entry_vectors_read_only(vault_root, &entry.manifest.id).ok()?;
+    let query_vec = store::centroid(&vecs)?;
     let hits = store::search_read_only(vault_root, &query_vec, SEMANTIC_SUGGESTION_LIMIT).ok()?;
 
     let manifest_links: HashSet<String> = entry
@@ -212,17 +212,21 @@ fn compute_semantic_suggestions(
     let mentioned: HashSet<&str> = mentioned.iter().map(String::as_str).collect();
 
     let mut rows = Vec::new();
-    for (id, score) in hits {
-        if id == entry.manifest.id
-            || manifest_links.contains(&id)
-            || mentioned.contains(id.as_str())
+    for hit in hits {
+        if hit.entry_id == entry.manifest.id
+            || manifest_links.contains(&hit.entry_id)
+            || mentioned.contains(hit.entry_id.as_str())
         {
             continue;
         }
-        let Some(title) = semantic::title_for_id(vault_root, &id).ok().flatten() else {
+        let Some(title) = semantic::title_for_id(vault_root, &hit.entry_id).ok().flatten() else {
             continue;
         };
-        rows.push(SemanticSuggestion { id, score, title });
+        rows.push(SemanticSuggestion {
+            id: hit.entry_id,
+            score: hit.score,
+            title,
+        });
     }
     Some(rows)
 }

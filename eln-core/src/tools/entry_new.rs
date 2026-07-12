@@ -92,17 +92,17 @@ async fn similar_entries(
 
     let hits = store::search(vault_root, query_vec, DEFAULT_SIMILAR_LIMIT + 1).ok()?;
     let mut rows = Vec::new();
-    for (id, score) in hits {
-        if id == self_id {
+    for hit in hits {
+        if hit.entry_id == self_id {
             continue;
         }
-        let title = semantic::title_for_id(vault_root, &id)
+        let title = semantic::title_for_id(vault_root, &hit.entry_id)
             .ok()
             .flatten()
             .unwrap_or_default();
         rows.push(json!({
-            "id": id,
-            "score": score,
+            "id": hit.entry_id,
+            "score": hit.score,
             "title": title,
         }));
         if rows.len() == DEFAULT_SIMILAR_LIMIT {

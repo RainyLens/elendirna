@@ -15,10 +15,15 @@ pub const SEMANTIC_HINT: &str = "config에 [semantic] 설정 + elf semantic rein
 #[derive(Debug, Clone)]
 pub struct EntrySemanticSource {
     pub id: String,
+    /// `r0000` = base(title+note), 이후는 각 revision — 색인 행 단위가 (id, rev_id)
+    pub rev_id: String,
     pub title: String,
     pub content: String,
     pub content_hash: String,
 }
+
+/// base 상태(virtual baseline r0000)의 색인 rev_id
+pub const BASE_REV_ID: &str = "r0000";
 
 pub fn config(vault_root: &Path) -> Result<SemanticConfig, ElfError> {
     let cfg = VaultConfig::read(vault_root)?;
@@ -50,14 +55,26 @@ pub fn collect_sources(vault_root: &Path) -> Result<Vec<EntrySemanticSource>, El
         })?;
         let note_body = entry.note_body()?;
         let revisions = Revision::list(vault_root, &id);
-        let content = entry_content(&entry.manifest.title, &note_body, &revisions);
-        let content_hash = hash_content(&content);
+        let base = base_content(&entry.manifest.title, &note_body);
+        let content_hash = hash_content(&base);
         sources.push(EntrySemanticSource {
-            id: entry.manifest.id,
-            title: entry.manifest.title,
-            content,
+            id: entry.manifest.id.clone(),
+            rev_id: BASE_REV_ID.to_string(),
+            title: entry.manifest.title.clone(),
+            content: base,
             content_hash,
         });
+        for revision in &revisions {
+            let content = revision_content(&entry.manifest.title, &revision.delta);
+            let content_hash = hash_content(&content);
+            sources.push(EntrySemanticSource {
+                id: entry.manifest.id.clone(),
+                rev_id: revision.rev_id.to_string(),
+                title: entry.manifest.title.clone(),
+                content,
+                content_hash,
+            });
+        }
     }
     Ok(sources)
 }
@@ -69,16 +86,14 @@ pub fn title_for_id(vault_root: &Path, id_str: &str) -> Result<Option<String>, E
     Ok(Entry::find_by_id(vault_root, &id).map(|entry| entry.manifest.title))
 }
 
-pub fn entry_content(title: &str, note_body: &str, revisions: &[Revision]) -> String {
-    let mut content = String::new();
-    content.push_str(title);
-    content.push_str("\n\n");
-    content.push_str(note_body);
-    for revision in revisions {
-        content.push_str("\n\n");
-        content.push_str(&revision.delta);
-    }
-    content
+pub fn base_content(title: &str, note_body: &str) -> String {
+    format!("{title}\n\n{note_body}")
+}
+
+/// delta에 title을 접두 — 짧은 delta가 entry 주제 앵커 없이 embed되는 것을 방지
+/// (N0128 원설계 "revision body = 1 vector"에 컨텍스트 헤더를 더한 형태)
+pub fn revision_content(title: &str, delta: &str) -> String {
+    format!("{title}\n\n{delta}")
 }
 
 pub fn hash_content(content: &str) -> String {
@@ -94,7 +109,7 @@ mod tests {
     use crate::vault::ops;
 
     #[test]
-    fn content_hash_changes_when_revision_delta_changes() {
+    fn revision_add_appends_source_without_touching_base_hash() {
         let dir = tempfile::tempdir().unwrap();
         init_run(InitArgs {
             path: dir.path().to_path_buf(),
@@ -109,7 +124,14 @@ mod tests {
         ops::revision_add(dir.path(), "N0001", "[Change] revision delta", "User").unwrap();
         let after = collect_sources(dir.path()).unwrap();
 
-        assert_eq!(before[0].id, "N0001");
-        assert_ne!(before[0].content_hash, after[0].content_hash);
+        assert_eq!(before.len(), 1);
+        assert_eq!((before[0].id.as_str(), before[0].rev_id.as_str()), ("N0001", BASE_REV_ID));
+
+        // revision 추가는 새 소스 행만 늘리고 base 행의 hash는 건드리지 않는다
+        // → reindex가 새 revision 1건만 embed하는 증분 성질의 근거
+        assert_eq!(after.len(), 2);
+        assert_eq!(before[0].content_hash, after[0].content_hash);
+        assert_eq!(after[1].rev_id, "r0001");
+        assert_ne!(after[1].content_hash, after[0].content_hash);
     }
 }
