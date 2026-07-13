@@ -1,9 +1,12 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-static SEE_REF_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"→ see\s+(N\d{4,}(?:\s*,\s*N\d{4,})*)").unwrap());
+// 나열 항목마다 `N0050 (주석)` 형태의 괄호 주석 허용 — 실제 vault 관용구.
+static SEE_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"→ see\s+(N\d{4,}(?:\s*\([^)]*\))?(?:\s*,\s*N\d{4,}(?:\s*\([^)]*\))?)*)").unwrap()
+});
 static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"N\d{4,}").unwrap());
+static PAREN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\([^)]*\)").unwrap());
 
 pub fn see_ref_re() -> &'static Regex {
     &SEE_REF_RE
@@ -29,7 +32,9 @@ pub fn scan_inline_refs(content: &str) -> Vec<String> {
             Event::Code(_) => {}
             Event::Text(text) if !in_code_block && in_blockquote == 0 => {
                 for cap in see_ref_re().captures_iter(&text) {
-                    for id in ID_RE.find_iter(&cap[1]) {
+                    // 주석 괄호 안의 ID는 나열 항목이 아니므로 제거 후 추출
+                    let span = PAREN_RE.replace_all(&cap[1], "");
+                    for id in ID_RE.find_iter(&span) {
                         refs.push(id.as_str().to_string());
                     }
                 }
@@ -56,6 +61,16 @@ mod tests {
         let refs = scan_inline_refs("연결 → see N0127, N0129. 그리고 → see N0001");
 
         assert_eq!(refs, vec!["N0127", "N0129", "N0001"]);
+    }
+
+    #[test]
+    fn scan_inline_refs_extracts_annotated_lists_ignoring_ids_inside_annotations() {
+        let refs = scan_inline_refs(
+            "관련 → see N0050 (비강제 — 반대쪽 반), N0128 (break-safe, discipline 아님), \
+             N0072 (형제), N0122 (N0057 감사 렌즈), N0132 (layer-invariant)",
+        );
+
+        assert_eq!(refs, vec!["N0050", "N0128", "N0072", "N0122", "N0132"]);
     }
 
     #[test]
