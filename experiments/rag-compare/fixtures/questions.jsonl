@@ -1,0 +1,4 @@
+{"id":"Q001","class":"current_decision","route":"current","question":"현재 채택된 배포 전략은 무엇인가?","required_refs":["N9001@r0002"],"forbidden_refs":[],"required_claims":["canary"],"forbidden_claims":["blue가 현재 전략","green이 현재 전략"],"expect_abstain":false}
+{"id":"Q002","class":"decision_rationale","route":"rationale","question":"canary를 선택하면서 앞선 두 배포 방식을 버린 이유는 무엇인가?","required_refs":["N9001@r0002"],"forbidden_refs":[],"required_claims":["일괄 전환 위험","환경 유지 비용"],"forbidden_claims":[],"expect_abstain":false}
+{"id":"Q003","class":"handoff","route":"handoff","question":"마이그레이션 작업을 이어받은 사람이 먼저 해야 할 검증은 무엇인가?","required_refs":["N9002@r0001"],"forbidden_refs":[],"required_claims":["dry run","checksum"],"forbidden_claims":["변환기부터 구현"],"expect_abstain":false}
+{"id":"Q004","class":"absent_evidence","route":"unknown","question":"현재 선택된 SAML 인증 공급자는 어디인가?","required_refs":[],"forbidden_refs":[],"required_claims":[],"forbidden_claims":[],"expect_abstain":true}

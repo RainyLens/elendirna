@@ -1,0 +1,6 @@
+snapshots/
+runs/
+*.cache.json
+embeddings.json
+__pycache__/
+*.pyc
