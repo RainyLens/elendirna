@@ -6,12 +6,17 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "rag_compare.py"
 FIXTURES = ROOT / "fixtures"
+CALIBRATION = ROOT / "calibration" / "questions.jsonl"
+PILOT = ROOT / "pilot" / "questions.jsonl"
+BLIND_SCRIPT = ROOT / "pilot" / "blind_review.py"
+ADJUDICATION = ROOT / "pilot" / "ADJUDICATION.jsonl"
 
 
 def load_module():
@@ -264,6 +269,167 @@ class RagCompareTests(unittest.TestCase):
             self.assertEqual(
                 report["summary"]["native"]["context_source_recall"], 1.0
             )
+
+    def test_pilot_is_balanced_preregistered_and_distinct_from_calibration(self) -> None:
+        pilot = self.module.read_jsonl(PILOT)
+        calibration = self.module.read_jsonl(CALIBRATION)
+
+        expected_classes = {
+            "current_decision",
+            "decision_rationale",
+            "superseded_avoidance",
+            "interrupted_work",
+            "handoff",
+            "absent_evidence",
+        }
+        self.assertEqual(len(pilot), 30)
+        self.assertEqual(len({question["id"] for question in pilot}), 30)
+        self.assertEqual(
+            Counter(question["class"] for question in pilot),
+            Counter({question_class: 5 for question_class in expected_classes}),
+        )
+        self.assertTrue(all(question.get("human_rubric") for question in pilot))
+
+        calibration_questions = {question["question"] for question in calibration}
+        self.assertTrue(
+            all(question["question"] not in calibration_questions for question in pilot)
+        )
+        calibration_signatures = {
+            (
+                tuple(sorted(question.get("primary_refs", []))),
+                tuple(sorted(question.get("required_claims", []))),
+            )
+            for question in calibration
+            if not question.get("expect_abstain", False)
+        }
+        for question in pilot:
+            if question.get("expect_abstain", False):
+                self.assertEqual(question["class"], "absent_evidence")
+                self.assertEqual(question.get("primary_refs"), [])
+                continue
+            signature = (
+                tuple(sorted(question.get("primary_refs", []))),
+                tuple(sorted(question.get("required_claims", []))),
+            )
+            self.assertNotIn(signature, calibration_signatures, question["id"])
+
+    def test_blind_review_hides_systems_and_requires_complete_verdicts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            runs = temp / "runs.jsonl"
+            questions = temp / "questions.jsonl"
+            review = temp / "review.jsonl"
+            key = temp / "key.json"
+            adjudications = temp / "adjudications.jsonl"
+            revealed = temp / "revealed.json"
+
+            questions.write_text(
+                json.dumps(
+                    {
+                        "id": "P900",
+                        "class": "current_decision",
+                        "question": "question",
+                        "human_rubric": "rubric",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            runs.write_text(
+                "\n".join(
+                    json.dumps(row)
+                    for row in (
+                        {"question_id": "P900", "system": "strong", "repetition": 0, "answer": "answer one"},
+                        {"question_id": "P900", "system": "c3", "repetition": 0, "answer": "answer two"},
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            prepared = subprocess.run(
+                [
+                    sys.executable,
+                    str(BLIND_SCRIPT),
+                    "prepare",
+                    "--runs",
+                    str(runs),
+                    "--questions",
+                    str(questions),
+                    "--review",
+                    str(review),
+                    "--key",
+                    str(key),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            review_row = json.loads(review.read_text(encoding="utf-8"))
+            self.assertNotIn("system", review_row)
+            self.assertEqual({review_row["A"], review_row["B"]}, {"answer one", "answer two"})
+
+            adjudications.write_text(
+                json.dumps(
+                    {
+                        "question_id": "P900",
+                        "A": {"pass": True, "reason": None},
+                        "B": {"pass": False, "reason": "incomplete"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(BLIND_SCRIPT),
+                    "reveal",
+                    "--adjudications",
+                    str(adjudications),
+                    "--key",
+                    str(key),
+                    "--questions",
+                    str(questions),
+                    "--output",
+                    str(revealed),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(revealed.read_text(encoding="utf-8"))
+            self.assertEqual(report["summary"]["strong"]["total"], 1)
+            self.assertEqual(report["summary"]["c3"]["total"], 1)
+
+    def test_committed_pilot_adjudication_is_complete(self) -> None:
+        questions = self.module.read_jsonl(PILOT)
+        adjudications = self.module.read_jsonl(ADJUDICATION)
+        self.assertEqual(
+            {row["question_id"] for row in adjudications},
+            {row["id"] for row in questions},
+        )
+        self.assertEqual(len(adjudications), 30)
+        valid_reasons = {
+            "incorrect",
+            "incomplete",
+            "stale",
+            "unsupported",
+            "citation_missing",
+            "citation_invalid",
+            "failed_to_abstain",
+        }
+        for row in adjudications:
+            for label in ("A", "B"):
+                verdict = row[label]
+                self.assertIsInstance(verdict["pass"], bool)
+                if verdict["pass"]:
+                    self.assertIsNone(verdict["reason"])
+                else:
+                    self.assertIn(verdict["reason"], valid_reasons)
 
 
 if __name__ == "__main__":
